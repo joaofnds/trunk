@@ -34,8 +34,12 @@ mise exec -- bunx playwright install webkit
 `TRUNK_VISUAL_PAGES` sets how many pages capture at once (default 5). vitest runs at most five
 tests at once, so a sixth page is opened and never used.
 
-Vite serves the page from the project's own `vite.config.ts`, so a change to how the app is
-built reaches the captures. The suite drops one plugin from that config,
+One Vite server, started in the run's global setup (`tests/visual/global-setup.ts`), serves
+every test file's pages from the project's own `vite.config.ts`, so a change to how the app is
+built reaches the captures. A server per file would give each its own dependency optimizer over
+the one cache directory, and Vite deletes that directory when it finds the metadata unreadable,
+so a server that read it mid-rewrite pulled the dependencies from under the pages the others
+were loading and stalled the run. The suite drops one plugin from that config,
 `vite-plugin-svelte-testing-library`: inside any vitest process it empties the browser's
 resolve conditions, and the page then loads Svelte's server build. The harness throws when
 that plugin is no longer in the config, so the filter cannot outlive it. Vite's dependency
@@ -51,7 +55,7 @@ suite captures it as `catalog`, so a token or primitive that changes paint or ge
 here before any screen that uses it does, and a reader can see the system whole.
 
 `tests/visual/catalog.test.ts` opens `tests/visual/page/catalog.html` through its own
-`CatalogHarness`: one Vite server and one WebKit page, with no `app_host` and no fixture
+`CatalogHarness`: one WebKit page on the run's Vite server, with no `app_host` and no fixture
 repository, since the catalog binds to nothing. vitest runs it in parallel with the graph
 file, so it adds well under a second to the suite. Its page takes one capture of the catalog
 and discards it before the test, as each graph page does below.
