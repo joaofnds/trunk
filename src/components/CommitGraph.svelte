@@ -883,6 +883,7 @@ async function handleCheckoutCommit(commit: GraphCommit) {
 	if (!confirmed) return;
 	try {
 		await safeInvoke("checkout_commit", { path: repoPath, oid: commit.oid });
+		showToast(checkedOutMessage(commit.short_oid), "success");
 	} catch (e) {
 		reportCheckoutFailure(e);
 	}

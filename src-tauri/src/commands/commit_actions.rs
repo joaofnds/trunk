@@ -20,13 +20,14 @@ pub struct RevertBeginResult {
     pub message: Option<String>,
 }
 
-/// Detach HEAD onto a commit, refusing to overwrite uncommitted work.
+/// Detach HEAD onto a commit, carrying every uncommitted change the commit does not
+/// touch, as a branch checkout does.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the working
-/// tree has uncommitted changes, and the git error when `oid` does not resolve
-/// or the checkout fails.
+/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the
+/// checkout would overwrite an uncommitted change, and the git error when `oid` does
+/// not resolve or the checkout fails.
 pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
@@ -35,19 +36,11 @@ pub fn checkout_commit_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    trunk_git::write_gate::hold(&repo, |repo| {
-        if trunk_git::repository::is_repo_dirty(repo)? {
-            return Err(TrunkError::new(
-                "dirty_workdir",
-                "Working tree has uncommitted changes",
-            ));
-        }
-
-        let obj = repo.revparse_single(oid)?;
-        repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().safe()))?;
-        repo.set_head_detached(obj.id())?;
-        Ok(())
+    let obj = repo.revparse_single(oid)?;
+    crate::commands::branches::checkout_safely(&repo, &obj, || {
+        Ok(repo.set_head_detached(obj.id())?)
     })?;
+    drop(obj);
     drop(repo);
 
     state_map.read_graph(path)

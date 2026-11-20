@@ -4139,6 +4139,21 @@ describe("CommitGraph", () => {
 			]);
 		});
 
+		it("toasts the commit it checked out", async () => {
+			await mountAnswering("checkout_commit", () => Promise.resolve());
+			vi.mocked(ask).mockResolvedValue(true);
+			const rows = await screen.findAllByTestId("commit-row");
+
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+			await getMenuAction("Checkout Commit...")();
+			await flush();
+
+			expect(toasted()).toEqual([
+				{ message: `Checked out ${LOCAL_COMMIT.short_oid}`, kind: "success" },
+			]);
+		});
+
 		describe("when uncommitted changes conflict", () => {
 			it("says so for a local checkout", async () => {
 				await mountAnswering("checkout_branch", () => Promise.reject(CONFLICT));

@@ -304,7 +304,7 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
 /// change it does not touch, then run `point_head`. No other writer in this process
 /// runs until HEAD names the tree the index holds. git2 writes nothing when it refuses
 /// on a conflict.
-fn checkout_safely(
+pub(crate) fn checkout_safely(
     repo: &git2::Repository,
     target: &git2::Object<'_>,
     point_head: impl FnOnce() -> Result<(), TrunkError>,

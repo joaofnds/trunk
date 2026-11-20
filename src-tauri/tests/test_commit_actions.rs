@@ -42,24 +42,42 @@ fn checkout_commit_detaches_head() {
 }
 
 #[test]
-fn checkout_commit_dirty_workdir_fails() {
+fn checkout_commit_carries_a_change_the_commit_does_not_touch() {
     let (ctx, first_oid, _second_oid) = build_two_commit_ctx();
+    std::fs::write(ctx.repo_path().join("file.txt"), "staged edit").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "unstaged edit").unwrap();
 
-    // Make workdir dirty
-    std::fs::write(ctx.repo_path().join("file.txt"), "modified").unwrap();
-    {
-        let repo = ctx.repo();
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("file.txt")).unwrap();
-        index.write().unwrap();
-    }
+    ctx.checkout_commit(&first_oid).unwrap();
 
-    let result = ctx.checkout_commit(&first_oid);
-    assert!(
-        result.is_err(),
-        "checkout_commit should fail on dirty workdir"
+    assert_eq!(
+        ctx.repo().head().unwrap().target().unwrap().to_string(),
+        first_oid
     );
-    assert_eq!(result.unwrap_err().code, "dirty_workdir");
+    assert_eq!(ctx.staged_content("file.txt"), "staged edit");
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap(),
+        "unstaged edit"
+    );
+}
+
+/// The first commit has no second.txt, so checking it out would delete the user's edit.
+#[test]
+fn checkout_commit_refuses_a_change_it_would_overwrite() {
+    let (ctx, first_oid, second_oid) = build_two_commit_ctx();
+    std::fs::write(ctx.repo_path().join("second.txt"), "edited").unwrap();
+
+    let err = ctx.checkout_commit(&first_oid).unwrap_err();
+
+    assert_eq!(err.code, "dirty_workdir");
+    assert_eq!(
+        ctx.repo().head().unwrap().target().unwrap().to_string(),
+        second_oid
+    );
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("second.txt")).unwrap(),
+        "edited"
+    );
 }
 
 mod checkout_commit_when_another_writer_runs_meanwhile {
@@ -67,16 +85,18 @@ mod checkout_commit_when_another_writer_runs_meanwhile {
     use common::drivers::staging::unstage_everything;
 
     #[test]
-    fn refuses_once_the_other_writer_staged_a_file() {
+    fn carries_the_file_the_other_writer_staged_first() {
         let (mut ctx, first_oid, _second_oid) = build_two_commit_ctx();
 
-        let err = ctx
-            .act_while_another_writer_stages("a.txt", |ctx| {
-                ctx.checkout_commit(&first_oid).map(drop)
-            })
-            .expect_err("checkout_commit moved HEAD over a staged file");
+        ctx.act_while_another_writer_stages("a.txt", |ctx| {
+            ctx.checkout_commit(&first_oid).map(drop)
+        })
+        .expect("checkout_commit failed");
 
-        assert_eq!(err.code, "dirty_workdir");
+        assert_eq!(
+            ctx.repo().head().unwrap().target().unwrap().to_string(),
+            first_oid
+        );
         assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
     }
 
