@@ -232,6 +232,32 @@ describe("DiffToolbar toggles", () => {
 	});
 });
 
+describe("DiffToolbar file staging", () => {
+	it.each([
+		{ diffKind: "unstaged", name: "Stage File", handler: "onstagefile" },
+		{ diffKind: "staged", name: "Unstage File", handler: "onunstagefile" },
+	] as const)(
+		"acts once on a double click of $name",
+		async ({ diffKind, name, handler }) => {
+			const act = vi.fn();
+			render(DiffToolbar, {
+				props: {
+					...baseProps,
+					selectedPath: "src/main.rs",
+					diffKind,
+					[handler]: act,
+				},
+			});
+			const button = screen.getByRole("button", { name });
+
+			await fireEvent.click(button, { detail: 1 });
+			await fireEvent.click(button, { detail: 2 });
+
+			expect(act).toHaveBeenCalledTimes(1);
+		},
+	);
+});
+
 describe("DiffToolbar in a narrow pane", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();

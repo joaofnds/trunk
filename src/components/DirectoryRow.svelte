@@ -10,6 +10,7 @@ import {
 	tallyInSubtree,
 } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
+import { singleClick } from "../lib/single-click.js";
 import type { ReviewTally } from "../lib/types.js";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -73,7 +74,7 @@ function openMenu(e: MouseEvent) {
 	<RowAction
 		size="compact"
 		tone={actionLabel === "+" ? "success" : "danger"}
-		onclick={() => onaction?.()}
+		onclick={(e: MouseEvent) => singleClick(e, () => onaction?.())}
 		oncontextmenu={openMenu}
 		aria-label={actionLabel === "+" ? "Stage directory" : "Unstage directory"}
 	>

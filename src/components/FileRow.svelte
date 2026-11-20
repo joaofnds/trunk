@@ -3,6 +3,7 @@ import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
 import { renamePartsOf } from "../lib/rename-display.js";
+import { singleClick } from "../lib/single-click.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus, ReviewTally } from "../lib/types.js";
 import Row, { type RowRole } from "../lib/ui/Row.svelte";
@@ -77,7 +78,7 @@ function openMenu(e: MouseEvent) {
 	<RowAction
 		size="compact"
 		tone={actionLabel === "+" ? "success" : "danger"}
-		onclick={() => onaction()}
+		onclick={(e: MouseEvent) => singleClick(e, onaction)}
 		oncontextmenu={openMenu}
 		aria-label={actionLabel === "+" ? "Stage file" : "Unstage file"}
 	>

@@ -5,6 +5,7 @@
 // diff with the view options the hunk was rendered under, so it finds the hunk
 // the view showed, even with whitespace ignored (TRUNK-73).
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
+import { singleClick } from "../../lib/single-click.js";
 import Button from "../../lib/ui/Button.svelte";
 
 interface Props {
@@ -49,13 +50,6 @@ let {
 
 // Staging acts only on changed lines, and a comment's selection may hold none.
 const stagesLines = $derived(hasSelection && selectedChangeCount > 0);
-
-// Staging takes the hunk out of the list, so the next hunk moves up under the
-// pointer before a double click's second click arrives. Only a click of its own
-// acts, and a key press, whose detail is 0, always does.
-function singleClick(e: MouseEvent, act: () => void) {
-	if (e.detail <= 1) act();
-}
 </script>
 
 {#if diffKind === "unstaged" || diffKind === "staged"}

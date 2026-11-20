@@ -199,4 +199,25 @@ describe("DirectoryRow", () => {
 
 		expect(screen.queryByRole("button")).toBeNull();
 	});
+
+	it("acts once on a double click of its action", async () => {
+		const onaction = vi.fn();
+		render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 0,
+				expanded: false,
+				selected: false,
+				ontoggle: () => {},
+				actionLabel: "+",
+				onaction,
+			},
+		});
+		const stage = screen.getByRole("button", { name: "Stage directory" });
+
+		await fireEvent.click(stage, { detail: 1 });
+		await fireEvent.click(stage, { detail: 2 });
+
+		expect(onaction).toHaveBeenCalledTimes(1);
+	});
 });

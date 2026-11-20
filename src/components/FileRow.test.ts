@@ -270,4 +270,22 @@ describe("FileRow", () => {
 		});
 		expect(screen.getByText("new-file.ts")).toBeInTheDocument();
 	});
+
+	it("acts once on a double click of its action", async () => {
+		const onaction = vi.fn();
+		render(FileRow, {
+			props: {
+				file: makeFile("a.ts", "Modified"),
+				role: "option",
+				actionLabel: "+",
+				onaction,
+			},
+		});
+		const stage = screen.getByRole("button", { name: "Stage file" });
+
+		await fireEvent.click(stage, { detail: 1 });
+		await fireEvent.click(stage, { detail: 2 });
+
+		expect(onaction).toHaveBeenCalledTimes(1);
+	});
 });

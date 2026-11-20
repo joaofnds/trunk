@@ -20,6 +20,7 @@ import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { renamePartsOf } from "../../lib/rename-display.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
+import { singleClick } from "../../lib/single-click.js";
 import {
 	STATUS_BADGES,
 	UNKNOWN_STATUS_BADGE,
@@ -346,7 +347,7 @@ const compact = $derived(
 					? "Stage File"
 					: undefined}
 			aria-label="Stage File"
-			onclick={onstagefile}
+			onclick={(e: MouseEvent) => singleClick(e, onstagefile)}
 		>
 			{#if compact}
 				<Plus size={14} aria-hidden="true" />
@@ -366,7 +367,7 @@ const compact = $derived(
 					? "Unstage File"
 					: undefined}
 			aria-label="Unstage File"
-			onclick={onunstagefile}
+			onclick={(e: MouseEvent) => singleClick(e, onunstagefile)}
 		>
 			{#if compact}
 				<Minus size={14} aria-hidden="true" />
