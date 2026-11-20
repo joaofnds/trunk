@@ -4,6 +4,7 @@ import { safeInvoke } from "./invoke.js";
 import {
 	deleteRemoteBranch,
 	deleteTag,
+	pushBranch,
 	renameBranch,
 	runTagAction,
 } from "./ref-actions.js";
@@ -190,6 +191,69 @@ describe("deleteTag", () => {
 
 		expect(changed).toBe(false);
 		expect(shown()).toEqual([{ kind: "error", message: "tag not found" }]);
+	});
+});
+
+describe("pushBranch", () => {
+	const untracked = {
+		code: "no_upstream",
+		message: "feature does not track a branch on origin yet.",
+	};
+
+	it("pushes a branch that tracks a remote branch without asking", async () => {
+		await pushBranch("/repo", "feature", createRemoteState());
+
+		expect(mockAsk).not.toHaveBeenCalled();
+		expect(mockInvoke).toHaveBeenCalledExactlyOnceWith("push_branch", {
+			path: "/repo",
+			branch: "feature",
+			publish: false,
+		});
+		expect(shown()).toEqual([{ kind: "success", message: "Pushed feature" }]);
+	});
+
+	it("asks before publishing a branch that tracks nothing", async () => {
+		mockInvoke.mockRejectedValueOnce(untracked);
+
+		await pushBranch("/repo", "feature", createRemoteState());
+
+		expect(mockAsk).toHaveBeenCalledWith(
+			"feature does not track a branch on origin yet. Push it there and track it?",
+			expect.objectContaining({ okLabel: "Push and Track" }),
+		);
+	});
+
+	it("publishes the branch once the user agrees", async () => {
+		mockInvoke.mockRejectedValueOnce(untracked);
+
+		await pushBranch("/repo", "feature", createRemoteState());
+
+		expect(mockInvoke).toHaveBeenLastCalledWith("push_branch", {
+			path: "/repo",
+			branch: "feature",
+			publish: true,
+		});
+		expect(shown()).toEqual([{ kind: "success", message: "Pushed feature" }]);
+	});
+
+	it("publishes nothing once the user declines", async () => {
+		mockInvoke.mockRejectedValueOnce(untracked);
+		mockAsk.mockResolvedValue(false);
+
+		await pushBranch("/repo", "feature", createRemoteState());
+
+		expect(mockInvoke).toHaveBeenCalledOnce();
+		expect(shown()).toEqual([]);
+	});
+
+	it("keeps a standing push banner while it pushes another branch", async () => {
+		const remoteState = createRemoteState();
+		const rejected = { code: "non_fast_forward", message: "rejected" };
+		remoteState.error = rejected;
+
+		await pushBranch("/repo", "feature", remoteState);
+
+		expect(remoteState.error).toEqual(rejected);
 	});
 });
 

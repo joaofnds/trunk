@@ -124,16 +124,16 @@ let display = $derived.by((): Display => {
 
 	const message: Display = {
 		kind: "message",
-		text: remoteErrorMessage(err, remoteState.lastOp),
+		text: remoteErrorMessage(err, remoteState.failedOp),
 	};
 	const remote = pushTarget?.remote;
 	const branch = pushTarget?.branch;
-	if (err.code === "no_upstream" && remoteState.lastOp === "push") {
+	if (err.code === "no_upstream" && remoteState.failedOp === "push") {
 		return remote && branch ? { kind: "publish", remote, branch } : message;
 	}
 	if (
 		(err.code !== "non_fast_forward" && err.code !== "push_lease_refused") ||
-		remoteState.lastOp !== "push"
+		remoteState.failedOp !== "push"
 	) {
 		return message;
 	}
@@ -241,7 +241,7 @@ async function handleForcePush(target: Target) {
 			{:else if display.kind === "publish"}
 				{@const target = { remote: display.remote, branch: display.branch }}
 				<span class="recovery-text">
-					<strong>{target.branch}</strong> is not on
+					<strong>{target.branch}</strong> does not track a branch on
 					<strong>{target.remote}</strong> yet.
 				</span>
 				<div class="flex shrink-0 gap-1">

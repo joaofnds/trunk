@@ -1658,6 +1658,7 @@ describe("BranchSidebar branch remote actions", () => {
 		expect(mockInvoke).toHaveBeenCalledWith("push_branch", {
 			path: "/test/repo",
 			branch: "feature",
+			publish: false,
 		});
 	});
 

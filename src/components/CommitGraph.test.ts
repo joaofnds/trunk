@@ -4300,6 +4300,7 @@ describe("CommitGraph ref and stash actions", () => {
 		expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("push_branch", {
 			path: "/test/repo",
 			branch: "feature",
+			publish: false,
 		});
 	});
 

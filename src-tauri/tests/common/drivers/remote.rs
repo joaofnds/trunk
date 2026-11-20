@@ -131,13 +131,24 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    /// Push `branch` as its menu entry first does, refusing one that tracks nothing
     pub fn push_branch(&self, branch: &str) -> Result<(), TrunkError> {
+        self.push_branch_publishing(branch, false)
+    }
+
+    /// Push `branch` once the user agreed to publish it and track it
+    pub fn publish_branch(&self, branch: &str) -> Result<(), TrunkError> {
+        self.push_branch_publishing(branch, true)
+    }
+
+    fn push_branch_publishing(&self, branch: &str, publish: bool) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::push_branch_inner(
             &trunk_lib::activity::ActivityState::default()
                 .acquire()
                 .unwrap(),
             self.ctx.path(),
             branch,
+            publish,
             self.ctx.state_map(),
             &self.app.state::<CommitCache>(),
             &self.app.state::<RunningOp>().0,

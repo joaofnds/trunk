@@ -482,7 +482,7 @@ fn local_tip(ctx: &TestContext, branch: &str) -> git2::Oid {
 fn push_branch_publishes_a_branch_that_is_not_checked_out_and_tracks_it() {
     let ctx = repo_with_release_branch();
 
-    ctx.remote().push_branch("release").unwrap();
+    ctx.remote().publish_branch("release").unwrap();
 
     let bare = bare_remote(&ctx, "origin");
     assert_eq!(remote_tip(&bare, "release"), local_tip(&ctx, "release"));
@@ -498,7 +498,7 @@ fn push_branch_publishes_a_branch_that_is_not_checked_out_and_tracks_it() {
 fn push_branch_sends_new_commits_to_the_upstream_it_tracks() {
     let ctx = repo_with_release_branch();
     let remote = ctx.remote();
-    remote.push_branch("release").unwrap();
+    remote.publish_branch("release").unwrap();
     checkout_branch(&ctx, "release");
     write(&ctx, "release.txt", "more release work");
     git(&ctx, &["commit", "-qam", "More release work"]);
@@ -523,13 +523,73 @@ fn push_branch_refuses_a_branch_the_repository_does_not_have() {
 fn push_branch_reports_a_remote_that_moved_on() {
     let ctx = repo_with_release_branch();
     let remote = ctx.remote();
-    remote.push_branch("release").unwrap();
+    remote.publish_branch("release").unwrap();
     let bare = bare_remote(&ctx, "origin");
     commit_on_remote(&bare, "release", "theirs.txt", "theirs", "Their commit");
 
     let err = remote.push_branch("release").unwrap_err();
 
     assert_eq!(err.code, "non_fast_forward", "{}", err.message);
+}
+
+#[test]
+fn push_branch_asks_before_publishing_a_branch_that_tracks_nothing() {
+    let ctx = repo_with_release_branch();
+
+    let err = ctx.remote().push_branch("release").unwrap_err();
+
+    assert_eq!(err.code, "no_upstream", "{}", err.message);
+    assert_eq!(
+        err.message,
+        "release does not track a branch on origin yet."
+    );
+    assert!(!has_branch(&bare_remote(&ctx, "origin"), "release"));
+}
+
+#[test]
+fn push_branch_never_forces_the_branch_a_leading_plus_would_name() {
+    let ctx = repo_with_release_branch();
+    let remote = ctx.remote();
+    remote.publish_branch("release").unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    commit_on_remote(&bare, "release", "theirs.txt", "theirs", "Their commit");
+    let theirs = remote_tip(&bare, "release");
+    git(&ctx, &["branch", "+release", "release"]);
+
+    remote.publish_branch("+release").unwrap();
+
+    assert_eq!(remote_tip(&bare, "release"), theirs);
+    assert_eq!(remote_tip(&bare, "+release"), local_tip(&ctx, "+release"));
+}
+
+#[test]
+fn push_branch_pushes_a_branch_that_shares_its_name_with_a_tag() {
+    let ctx = repo_with_release_branch();
+    git(&ctx, &["tag", "release", "main"]);
+
+    ctx.remote().publish_branch("release").unwrap();
+
+    let bare = bare_remote(&ctx, "origin");
+    assert_eq!(remote_tip(&bare, "release"), local_tip(&ctx, "release"));
+}
+
+#[test]
+fn push_branch_sends_the_branch_to_its_differently_named_upstream_under_push_default_upstream() {
+    let ctx = repo_with_release_branch();
+    set_config(
+        &ctx,
+        &[
+            ("push.default", "upstream"),
+            ("branch.release.remote", "origin"),
+            ("branch.release.merge", "refs/heads/stable"),
+        ],
+    );
+
+    ctx.remote().push_branch("release").unwrap();
+
+    let bare = bare_remote(&ctx, "origin");
+    assert_eq!(remote_tip(&bare, "stable"), local_tip(&ctx, "release"));
+    assert!(!has_branch(&bare, "release"));
 }
 
 fn tag_on(bare: &Path, tag: &str) -> Option<git2::Oid> {

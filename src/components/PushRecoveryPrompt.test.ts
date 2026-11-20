@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { reactiveProps } from "../lib/reactive-props.svelte.js";
+import { runRemoteOp, whileRemoteRuns } from "../lib/remote-op.js";
 import {
 	createRemoteState,
 	type RemoteState,
@@ -44,11 +45,11 @@ function err(code: string, message = "boom"): TrunkError {
 
 function stateWith(
 	error: TrunkError | null,
-	lastOp: RemoteState["lastOp"] = "push",
+	failedOp: RemoteState["failedOp"] = "push",
 ) {
 	const rs = createRemoteState();
 	rs.error = error;
-	rs.lastOp = lastOp;
+	rs.failedOp = failedOp;
 	return rs;
 }
 
@@ -277,7 +278,7 @@ describe("PushRecoveryPrompt force push", () => {
 });
 
 describe("PushRecoveryPrompt publishing a branch the remote lacks", () => {
-	it("says the branch is not on the remote yet and offers to push and track it", async () => {
+	it("says the branch tracks nothing on the remote yet and offers to push and track it", async () => {
 		render(PushRecoveryPrompt, {
 			props: propsFor(stateWith(err("no_upstream"))),
 		});
@@ -285,7 +286,7 @@ describe("PushRecoveryPrompt publishing a branch the remote lacks", () => {
 		await screen.findByRole("button", { name: "Push and Track" });
 
 		expect(screen.getByRole("alert")).toHaveTextContent(
-			"feature is not on origin yet.",
+			"feature does not track a branch on origin yet.",
 		);
 		expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
 	});
@@ -463,8 +464,8 @@ describe("PushRecoveryPrompt when the failed operation was not a push", () => {
 	it.each([
 		["fetch", "fetch" as const],
 		["an unrecorded operation", null],
-	])("offers no recovery actions after %s", async (_name, lastOp) => {
-		const rs = stateWith(err("non_fast_forward"), lastOp);
+	])("offers no recovery actions after %s", async (_name, failedOp) => {
+		const rs = stateWith(err("non_fast_forward"), failedOp);
 
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
 
@@ -472,6 +473,24 @@ describe("PushRecoveryPrompt when the failed operation was not a push", () => {
 		expect(screen.getByText("Dismiss")).toBeInTheDocument();
 		expect(screen.queryByText("Force Push")).toBeNull();
 		expect(screen.getAllByRole("button")).toHaveLength(1);
+	});
+});
+
+describe("PushRecoveryPrompt while the menu talks to the remote", () => {
+	it("keeps naming the failed pull after a push from a menu", async () => {
+		respondWith({ git_pull: () => Promise.reject(err("no_upstream")) });
+		const rs = createRemoteState();
+		render(PushRecoveryPrompt, { props: propsFor(rs) });
+		await runRemoteOp(rs, "/repo", "git_pull", "Pulled");
+		await screen.findByText("This branch has no upstream on the remote");
+
+		await whileRemoteRuns(rs, "push", () => Promise.resolve());
+
+		await tick();
+		expect(
+			screen.getByText("This branch has no upstream on the remote"),
+		).toBeInTheDocument();
+		expect(screen.queryByText("Push and Track")).toBeNull();
 	});
 });
 

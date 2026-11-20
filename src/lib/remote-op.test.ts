@@ -58,6 +58,22 @@ describe("runRemoteOp", () => {
 
 		expect(remoteState.lastOp).toBe("fetch");
 	});
+
+	it.each([
+		["git_push_publish", "push"],
+		["git_pull", "pull"],
+		["git_fetch", "fetch"],
+	] as const)(
+		"names %s as the %s its failure reports",
+		async (cmd, expected) => {
+			mockInvoke.mockRejectedValue({ code: "non_fast_forward", message: "no" });
+			const remoteState = createRemoteState();
+
+			await runRemoteOp(remoteState, "/repo", cmd, "done");
+
+			expect(remoteState.failedOp).toBe(expected);
+		},
+	);
 });
 
 describe("whileRemoteRuns", () => {

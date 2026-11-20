@@ -22,6 +22,7 @@ const ALREADY_RUNNING: TrunkError = {
  * Runs `talk` as the tab's one remote operation of `kind`: the toolbar shows it
  * running and holds back another until it ends. While one already runs, refuses
  * without calling `talk`, as the backend would, so the mark stays on the one running.
+ * The recovery prompt stays as it stands, since only `runRemoteOp` reports there.
  */
 export async function whileRemoteRuns<T>(
 	remoteState: RemoteState,
@@ -30,7 +31,6 @@ export async function whileRemoteRuns<T>(
 ): Promise<T> {
 	if (remoteState.isRunning) throw ALREADY_RUNNING;
 	remoteState.isRunning = true;
-	remoteState.error = null;
 	remoteState.lastOp = kind;
 	try {
 		return await talk();
@@ -49,6 +49,7 @@ export async function runRemoteOp(
 	const args = { path: repoPath, ...extra };
 	try {
 		await whileRemoteRuns(remoteState, OP_KINDS[cmd], async () => {
+			remoteState.error = null;
 			if (cmd === "git_fetch" || cmd === "git_pull") {
 				const report = await safeInvoke<FetchReport>(cmd, args);
 				remoteState.autofetch = report;
@@ -57,6 +58,7 @@ export async function runRemoteOp(
 		});
 		showToast(successMsg, "success");
 	} catch (e: unknown) {
+		remoteState.failedOp = OP_KINDS[cmd];
 		remoteState.error = isTrunkError(e)
 			? e
 			: { code: "unknown_error", message: String(e) };

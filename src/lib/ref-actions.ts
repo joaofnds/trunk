@@ -76,10 +76,8 @@ export async function runTagAction(
 
 	const tag = { path: repoPath, remote: action.remote, tagName };
 	if (action.kind === "push") {
-		await changeOnRemote(
-			remoteState,
-			"push_tag",
-			tag,
+		report(
+			await onRemote(remoteState, "push_tag", tag),
 			`Pushed tag ${tagName} to ${action.remote}`,
 		);
 		return false;
@@ -95,10 +93,8 @@ export async function runTagAction(
 		reportErrorToast(e, "Failed to delete tag");
 		return false;
 	}
-	await changeOnRemote(
-		remoteState,
-		"delete_remote_tag",
-		tag,
+	report(
+		await onRemote(remoteState, "delete_remote_tag", tag),
 		`Deleted tag ${tagName} from ${action.remote}`,
 	);
 	return false;
@@ -155,38 +151,88 @@ export async function branchRemoteMenuItems(
 	]);
 }
 
-/** Pushes a branch, checked out or not, without the checked-out branch's recovery prompt. */
+/**
+ * Pushes a branch, checked out or not, without the checked-out branch's recovery
+ * prompt. One that tracks nothing is published only once the user agrees.
+ */
 export async function pushBranch(
 	repoPath: string,
 	branch: string,
 	remoteState: RemoteState,
 ): Promise<void> {
-	await changeOnRemote(
-		remoteState,
-		"push_branch",
-		{ path: repoPath, branch },
-		`Pushed ${branch}`,
-	);
+	const push = (publish: boolean) =>
+		onRemote(remoteState, "push_branch", { path: repoPath, branch, publish });
+	let outcome = await push(false);
+	if (
+		!outcome.ok &&
+		isTrunkError(outcome.error) &&
+		outcome.error.code === "no_upstream"
+	) {
+		if (!(await agreesToPublish(outcome.error.message))) return;
+		outcome = await push(true);
+	}
+	report(outcome, `Pushed ${branch}`);
 }
 
-async function changeOnRemote(
+async function agreesToPublish(untracked: string): Promise<boolean> {
+	try {
+		return await ask(`${forDisplay(untracked)} Push it there and track it?`, {
+			title: "Push Branch",
+			kind: "info",
+			okLabel: "Push and Track",
+		});
+	} catch (e) {
+		reportErrorToast(e, "Failed to push branch");
+		return false;
+	}
+}
+
+type TagOnRemote = {
+	readonly path: string;
+	readonly remote: string;
+	readonly tagName: string;
+};
+
+/** The arguments of each change a menu makes on a remote. */
+type RemoteChanges = {
+	push_tag: TagOnRemote;
+	delete_remote_tag: TagOnRemote;
+	push_branch: {
+		readonly path: string;
+		readonly branch: string;
+		readonly publish: boolean;
+	};
+};
+
+type Outcome =
+	| { readonly ok: true }
+	| { readonly ok: false; readonly error: unknown };
+
+/** Runs `command` as the tab's push, leaving the recovery prompt as it stands. */
+async function onRemote<C extends keyof RemoteChanges>(
 	remoteState: RemoteState,
-	command: "push_tag" | "delete_remote_tag" | "push_branch",
-	args: Record<string, string>,
-	done: string,
-): Promise<void> {
+	command: C,
+	args: RemoteChanges[C],
+): Promise<Outcome> {
 	try {
 		await whileRemoteRuns(remoteState, "push", () => safeInvoke(command, args));
-	} catch (e) {
-		showToast(
-			isTrunkError(e)
-				? remoteErrorMessage(e, "push")
-				: errorMessage(e, "The remote did not answer"),
-			"error",
-		);
+		return { ok: true };
+	} catch (error) {
+		return { ok: false, error };
+	}
+}
+
+function report(outcome: Outcome, done: string): void {
+	if (outcome.ok) {
+		showToast(done, "success");
 		return;
 	}
-	showToast(done, "success");
+	showToast(
+		isTrunkError(outcome.error)
+			? remoteErrorMessage(outcome.error, "push")
+			: errorMessage(outcome.error, "The remote did not answer"),
+		"error",
+	);
 }
 
 /** Renames branch `from` to `to`, trimmed. Typing nothing new changes nothing. */

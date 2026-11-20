@@ -791,6 +791,7 @@ pub async fn push_branch<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
     branch: String,
+    publish: bool,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
@@ -802,6 +803,7 @@ pub async fn push_branch<R: Runtime>(
         &activity,
         &path,
         &branch,
+        publish,
         &state_map,
         &cache,
         &running.0,
@@ -812,19 +814,22 @@ pub async fn push_branch<R: Runtime>(
     .map_err(|e| e.to_json())
 }
 
-/// Push a local branch, checked out or not, and track it when it tracks nothing yet.
+/// Push a local branch, checked out or not. One that tracks nothing is pushed under its
+/// own name and tracked there only once the user agreed to `publish` it.
 ///
-/// The remote is the one a bare push of the branch would use. The remote branch is
-/// whatever `git push <remote> <branch>` picks in the user's terminal.
+/// The remote and the remote branch are the ones a bare push of the branch would use,
+/// named in full so no branch name reads as a refspec of its own.
 ///
 /// # Errors
 ///
 /// Returns `invalid_ref` when the repository has no such branch, `no_push_target` when no
-/// remote is configured for it, and the classified git error when the push fails.
+/// remote is configured for it, `no_upstream` when it tracks nothing and `publish` is not
+/// set, and the classified git error when the push fails.
 pub async fn push_branch_inner<R: Runtime>(
     activity: &crate::activity::Activity,
     path: &str,
     branch: &str,
+    publish: bool,
     state_map: &OpenRepos,
     cache: &CommitCache,
     running: &Mutex<RemoteOps>,
@@ -836,7 +841,7 @@ pub async fn push_branch_inner<R: Runtime>(
 
     let target_path = path_buf.clone();
     let name = branch.to_owned();
-    let (remote, tracked) = activity
+    let (target, tracked) = activity
         .spawn_blocking(move || {
             let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
             if repo.find_branch(&name, git2::BranchType::Local).is_err() {
@@ -850,22 +855,30 @@ pub async fn push_branch_inner<R: Runtime>(
                 .map_err(TrunkError::from)?
                 .get_string(&format!("branch.{name}.merge"))
                 .is_ok();
-            Ok((push_target_of(&repo, Some(name))?.remote, tracked))
+            Ok((push_target_of(&repo, Some(name))?, tracked))
         })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
-    let Some(remote) = remote else {
+    let Some(remote) = target.remote else {
         return Err(TrunkError::new(
             "no_push_target",
             format!("{branch} has no remote to push to, so nothing was pushed."),
         ));
     };
+    if !tracked && !publish {
+        return Err(TrunkError::new(
+            "no_upstream",
+            format!("{branch} does not track a branch on {remote} yet."),
+        ));
+    }
 
+    let destination = target.branch.as_deref().unwrap_or(branch);
+    let refspec = format!("refs/heads/{branch}:refs/heads/{destination}");
     let mut args = vec!["push"];
     if !tracked {
         args.push("--set-upstream");
     }
-    args.extend(["--", &remote, branch]);
+    args.extend(["--", &remote, &refspec]);
     let completion = run_git_remote(activity, &args, &path_buf, app, path, running).await?;
 
     refresh_graph(
