@@ -368,6 +368,11 @@ function markGraphReady(response: GraphResponse): void {
 	graphReady = true;
 }
 
+/** Until the first graph or its failure arrives there is nothing to show but
+ *  the wait: a page can be held back by the stored ref visibility read, and the
+ *  uncommitted changes row alone would read as a repository with no history. */
+const awaitingFirstGraph = $derived(!graphReady && error === null);
+
 let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
 let columnVisibility = $state<ColumnVisibility>({
 	ref: true,
@@ -2098,7 +2103,7 @@ $effect(() => {
 
 let readyReported = false;
 $effect(() => {
-	if (readyReported || loading || (!graphReady && error === null)) return;
+	if (readyReported || loading || awaitingFirstGraph) return;
 	readyReported = true;
 	untrack(() => {
 		void tick().then(() => {
@@ -2493,7 +2498,7 @@ $effect(() => {
 			/>
 		{/if}
 
-		{#if commits.length === 0 && loading}
+		{#if commits.length === 0 && (loading || awaitingFirstGraph)}
 			<!-- Initial skeleton loading -->
 			{#each { length: SKELETON_COUNT } as _}
 				<div

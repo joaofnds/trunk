@@ -84,6 +84,33 @@ function graphViewport(container: HTMLElement): HTMLElement {
 	return viewport;
 }
 
+describe("CommitGraph before its first page", () => {
+	it("shows no uncommitted changes row alone while the stored ref visibility is read", async () => {
+		host.seedGraph(graph(5));
+		const view = render(CommitGraph, {
+			props: {
+				...noReviewCounts(),
+				repoPath: "/repo",
+				remoteState: createRemoteState(),
+				tabActive: true,
+				refreshSignal: 0,
+				cachedGraphRevision: 5,
+				wipCount: 2,
+				visibilityResolved: false,
+			},
+			context: new Map([[SCHEDULER, clock]]),
+		});
+		await tick();
+		const rowsBeforeThePage = screen.queryAllByTestId("commit-row-summary");
+
+		await view.rerender({ visibilityResolved: true });
+
+		expect(rowsBeforeThePage).toEqual([]);
+		await screen.findByText("revision 5");
+		expect(screen.getAllByTestId("commit-row-summary")).toHaveLength(2);
+	});
+});
+
 describe("CommitGraph automatic ref updates", () => {
 	// TRUNK-494: the view's first graph can predate a change whose event no listener heard.
 	it("refreshes a first page that predates a reported change", async () => {
