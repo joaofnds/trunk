@@ -1,28 +1,17 @@
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 
 use super::context::TestContext;
 
-/// A process a hook started in the background, holding git's output open until
-/// [`LeftRunning::release`] lets it exit.
+/// A process a hook started in the background, holding git's output open for as
+/// long as the directory it watches exists, which [`LeftRunning::release`] or the
+/// drop removes.
 pub struct LeftRunning {
-    _gate: tempfile::TempDir,
-    fifo: PathBuf,
+    gate: tempfile::TempDir,
 }
 
 impl LeftRunning {
     pub fn release(self) {
-        std::fs::write(&self.fifo, "go\n").unwrap();
-    }
-}
-
-impl Drop for LeftRunning {
-    fn drop(&mut self) {
-        use std::os::unix::fs::OpenOptionsExt;
-        let _ = std::fs::OpenOptions::new()
-            .write(true)
-            .custom_flags(libc::O_NONBLOCK)
-            .open(&self.fifo);
+        self.gate.close().unwrap();
     }
 }
 
@@ -34,17 +23,15 @@ impl TestContext {
     }
 
     /// Installs a `name` hook that starts a process in the background and exits.
+    /// Every process each run of the hook starts watches the same directory, so
+    /// removing it ends them all, however many runs there were.
     pub fn install_hook_leaving_a_process_running(&self, name: &str) -> LeftRunning {
         let gate = tempfile::tempdir().unwrap();
-        let fifo = gate.path().join("release");
-        let made = std::process::Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap();
-        assert!(made.success(), "mkfifo failed");
-
-        let quoted = fifo.display().to_string().replace('\'', r"'\''");
-        self.install_hook(name, &format!("(read line < '{quoted}') &"));
-        LeftRunning { _gate: gate, fifo }
+        let quoted = gate.path().display().to_string().replace('\'', r"'\''");
+        self.install_hook(
+            name,
+            &format!("(while [ -d '{quoted}' ]; do sleep 0.05; done) &"),
+        );
+        LeftRunning { gate }
     }
 }

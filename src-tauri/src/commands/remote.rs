@@ -239,6 +239,10 @@ async fn refresh_graph<R: Runtime>(
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
     activity: crate::activity::Activity,
@@ -268,9 +272,11 @@ pub async fn git_fetch<R: Runtime>(
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository or it closes during the
-/// fetch, `auth_failure` when a remote refuses the credentials, `spawn_error` when a
-/// blocking step cannot be joined, and `remote_error` carrying git's own message
-/// otherwise.
+/// fetch, `op_in_progress` while another remote operation runs on it, `cancelled`
+/// when the user cancels the fetch, a `git_*` code when the repository cannot be
+/// opened, `spawn_error` when a blocking step cannot be joined, and otherwise the
+/// code [`classify_git_error`] gives what git said, such as `auth_failure` or
+/// `remote_error`.
 pub async fn git_fetch_inner<R: Runtime>(
     activity: &crate::activity::Activity,
     path: &str,
@@ -828,6 +834,10 @@ pub async fn git_push_force_inner<R: Runtime>(
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_remote_branch<R: Runtime>(
     activity: crate::activity::Activity,
@@ -859,10 +869,13 @@ pub async fn delete_remote_branch<R: Runtime>(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `invalid_ref` when
-/// `branch_name` names no remote, `auth_failure` when the remote refuses the
-/// credentials, `spawn_error` when a blocking step cannot be joined, and
-/// `remote_error` carrying git's own message otherwise.
+/// Returns `not_open` when `path` names no open repository or it closes during the
+/// delete, `invalid_ref` when `branch_name` has no slash, `op_in_progress` while
+/// another remote operation runs on it, `cancelled` when the user cancels the
+/// delete, a `git_*` code when the repository cannot be opened, `spawn_error` when a
+/// blocking step cannot be joined, and otherwise the code [`classify_git_error`]
+/// gives what git said, such as `push_declined` when a hook or the server refuses
+/// it, `auth_failure` or `remote_error`.
 pub async fn delete_remote_branch_inner<R: Runtime>(
     activity: &crate::activity::Activity,
     path: &str,
