@@ -973,6 +973,18 @@ fn publishing_refuses_when_the_repo_left_the_confirmed_branch() {
 }
 
 #[test]
+fn publishing_names_the_remote_when_only_the_remote_changed() {
+    let ctx = on_a_branch_the_remote_lacks();
+
+    let result = ctx.remote().push_publish("mirror", "topic");
+
+    assert_eq!(
+        result.unwrap_err().message,
+        "You confirmed a push of topic to mirror, but it would now go to origin. Nothing was pushed."
+    );
+}
+
+#[test]
 fn force_push_to_a_differently_named_upstream_never_creates_a_branch_of_the_local_name() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
