@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use crate::commands::remote_tracking::Remotes;
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
-use crate::user_git::{UserGit, refusal};
+use crate::user_git::{UserConfig, UserGit, refusal};
 use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
 use trunk_git::pull_safety::PullSafetyCopy;
@@ -461,7 +461,7 @@ pub async fn git_pull_inner<R: Runtime>(
     let config = activity
         .spawn_blocking(move || PullConfig::read(&dir))
         .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
     let args = pull_args(strategy, &config);
 
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
@@ -520,38 +520,57 @@ async fn wait_for_write_turn(
 }
 
 /// What the user's configuration says about how a pull combines a branch that diverged
-/// from its upstream and what it does with uncommitted changes. git reads it, because
-/// libgit2 ignores `GIT_CONFIG_GLOBAL` and could see a different file than the pull.
+/// from its upstream and what it does with uncommitted changes, as git reads it.
 struct PullConfig {
     ff: bool,
-    autostash: bool,
+    rebases: bool,
+    merge_autostash: bool,
+    rebase_autostash: bool,
 }
 
 impl PullConfig {
-    fn read(dir: &std::path::Path) -> Self {
-        let names = UserGit::in_dir(dir)
-            .args([
-                "config",
-                "--name-only",
-                "--get-regexp",
-                r"^(pull\.ff|rebase\.autostash|merge\.autostash)$",
-            ])
-            .output()
-            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
-            .unwrap_or_default();
-        let set = |key: &str| names.lines().any(|name| name == key);
+    fn read(dir: &std::path::Path) -> Result<Self, TrunkError> {
+        let repo = git2::Repository::open(dir)?;
+        let branch_rebase = repo.head().ok().and_then(|head| {
+            head.name()
+                .ok()
+                .and_then(|name| name.strip_prefix("refs/heads/"))
+                .map(|branch| format!("branch.{branch}.rebase"))
+        });
+        let config = UserConfig::read(
+            dir,
+            r"^(pull\.ff|pull\.rebase|branch\..*\.rebase|rebase\.autostash|merge\.autostash)$",
+            "remote_error",
+        )?;
+        let rebase = branch_rebase
+            .and_then(|name| config.get(&name))
+            .or_else(|| config.get("pull.rebase"));
 
-        Self {
-            ff: set("pull.ff"),
-            autostash: set("rebase.autostash") || set("merge.autostash"),
-        }
+        Ok(Self {
+            ff: config.is_set("pull.ff"),
+            rebases: rebase.is_some_and(rebases),
+            merge_autostash: config.is_set("merge.autostash"),
+            rebase_autostash: config.is_set("rebase.autostash"),
+        })
     }
+}
+
+/// Whether a `branch.<name>.rebase` or `pull.rebase` value makes a pull rebase, which
+/// every value but one git reads as false does.
+fn rebases(value: Option<&str>) -> bool {
+    value.is_none_or(|value| {
+        let value = value.to_ascii_lowercase();
+        let false_word = matches!(value.as_str(), "false" | "no" | "off" | "");
+        !false_word && value.parse::<i64>() != Ok(0)
+    })
 }
 
 /// git's own pull wherever the configuration decides, and where it is silent and git
 /// would refuse, what `GitKraken`'s pull does: merge a diverged branch, and stash
 /// uncommitted changes around the pull. `--ff` outranks only `pull.ff`, so a configured
-/// `pull.rebase` still rebases.
+/// `pull.rebase` still rebases. A rebasing pull stashes as `rebase.autostash` says and a
+/// merging one as `merge.autostash` says, so only the setting for this pull's way of
+/// combining counts.
 fn pull_args(strategy: Option<&str>, config: &PullConfig) -> Vec<&'static str> {
     let mut args = match strategy {
         Some("ff") => vec!["pull", "--ff"],
@@ -560,7 +579,14 @@ fn pull_args(strategy: Option<&str>, config: &PullConfig) -> Vec<&'static str> {
         _ if config.ff => vec!["pull"],
         _ => vec!["pull", "--ff"],
     };
-    if !config.autostash {
+
+    let rebasing = strategy == Some("rebase") || config.rebases;
+    let autostash_configured = if rebasing {
+        config.rebase_autostash
+    } else {
+        config.merge_autostash
+    };
+    if !autostash_configured {
         args.push("--autostash");
     }
     args
@@ -1436,7 +1462,7 @@ pub async fn cancel_remote_op(
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::what_git_said;
+    use super::{rebases, what_git_said};
     use std::os::unix::process::ExitStatusExt;
     use std::process::{ExitStatus, Output};
 
@@ -1461,5 +1487,26 @@ mod tests {
             what_git_said(&failed("", "\n")),
             "git exited with code 1 and printed no reason. A hook may have refused it."
         );
+    }
+
+    #[test]
+    fn a_pull_merges_where_the_rebase_setting_is_any_word_git_reads_as_false() {
+        let falses = ["false", "No", "OFF", "", "0", "00"].map(|value| rebases(Some(value)));
+
+        assert_eq!(falses, [false; 6]);
+    }
+
+    #[test]
+    fn a_pull_rebases_where_the_rebase_setting_is_any_other_value_or_none() {
+        let rebasing = [
+            Some("true"),
+            Some("merges"),
+            Some("interactive"),
+            Some("1"),
+            None,
+        ]
+        .map(rebases);
+
+        assert_eq!(rebasing, [true; 5]);
     }
 }

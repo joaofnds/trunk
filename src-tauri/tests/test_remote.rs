@@ -1715,6 +1715,87 @@ fn pull_carries_an_uncommitted_change_across_a_rebase() {
     assert_eq!(stash_names(&ctx), Vec::<String>::new());
 }
 
+const CARRIED: &str = "ONE\ntwo\nTHREE\n";
+
+/// Pulls over an uncommitted change with `config` set, and returns the file the pull
+/// left, or why it refused.
+fn file_after_pull(config: &[(&str, &str)], strategy: Option<&str>) -> Result<String, String> {
+    let ctx = dirty_where_upstream_changed_another_line();
+    set_config(&ctx, config);
+
+    ctx.remote()
+        .pull(strategy)
+        .map_err(|error| format!("{}: {}", error.code, error.message))?;
+
+    Ok(read(&ctx, "file.txt"))
+}
+
+#[test]
+fn rebase_pull_carries_an_uncommitted_change_when_only_merges_autostash() {
+    assert_eq!(
+        file_after_pull(&[("merge.autostash", "true")], Some("rebase")),
+        Ok(CARRIED.to_owned())
+    );
+}
+
+#[test]
+fn merge_pull_carries_an_uncommitted_change_when_only_rebases_autostash() {
+    assert_eq!(
+        file_after_pull(&[("rebase.autostash", "true")], None),
+        Ok(CARRIED.to_owned())
+    );
+}
+
+#[test]
+fn pull_the_repository_rebases_carries_an_uncommitted_change_when_only_merges_autostash() {
+    assert_eq!(
+        file_after_pull(
+            &[("pull.rebase", "true"), ("merge.autostash", "true")],
+            Some("ff")
+        ),
+        Ok(CARRIED.to_owned())
+    );
+}
+
+#[test]
+fn pull_the_branch_rebases_carries_an_uncommitted_change_when_only_merges_autostash() {
+    assert_eq!(
+        file_after_pull(
+            &[
+                ("branch.main.rebase", "merges"),
+                ("merge.autostash", "true")
+            ],
+            Some("ff-only")
+        ),
+        Ok(CARRIED.to_owned())
+    );
+}
+
+#[test]
+fn pull_the_branch_merges_carries_an_uncommitted_change_when_only_rebases_autostash() {
+    assert_eq!(
+        file_after_pull(
+            &[
+                ("pull.rebase", "true"),
+                ("branch.main.rebase", "false"),
+                ("rebase.autostash", "true"),
+            ],
+            None
+        ),
+        Ok(CARRIED.to_owned())
+    );
+}
+
+#[test]
+fn merge_pull_leaves_an_uncommitted_change_where_merges_must_not_autostash() {
+    assert!(file_after_pull(&[("merge.autostash", "false")], None).is_err());
+}
+
+#[test]
+fn rebase_pull_leaves_an_uncommitted_change_where_rebases_must_not_autostash() {
+    assert!(file_after_pull(&[("rebase.autostash", "false")], Some("rebase")).is_err());
+}
+
 fn head_parents(ctx: &TestContext) -> Vec<String> {
     let repo = ctx.repo();
     let head = repo.head().unwrap().peel_to_commit().unwrap();

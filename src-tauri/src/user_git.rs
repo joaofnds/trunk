@@ -108,6 +108,62 @@ impl UserGit {
     }
 }
 
+/// The configuration the user's git reads, which libgit2 can read differently: it
+/// skips `GIT_CONFIG_GLOBAL` and the `includeIf` conditions it does not know.
+pub struct UserConfig(Vec<(String, Option<String>)>);
+
+impl UserConfig {
+    /// Reads the entries whose names match `pattern`, an extended regular expression.
+    ///
+    /// # Errors
+    ///
+    /// Returns `code` with the reason git would not start, or with [`refusal`] when
+    /// git cannot read the configuration.
+    pub fn read(dir: impl AsRef<Path>, pattern: &str, code: &str) -> Result<Self, TrunkError> {
+        let output = UserGit::in_dir(dir)
+            .args(["config", "--null", "--get-regexp", pattern])
+            .output()
+            .map_err(|e| TrunkError::new(code, e.to_string()))?;
+        if output.status.success() {
+            return Ok(Self::parse(&output.stdout));
+        }
+
+        match output.status.code() {
+            Some(1) => Ok(Self(Vec::new())),
+            _ => Err(TrunkError::new(code, refusal(&output))),
+        }
+    }
+
+    fn parse(listing: &[u8]) -> Self {
+        let entries = String::from_utf8_lossy(listing)
+            .split_terminator('\0')
+            .map(|entry| match entry.split_once('\n') {
+                Some((name, value)) => (name.to_owned(), Some(value.to_owned())),
+                None => (entry.to_owned(), None),
+            })
+            .collect();
+
+        Self(entries)
+    }
+
+    /// Whether `name` is set at all, with or without a value.
+    #[must_use]
+    pub fn is_set(&self, name: &str) -> bool {
+        self.0.iter().any(|(entry, _)| entry == name)
+    }
+
+    /// The value git uses for `name`, the last one set, as `Some(None)` for a name set
+    /// with no value, which git reads as true.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<Option<&str>> {
+        self.0
+            .iter()
+            .rev()
+            .find(|(entry, _)| entry == name)
+            .map(|(_, value)| value.as_deref())
+    }
+}
+
 /// A git started by [`UserGit::spawn`].
 pub struct RunningGit {
     child: tokio::process::Child,
@@ -210,6 +266,27 @@ mod tests {
             refusal(&killed),
             "git was stopped by a signal and printed no reason."
         );
+    }
+
+    #[test]
+    fn the_last_value_set_is_the_one_git_uses() {
+        let config = UserConfig::parse(b"pull.rebase\ntrue\0pull.rebase\nfalse\0");
+
+        assert_eq!(config.get("pull.rebase"), Some(Some("false")));
+    }
+
+    #[test]
+    fn a_name_set_with_no_value_reads_as_set_without_one() {
+        let config = UserConfig::parse(b"pull.rebase\0");
+
+        assert_eq!(config.get("pull.rebase"), Some(None));
+    }
+
+    #[test]
+    fn a_value_keeps_its_own_line_breaks() {
+        let config = UserConfig::parse(b"alias.two\nlog\n-1\0");
+
+        assert_eq!(config.get("alias.two"), Some(Some("log\n-1")));
     }
 
     #[test]
