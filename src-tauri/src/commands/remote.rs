@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
+use crate::commands::remote_tracking::Remotes;
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::user_git::{UserGit, refusal};
@@ -919,37 +920,19 @@ pub async fn delete_remote_branch_inner<R: Runtime>(
 }
 
 /// The remote that `branch_name`, a remote-tracking branch such as
-/// `origin/feature`, belongs to, and the ref it tracks there. The remote is the
-/// one whose fetch refspec maps into `refs/remotes/<branch_name>`, as git's own
-/// lookup finds it, so a remote named with a slash is matched whole and the
-/// first slash is not taken for the end of its name.
+/// `origin/feature`, belongs to, and the branch on it the ref stands for.
 fn tracked_remote_ref(
     location: &std::path::Path,
     branch_name: &str,
 ) -> Result<(String, String), TrunkError> {
-    let untracked =
-        || TrunkError::new("invalid_ref", format!("No one remote tracks {branch_name}"));
     let repo = git2::Repository::open(location)?;
-    let tracking = format!("refs/remotes/{branch_name}");
-    let name = repo
-        .branch_remote_name(&tracking)
-        .map_err(|_| untracked())?
-        .as_str()
-        .map_err(|_| untracked())?
-        .to_owned();
-    let remote = repo.find_remote(&name)?;
-    let source = remote
-        .refspecs()
-        .filter(|spec| spec.direction() == git2::Direction::Fetch && spec.dst_matches(&tracking))
-        .find_map(|spec| {
-            spec.rtransform(&tracking)
-                .ok()?
-                .as_str()
-                .ok()
-                .map(str::to_owned)
-        })
-        .ok_or_else(untracked)?;
-    Ok((name, source))
+    let source = Remotes::read(&repo).source_of(branch_name).ok_or_else(|| {
+        TrunkError::new(
+            "invalid_ref",
+            format!("{branch_name} is not a branch of a configured remote"),
+        )
+    })?;
+    Ok((source.remote, source.branch))
 }
 
 /// # Errors

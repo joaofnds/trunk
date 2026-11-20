@@ -56,6 +56,7 @@ pub mod operation_state;
 pub mod perf;
 pub mod prefs;
 pub mod remote;
+pub(crate) mod remote_tracking;
 pub mod repo;
 pub mod review;
 pub mod staging;

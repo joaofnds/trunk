@@ -336,11 +336,82 @@ fn delete_remote_branch_removes_a_branch_of_a_remote_whose_name_has_a_slash() {
     let bare = bare_remote(&ctx, "team/fork");
     git(&ctx, &["push", "team/fork", "HEAD:refs/heads/feature"]);
 
-    ctx.remote()
-        .delete_remote_branch("team/fork/feature")
-        .unwrap();
+    let remote = ctx.remote();
+
+    remote.delete_remote_branch("team/fork/feature").unwrap();
 
     assert!(!has_branch(&bare, "feature"));
+    assert!(
+        !refs_in_graph(&remote).contains(&"refs/remotes/team/fork/feature".to_string()),
+        "the refreshed graph drops team/fork/feature"
+    );
+}
+
+#[test]
+fn delete_remote_branch_removes_a_branch_a_refspec_writes_under_remotes() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    git(
+        &ctx,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/*:remotes/origin/*",
+        ],
+    );
+    branch_on_remote(&ctx, "feature");
+
+    ctx.remote().delete_remote_branch("origin/feature").unwrap();
+
+    assert!(!has_branch(&bare, "feature"));
+}
+
+#[test]
+fn delete_remote_branch_removes_a_branch_its_remote_no_longer_fetches() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "feature");
+    git(&ctx, &["remote", "set-branches", "origin", "main"]);
+
+    ctx.remote().delete_remote_branch("origin/feature").unwrap();
+
+    assert!(!has_branch(&bare, "feature"));
+}
+
+#[test]
+fn delete_remote_branch_removes_the_branch_a_renaming_refspec_reads() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "team/feature");
+    branch_on_remote(&ctx, "feature");
+    git(
+        &ctx,
+        &[
+            "config",
+            "remote.origin.fetch",
+            "+refs/heads/team/*:refs/remotes/origin/*",
+        ],
+    );
+
+    ctx.remote().delete_remote_branch("origin/feature").unwrap();
+
+    assert!(!has_branch(&bare, "team/feature"));
+    assert!(has_branch(&bare, "feature"));
+}
+
+#[test]
+fn delete_remote_branch_refuses_a_branch_of_no_configured_remote() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    branch_on_remote(&ctx, "feature");
+
+    let err = ctx
+        .remote()
+        .delete_remote_branch("elsewhere/feature")
+        .unwrap_err();
+
+    assert_eq!(err.code, "invalid_ref");
+    assert!(has_branch(&bare, "feature"));
 }
 
 #[cfg(unix)]
