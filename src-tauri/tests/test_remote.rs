@@ -988,7 +988,26 @@ fn publishing_names_the_remote_when_only_the_remote_changed() {
 
     assert_eq!(
         result.unwrap_err().message,
-        "You confirmed a push of topic to mirror, but it would now go to origin. Nothing was pushed."
+        "You confirmed a push of topic to mirror, but it would now push topic to origin. Nothing was pushed."
+    );
+}
+
+#[test]
+fn publishing_names_both_the_branch_and_the_remote_when_both_changed() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("topic")
+        .with_remote("origin")
+        .with_remote("upstream")
+        .build();
+    track_upstream(&ctx, "upstream", "main");
+
+    let result = ctx.remote().push_publish("origin", "topic");
+
+    assert_eq!(
+        result.unwrap_err().message,
+        "You confirmed a push of topic to origin, but it would now push main to upstream. Nothing was pushed."
     );
 }
 

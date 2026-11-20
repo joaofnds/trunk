@@ -971,18 +971,13 @@ fn ensure_still_confirmed(
         return Ok(());
     }
 
-    let confirmed_branch = confirmed.branch;
-    let message = if branch == confirmed_branch {
-        let confirmed_remote = confirmed.remote;
+    let (confirmed_remote, confirmed_branch) = (confirmed.remote, confirmed.branch);
+    Err(TrunkError::new(
+        "push_target_changed",
         format!(
-            "You confirmed {push} of {branch} to {confirmed_remote}, but it would now go to {remote}. Nothing was pushed."
-        )
-    } else {
-        format!(
-            "You confirmed {push} of {confirmed_branch}, but the repository is now on {branch}. Nothing was pushed."
-        )
-    };
-    Err(TrunkError::new("push_target_changed", message))
+            "You confirmed {push} of {confirmed_branch} to {confirmed_remote}, but it would now push {branch} to {remote}. Nothing was pushed."
+        ),
+    ))
 }
 
 /// Force-push HEAD with a lease, refusing if the remote moved unexpectedly.

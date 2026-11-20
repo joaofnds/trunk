@@ -250,7 +250,7 @@ describe("PushRecoveryPrompt force push", () => {
 	describe("when the repository left the confirmed branch", () => {
 		const REFUSAL = err(
 			"push_target_changed",
-			"You confirmed a force push of feature, but the repository is now on main. Nothing was pushed.",
+			"You confirmed a force push of feature to origin, but it would now push main to origin. Nothing was pushed.",
 		);
 
 		async function refusedForcePush() {
