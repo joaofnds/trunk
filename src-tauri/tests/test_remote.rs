@@ -1329,6 +1329,54 @@ fn merge_pull_that_conflicts_names_the_conflict() {
     );
 }
 
+/// A local commit on `notes.txt` and an upstream commit on `file.txt`, so the branch
+/// and its upstream have diverged and either way of combining them succeeds.
+fn diverged_apart() -> TestContext {
+    let ctx = pushed("false");
+    upstream_changes_file_txt(&ctx);
+    write(&ctx, "notes.txt", "local notes");
+    ctx.stage_file("notes.txt").unwrap();
+    ctx.create_commit("Local commit", None).unwrap();
+    ctx
+}
+
+fn head_parents(ctx: &TestContext) -> Vec<String> {
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    head.parents()
+        .map(|parent| parent.summary().unwrap().unwrap_or("").to_string())
+        .collect()
+}
+
+#[test]
+fn pull_merges_a_branch_that_diverged_from_its_upstream() {
+    let ctx = diverged_apart();
+
+    ctx.remote().pull(None).unwrap();
+
+    assert_eq!(head_parents(&ctx), ["Local commit", "Remote commit"]);
+}
+
+#[test]
+fn pull_rebases_when_the_repository_asks_pulls_to_rebase() {
+    let ctx = diverged_apart();
+    set_config(&ctx, &[("pull.rebase", "true")]);
+
+    ctx.remote().pull(None).unwrap();
+
+    assert_eq!(head_parents(&ctx), ["Remote commit"]);
+}
+
+#[test]
+fn pull_refuses_to_merge_when_the_repository_allows_only_fast_forwards() {
+    let ctx = diverged_apart();
+    set_config(&ctx, &[("pull.ff", "only")]);
+
+    ctx.remote().pull(None).unwrap_err();
+
+    assert_eq!(head_parents(&ctx), ["Initial commit"]);
+}
+
 /// A barrier a git hook or helper script waits on. The script writes `started`, which
 /// lets the test go on, and then blocks on `release`, so only a cancel ends it. Dropping
 /// the barrier writes `started` itself, so a test whose pull ended before the script

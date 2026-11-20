@@ -449,7 +449,13 @@ pub async fn git_pull_inner<R: Runtime>(
         Some("ff") => vec!["pull", "--ff"],
         Some("ff-only") => vec!["pull", "--ff-only"],
         Some("rebase") => vec!["pull", "--rebase"],
-        _ => vec!["pull"],
+        _ => {
+            let dir = path_buf.clone();
+            activity
+                .spawn_blocking(move || plain_pull_args(&dir))
+                .await
+                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?
+        }
     };
 
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
@@ -505,6 +511,22 @@ async fn wait_for_write_turn(
         })
         .await
         .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
+}
+
+/// The pull the main button runs: git's own wherever the user's configuration says how
+/// to combine a branch that diverged from its upstream, and a merge where it says
+/// nothing and git would refuse, which is what `GitKraken`'s default pull makes. `--ff` outranks only
+/// `pull.ff`, so a configured `pull.rebase` still rebases.
+fn plain_pull_args(dir: &std::path::Path) -> Vec<&'static str> {
+    let ff_configured = UserGit::in_dir(dir)
+        .args(["config", "--get", "pull.ff"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if ff_configured {
+        vec!["pull"]
+    } else {
+        vec!["pull", "--ff"]
+    }
 }
 
 /// A copy that cannot be saved leaves the pull to run unguarded, as git alone would run
