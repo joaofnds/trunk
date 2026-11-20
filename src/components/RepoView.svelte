@@ -2333,7 +2333,14 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 			baseOid,
 			inclusive,
 		});
-		if (todo.items.length === 0) return;
+		if (todo.items.length === 0) {
+			showToast(
+				`Every commit on ${headBranch ?? "HEAD"} is already on that branch, so there is nothing to rebase.`,
+				"success",
+			);
+			return;
+		}
+
 		rebaseEditorCommits = todo.items;
 		rebaseBaseOid = todo.base_oid;
 		rebaseBranchName = headBranch ?? "HEAD";

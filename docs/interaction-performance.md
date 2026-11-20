@@ -1355,8 +1355,9 @@ means changing that order or raising SHA's floor.
 
 The walk reported behaviors that were ruled by design. Four rest on a source. A stash
 pops its staged changes into the working tree, as TRUNK-231 designs it. "Interactive
-Rebase X..." on a branch replays onto the fork point, as the glossary's Rebase range
-defines it. The file finder opens only from a review, because it is the picker for a
+Rebase X..." on a branch replays onto the fork point, as phase 41's locked decisions
+set it ("For branch menus, auto-detect fork point as base commit", `git show
+5fd4683:.planning/milestones/v0.8-phases/41-interactive-rebase-editor/41-CONTEXT.md`). The file finder opens only from a review, because it is the picker for a
 review's Comment on a file action, as the glossary's Current-file view says. Undo
 commit leaves the message box empty, which a GitKraken feature request asking for the
 message back (feedback.gitkraken.com/suggestions/203053) implies GitKraken did when

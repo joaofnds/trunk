@@ -37,6 +37,20 @@ const FORKED: RepoSpec = {
 	],
 };
 
+/** `feature` carries one commit past `main`, so everything on `main` is
+ *  already on `feature`. */
+const BEHIND: RepoSpec = {
+	steps: [
+		{ step: "file", path: "c1.txt", content: "1" },
+		{ step: "commit", message: "C1" },
+		{ step: "branch", name: "feature" },
+		{ step: "checkout", name: "feature" },
+		{ step: "file", path: "f1.txt", content: "f" },
+		{ step: "commit", message: "F1" },
+		{ step: "checkout", name: "main" },
+	],
+};
+
 describe("rebase base resolution", () => {
 	afterEach(teardown);
 
@@ -71,6 +85,20 @@ describe("rebase base resolution", () => {
 		await expect(app.rebaseEditor.rows()).resolves.toEqual(["C4", "C3"]);
 		await expect(app.rebaseEditor.toolbarLabel()).resolves.toBe(
 			`Rebasing main onto ${forkPoint}`,
+		);
+	});
+
+	it("says there is nothing to rebase when the branch already has every commit", async () => {
+		const app = await setup({ repo: BEHIND });
+		await app.repo.open();
+		await app.branches.contextMenu("feature");
+
+		app.contextMenu.choose("Interactive Rebase feature...");
+
+		await expect(
+			waitFor("the nothing-to-rebase note", () => app.toasts().at(0) ?? null),
+		).resolves.toBe(
+			"Every commit on main is already on that branch, so there is nothing to rebase.",
 		);
 	});
 });
