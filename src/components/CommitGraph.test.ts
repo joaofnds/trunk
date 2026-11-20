@@ -261,6 +261,7 @@ function errorsShown(): string[] {
 beforeEach(() => {
 	searchToggleHandlers = [];
 	vi.clearAllMocks();
+	vi.mocked(ask).mockResolvedValue(false);
 	_resetToasts();
 	menuActions.clear();
 	menusShown.length = 0;

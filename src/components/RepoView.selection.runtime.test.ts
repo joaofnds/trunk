@@ -749,6 +749,17 @@ describe("RepoView commit selection", () => {
 			});
 		});
 
+		it("saves no draft cleared just before the view closes", async () => {
+			const view = await openRepository();
+			await typeDraftSummary("feat: changed my mind");
+			await typeDraftSummary("");
+
+			view.unmount();
+			await drainReplies();
+
+			expect(await getCommitDraft("/repo")).toBeNull();
+		});
+
 		it("reads the draft's summary as it is typed", async () => {
 			await openRepository();
 

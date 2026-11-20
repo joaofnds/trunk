@@ -490,8 +490,10 @@ describe("CommitForm", () => {
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
 
 			await fireEvent.click(tab("Stash"));
+			const stashName = subjectInput().value;
 			await fireEvent.click(tab("Commit"));
 
+			expect(stashName).toBe("wip draft");
 			expect(subjectInput().value).toBe("wip draft");
 			expect(bodyTextarea().value).toBe("wip body");
 		});
@@ -516,6 +518,10 @@ describe("CommitForm", () => {
 
 			await waitFor(() => expect(session.draftSubject).toBe(""));
 			expect(subjectInput().value).toBe("");
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("stash_save", {
+				path: "/repo",
+				message: "wip draft",
+			});
 		});
 
 		it("keeps the description a stash leaves out", async () => {

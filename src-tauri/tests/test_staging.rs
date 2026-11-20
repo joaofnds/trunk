@@ -3040,6 +3040,25 @@ fn unstage_hunk_reports_the_file_done_once_its_only_change_is_unstaged() {
 }
 
 #[test]
+fn unstage_hunk_reports_the_file_done_beside_another_staged_file() {
+    let ctx = TestContext::builder()
+        .with_file("one.txt", &joined(&numbered_lines()))
+        .with_file("two.txt", "two\n")
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("one.txt"), joined(&edited)).unwrap();
+    std::fs::write(ctx.repo_path().join("two.txt"), "two, edited\n").unwrap();
+    ctx.stage_file("one.txt").unwrap();
+    ctx.stage_file("two.txt").unwrap();
+
+    let outcome = ctx.unstage_hunk("one.txt", 0).unwrap();
+
+    assert!(!outcome.file_still_changed);
+}
+
+#[test]
 fn unstage_hunk_reports_the_staged_mode_change_its_hunk_leaves() {
     let ctx = TestContext::builder()
         .with_file("run.sh", &joined(&numbered_lines()))

@@ -414,6 +414,19 @@ fn undo_after_a_checkout_takes_nothing_back() {
 }
 
 #[test]
+fn undo_is_not_offered_for_a_tip_a_checkout_put_there_once_the_commit_after_it_is_undone() {
+    let mut ctx = on_main_beside_a_feature_branch();
+    ctx.checkout_branch("feature").unwrap();
+    std::fs::write(ctx.repo_path().join("more.txt"), "more").unwrap();
+    ctx.stage_file("more.txt").unwrap();
+    ctx.create_commit("More on feature", None).unwrap();
+
+    ctx.undo_commit().unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
 fn undo_is_not_offered_once_an_amend_rewrote_head() {
     let (ctx, _, _) = build_two_commit_ctx();
 

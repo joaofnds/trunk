@@ -488,6 +488,25 @@ describe("Toolbar", () => {
 		expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled();
 	});
 
+	it("clears the failure once a retried redo succeeds", async () => {
+		const undoRedo = await redoFailingWith({
+			code: "redo_error",
+			message: "index.lock exists",
+		});
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
+			cmd === "head_oid" ? "abc123" : false,
+		);
+
+		await fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+
+		await waitFor(() => expect(undoRedo.state.redoStack).toEqual([]));
+		await waitFor(() =>
+			expect(toasted()).not.toContainEqual(
+				expect.objectContaining({ kind: "error" }),
+			),
+		);
+	});
+
 	it("withdraws a redo whose commit the repository no longer has", async () => {
 		const undoRedo = await redoFailingWith({
 			code: "redo_missing",
@@ -907,6 +926,38 @@ describe("Toolbar stash", () => {
 			expect(toasted()).toContainEqual({
 				message: "Stash created",
 				kind: "success",
+			}),
+		);
+
+		await fireEvent.click(stash);
+
+		await waitFor(() => expect(saves).toBe(2));
+	});
+
+	it("stashes again once a stash git refused has settled", async () => {
+		let saves = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd !== "stash_save") return Promise.resolve(false);
+			saves += 1;
+			return saves === 1
+				? Promise.reject({ code: "stash_error", message: "index.lock exists" })
+				: Promise.resolve(null);
+		});
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
+				reviewActive: false,
+			},
+		});
+		const stash = screen.getByRole("button", { name: "Stash" });
+		await fireEvent.click(stash);
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "index.lock exists",
+				kind: "error",
 			}),
 		);
 

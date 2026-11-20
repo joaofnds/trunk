@@ -2567,6 +2567,7 @@ describe("RepoView", () => {
 			await statusReloaded;
 			await tick();
 
+			expect(screen.getByRole("button", { name: "Stage File" })).toBeTruthy();
 			expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull();
 			expect(
 				mockInvoke.mock.calls.filter(
@@ -4313,6 +4314,12 @@ describe("RepoView", () => {
 					.getAllByRole("combobox")
 					.map((select) => (select as HTMLSelectElement).value),
 			).toEqual(["drop", "pick"]);
+			expect(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			).toBeEnabled();
+			expect(
+				screen.getByRole("button", { name: "Cancel Rebase" }),
+			).toBeEnabled();
 		});
 
 		it("starts the rebase once when Start is pressed again while it runs", async () => {
