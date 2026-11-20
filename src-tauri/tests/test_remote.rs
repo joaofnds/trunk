@@ -276,6 +276,24 @@ fn push_returns_while_a_process_its_hook_started_still_runs() {
 }
 
 #[test]
+fn fetch_returns_while_a_process_its_hook_started_still_runs() {
+    let ctx = repo_on_main();
+    let bare = bare_remote(&ctx, "origin");
+    git(&ctx, &["push", "origin", "main"]);
+    commit_on_remote(&bare, "main", "theirs.txt", "theirs", "Their commit");
+    let left_running = ctx.install_hook_leaving_a_process_running("reference-transaction");
+
+    let result = ctx.remote().fetch();
+
+    left_running.release();
+    result.unwrap();
+    assert_eq!(
+        ctx.resolve_ref("origin/main").unwrap(),
+        remote_tip(&bare, "main").to_string()
+    );
+}
+
+#[test]
 fn delete_remote_branch_removes_the_branch_from_its_remote() {
     let ctx = repo_on_main();
     let bare = bare_remote(&ctx, "origin");

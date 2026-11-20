@@ -101,6 +101,20 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    pub fn fetch(&self) -> Result<trunk_lib::background_fetch::FetchReport, TrunkError> {
+        tauri::async_runtime::block_on(remote::git_fetch_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            self.ctx.path(),
+            self.ctx.state_map(),
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
+            &trunk_lib::state::RefVisibilityState::default(),
+            self.app.handle(),
+        ))
+    }
+
     /// Delete `name`, a remote-tracking name such as `origin/feature`, from its remote.
     pub fn delete_remote_branch(&self, name: &str) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::delete_remote_branch_inner(
