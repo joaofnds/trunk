@@ -1956,6 +1956,32 @@ function replaceGraph(response: GraphResponse): void {
 		[...commitStats].filter(([oid]) => loadedOids.has(oid)),
 	);
 	attemptedStats = new Set();
+	untrack(refreshAnsweredSearch);
+}
+
+/** A rebuilt graph can add or drop matches, so an answered search asks again. The
+ *  match the user is on stays current, and the selection does not move. */
+function refreshAnsweredSearch() {
+	const query = searchQuery.trim();
+	if (!searchOpen || !searchAnswered || !query) return;
+	const current = searchResults[searchCurrentIndex]?.oid;
+	invalidateSearchRequest();
+	const generation = searchGeneration;
+	const path = repoPath;
+	safeInvoke<SearchResult[]>("search_commits", { path, query }).then(
+		(results) => {
+			if (!isCurrentSearch(generation, path)) return;
+			searchResults = results;
+			searchCurrentIndex = Math.max(
+				0,
+				results.findIndex((r) => r.oid === current),
+			);
+		},
+		(error) => {
+			if (isCurrentSearch(generation, path))
+				reportErrorToast(error, "Could not search commits");
+		},
+	);
 }
 
 function requestRead(task: CoalescedTask) {

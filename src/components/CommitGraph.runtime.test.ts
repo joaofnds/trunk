@@ -344,6 +344,38 @@ describe("CommitGraph", () => {
 			expect(screen.getByText("2 of 2")).toBeVisible();
 		});
 
+		it("searches again when the graph changes, keeping the current match", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await drainSearchReplies();
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			host.seedResponse("search_commits", [
+				{ oid: "newest" },
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+
+			view.component.showGraph({
+				commits: [
+					makeCommit({ oid: "newest", summary: "newest change" }),
+					makeCommit({ oid: "earlier", summary: "earlier change" }),
+					makeCommit({ oid: "latest", summary: "latest change" }),
+				],
+				max_columns: 1,
+				checked: true,
+				revision: 2,
+			});
+			await drainSearchReplies();
+
+			expect(host.count("search_commits")).toBe(2);
+			expect(screen.getByText("3 of 3")).toBeVisible();
+			expect(selections).toEqual(["latest", "earlier"]);
+		});
+
 		it("cancels a search debounce when the tab becomes inactive", async () => {
 			const { view } = await openSearch();
 			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
