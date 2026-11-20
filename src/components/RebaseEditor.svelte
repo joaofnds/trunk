@@ -54,7 +54,7 @@ interface Props {
 			summary: string;
 			newMessage: string | null;
 		}[],
-	) => void;
+	) => Promise<void>;
 	onfocuschange?: (oid: string) => void;
 }
 
@@ -123,6 +123,7 @@ let hasChanges = $derived(
 	JSON.stringify(items) !== JSON.stringify(originalItems),
 );
 let canStart = $derived(validationErrors.length === 0);
+let starting = $state(false);
 const nowMinute = $derived(currentMinute());
 
 // Emit focus change when focused commit changes
@@ -484,18 +485,24 @@ function handleCancel() {
 	onclose();
 }
 
-function handleStartRebase() {
-	if (!canStart) return;
+async function handleStartRebase() {
+	if (!canStart || starting) return;
+
 	// Reverse back to oldest-first for git's rebase todo
 	const reversed = [...items].reverse();
-	onstart(
-		reversed.map((i) => ({
-			oid: i.oid,
-			action: i.action,
-			summary: i.summary,
-			newMessage: i.newMessage,
-		})),
-	);
+	starting = true;
+	try {
+		await onstart(
+			reversed.map((i) => ({
+				oid: i.oid,
+				action: i.action,
+				summary: i.summary,
+				newMessage: i.newMessage,
+			})),
+		);
+	} finally {
+		starting = false;
+	}
 }
 registerUpdateBlocker(
 	() => "Finish or cancel the rebase editor before restarting.",
@@ -788,15 +795,19 @@ registerUpdateBlocker(
 			Move Down
 		</div>
 		<div class="rebase-bottombar-right">
-			<Button size="sm" variant="danger" onclick={handleCancel}
+			<Button
+				size="sm"
+				variant="danger"
+				disabled={starting}
+				onclick={handleCancel}
 				>Cancel Rebase</Button
 			>
 			<Button
 				size="sm"
 				variant="success"
-				disabled={!canStart}
+				disabled={!canStart || starting}
 				onclick={handleStartRebase}
-				>Start Rebase</Button
+				>{starting ? "Rebasing..." : "Start Rebase"}</Button
 			>
 		</div>
 	</div>

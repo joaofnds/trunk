@@ -2557,16 +2557,15 @@ async function handleRebaseStart(
 	}[],
 ) {
 	if (!repoPath) return;
-	const baseOid = rebaseBaseOid;
-	handleRebaseEditorClose();
-	// The rebase rewrites the commits a selection or an open diff names.
-	clearStagingDiff();
-	clearCommit();
 	try {
 		const result = await safeInvoke<{ kind: "completed" | "stopped" }>(
 			"start_interactive_rebase",
-			{ path: repoPath, baseOid, todoItems },
+			{ path: repoPath, baseOid: rebaseBaseOid, todoItems },
 		);
+		handleRebaseEditorClose();
+		// The rebase rewrites the commits a selection or an open diff names.
+		clearStagingDiff();
+		clearCommit();
 		if (result.kind === "stopped") {
 			showToast("Rebase stopped — resolve it in the staging panel", "error");
 		}

@@ -4222,6 +4222,60 @@ describe("RepoView", () => {
 			);
 		});
 
+		it("keeps the edited plan open when git refuses to start the rebase", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "start_interactive_rebase"
+					? Promise.reject(
+							JSON.stringify({
+								code: "rebase_error",
+								message: "cannot rebase: You have unstaged changes.",
+							}),
+						)
+					: base(cmd, args),
+			);
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.change(screen.getAllByRole("combobox")[0], {
+				target: { value: "drop" },
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+			await flush();
+
+			expect(
+				screen
+					.getAllByRole("combobox")
+					.map((select) => (select as HTMLSelectElement).value),
+			).toEqual(["drop", "pick"]);
+		});
+
+		it("starts the rebase once when Start is pressed again while it runs", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "start_interactive_rebase"
+					? new Promise(() => {})
+					: base(cmd, args),
+			);
+			await openTheEditorOnTheClickedCommit();
+			const start = screen.getByRole("button", { name: "Start Rebase" });
+
+			await fireEvent.click(start);
+			await fireEvent.click(start);
+			await flush();
+
+			expect(
+				mockInvoke.mock.calls.filter(
+					([command]) => command === "start_interactive_rebase",
+				),
+			).toHaveLength(1);
+		});
+
 		it("labels a root-based rebase as onto root", async () => {
 			stubRebaseTodo(null);
 
