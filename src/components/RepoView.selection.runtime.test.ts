@@ -20,6 +20,7 @@ import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
+import { getCommitDraft } from "../lib/store.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
 import RepoView from "./RepoView.svelte";
@@ -705,6 +706,19 @@ describe("RepoView commit selection", () => {
 			await clickWipMessage();
 
 			expect(screen.getByTestId("wip-edit-mark")).toHaveClass("text-accent");
+		});
+
+		it("saves the draft typed just before the view closes", async () => {
+			const view = await openRepository();
+			await typeDraftSummary("feat: last words");
+
+			view.unmount();
+			await drainReplies();
+
+			expect(await getCommitDraft("/repo")).toEqual({
+				subject: "feat: last words",
+				body: "",
+			});
 		});
 
 		it("reads the draft's summary as it is typed", async () => {

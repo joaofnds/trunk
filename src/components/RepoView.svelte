@@ -65,6 +65,7 @@ import { sameData } from "../lib/same-data.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { createSidePanes } from "../lib/side-panes.svelte.js";
 import {
+	type CommitDraft,
 	clearCommitDraft,
 	clearReviewUpdateSnapshot,
 	flushCommitDraftForUpdate,
@@ -2047,6 +2048,7 @@ const commitRecovery = getCommitDraft(untrack(() => repoPath))
 	});
 
 const commitDraftTimer = createOwnedTimer();
+let unsavedDraft: CommitDraft | null = null;
 let initialDraftEffect = true;
 $effect(() => {
 	const subject = wipSubject;
@@ -2058,19 +2060,28 @@ $effect(() => {
 	}
 
 	commitDraftTimer.cancel();
+	unsavedDraft = null;
 	if (subject === "" && body === "") {
 		void clearCommitDraft(repoPath).catch((error) =>
 			reportErrorToast(error, "Could not save commit draft"),
 		);
 		return;
 	}
-	commitDraftTimer.arm(() => {
-		void setCommitDraft(repoPath, { subject, body }).catch((error) =>
-			reportErrorToast(error, "Could not save commit draft"),
-		);
-	}, 400);
-	return () => commitDraftTimer.cancel();
+	unsavedDraft = { subject, body };
+	commitDraftTimer.arm(saveUnsavedDraft, 400);
 });
+
+function saveUnsavedDraft() {
+	const draft = unsavedDraft;
+	unsavedDraft = null;
+	if (draft === null) return;
+
+	void setCommitDraft(repoPath, draft).catch((error) =>
+		reportErrorToast(error, "Could not save commit draft"),
+	);
+}
+
+onDestroy(saveUnsavedDraft);
 
 let reviewRecoveryLoaded = $state(false);
 let reviewRecoveryError = $state<string | null>(null);
@@ -2160,6 +2171,7 @@ registerUpdateParticipant({
 					: (reviewRecoveryError ?? review.blocker)),
 			flush: async (permit) => {
 				commitDraftTimer.cancel();
+				unsavedDraft = null;
 				await flushCommitDraftForUpdate(path, draft, permit);
 				await flushReviewComposerForUpdate(path, review.composer, permit);
 			},
