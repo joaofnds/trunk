@@ -1340,6 +1340,48 @@ fn diverged_apart() -> TestContext {
     ctx
 }
 
+/// `file.txt` pushed with no autostash configured, an upstream commit that changes its
+/// first line, and an uncommitted change to its last, so git refuses the pull unless it
+/// stashes the change around it.
+fn dirty_where_upstream_changed_another_line() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "one\ntwo\nthree\n")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.remote().push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "file.txt",
+        "ONE\ntwo\nthree\n",
+        "Remote commit",
+    );
+    write(&ctx, "file.txt", "one\ntwo\nTHREE\n");
+    ctx
+}
+
+#[test]
+fn pull_carries_an_uncommitted_change_across_a_merge() {
+    let ctx = dirty_where_upstream_changed_another_line();
+
+    ctx.remote().pull(None).unwrap();
+
+    assert_eq!(read(&ctx, "file.txt"), "ONE\ntwo\nTHREE\n");
+    assert_eq!(stash_names(&ctx), Vec::<String>::new());
+}
+
+#[test]
+fn pull_carries_an_uncommitted_change_across_a_rebase() {
+    let ctx = dirty_where_upstream_changed_another_line();
+
+    ctx.remote().pull(Some("rebase")).unwrap();
+
+    assert_eq!(read(&ctx, "file.txt"), "ONE\ntwo\nTHREE\n");
+    assert_eq!(stash_names(&ctx), Vec::<String>::new());
+}
+
 fn head_parents(ctx: &TestContext) -> Vec<String> {
     let repo = ctx.repo();
     let head = repo.head().unwrap().peel_to_commit().unwrap();

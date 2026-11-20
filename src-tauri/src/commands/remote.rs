@@ -451,18 +451,12 @@ pub async fn git_pull_inner<R: Runtime>(
     let repository = state_map.repository(path)?.clone();
     let path_buf = repository.location().to_path_buf();
 
-    let args: Vec<&str> = match strategy {
-        Some("ff") => vec!["pull", "--ff"],
-        Some("ff-only") => vec!["pull", "--ff-only"],
-        Some("rebase") => vec!["pull", "--rebase"],
-        _ => {
-            let dir = path_buf.clone();
-            activity
-                .spawn_blocking(move || plain_pull_args(&dir))
-                .await
-                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?
-        }
-    };
+    let dir = path_buf.clone();
+    let config = activity
+        .spawn_blocking(move || PullConfig::read(&dir))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+    let args = pull_args(strategy, &config);
 
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
     // Held from the copy to its settling, so no other writer in the app stages over the
@@ -519,20 +513,51 @@ async fn wait_for_write_turn(
         .map_err(|error| TrunkError::new("spawn_error", error.to_string()))?
 }
 
-/// The pull the main button runs: git's own wherever the user's configuration says how
-/// to combine a branch that diverged from its upstream, and a merge where it says
-/// nothing and git would refuse, which is what `GitKraken`'s default pull makes. `--ff` outranks only
-/// `pull.ff`, so a configured `pull.rebase` still rebases.
-fn plain_pull_args(dir: &std::path::Path) -> Vec<&'static str> {
-    let ff_configured = UserGit::in_dir(dir)
-        .args(["config", "--get", "pull.ff"])
-        .output()
-        .is_ok_and(|output| output.status.success());
-    if ff_configured {
-        vec!["pull"]
-    } else {
-        vec!["pull", "--ff"]
+/// What the user's configuration says about how a pull combines a branch that diverged
+/// from its upstream and what it does with uncommitted changes. git reads it, because
+/// libgit2 ignores `GIT_CONFIG_GLOBAL` and could see a different file than the pull.
+struct PullConfig {
+    ff: bool,
+    autostash: bool,
+}
+
+impl PullConfig {
+    fn read(dir: &std::path::Path) -> Self {
+        let names = UserGit::in_dir(dir)
+            .args([
+                "config",
+                "--name-only",
+                "--get-regexp",
+                r"^(pull\.ff|rebase\.autostash|merge\.autostash)$",
+            ])
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+            .unwrap_or_default();
+        let set = |key: &str| names.lines().any(|name| name == key);
+
+        Self {
+            ff: set("pull.ff"),
+            autostash: set("rebase.autostash") || set("merge.autostash"),
+        }
     }
+}
+
+/// git's own pull wherever the configuration decides, and where it is silent and git
+/// would refuse, what `GitKraken`'s pull does: merge a diverged branch, and stash
+/// uncommitted changes around the pull. `--ff` outranks only `pull.ff`, so a configured
+/// `pull.rebase` still rebases.
+fn pull_args(strategy: Option<&str>, config: &PullConfig) -> Vec<&'static str> {
+    let mut args = match strategy {
+        Some("ff") => vec!["pull", "--ff"],
+        Some("ff-only") => vec!["pull", "--ff-only"],
+        Some("rebase") => vec!["pull", "--rebase"],
+        _ if config.ff => vec!["pull"],
+        _ => vec!["pull", "--ff"],
+    };
+    if !config.autostash {
+        args.push("--autostash");
+    }
+    args
 }
 
 /// A copy that cannot be saved leaves the pull to run unguarded, as git alone would run

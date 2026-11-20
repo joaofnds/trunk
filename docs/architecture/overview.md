@@ -251,7 +251,10 @@ them, and the frontend bound limits the rest. No build-time CPU target is establ
 5. Frontend graph auto-refreshes via step 3-5 of Filesystem Change Path
 
 A pull runs the same `git pull` under the user's configuration, with a step on each side of
-it. After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
+it. Where that configuration sets neither `pull.ff` nor an autostash key, the pull adds
+`--ff` to the main button's pull and `--autostash` to every pull (`pull_args`), so a
+diverged branch merges and uncommitted changes ride across it, as in GitKraken, where git
+alone would refuse. After the reservation and before the spawn, `git_pull_inner` saves a pull safety copy
 (`trunk_git::pull_safety`) of the tracked changes with `StashFlags::KEEP_ALL`, which leaves
 the index and tree as they were, and records which mid-operation markers the repository
 holds. After git exits, on every path including cancel and while the reservation is still
