@@ -47,16 +47,28 @@ describe("remoteErrorMessage", () => {
 	});
 
 	// git 2.56's output for a push a pre-receive hook declined, as it reaches a
-	// pipe: each "remote:" line padded with the spaces that clear a terminal
-	// line, and a blank one where the hook printed an empty line.
+	// pipe: each "remote:" line that carries text padded with the spaces that
+	// clear a terminal line, and a bare "remote: " where the hook printed an
+	// empty line.
 	it("follows a declined push with the reason the server gave", () => {
 		const declined = err(
 			"push_declined",
-			"remote: error: pushing to a protected branch is not allowed        \nremote:         \nTo ../remote.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to '../remote.git'",
+			"remote: error: pushing to a protected branch is not allowed        \nremote: \nTo ../remote.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to '../remote.git'",
 		);
 
 		expect(remoteErrorMessage(declined, "push")).toBe(
 			"The remote refused this push — a branch protection rule or a server-side hook rejected it\nerror: pushing to a protected branch is not allowed",
+		);
+	});
+
+	it("shows the last of the server's lines that overwrite each other", () => {
+		const declined = err(
+			"push_declined",
+			"remote: checking 1 of 2        \rremote: checking 2 of 2        \nremote: error: refused        \nTo ../remote.git\n ! [remote rejected] main -> main (pre-receive hook declined)",
+		);
+
+		expect(remoteErrorMessage(declined, "push")).toBe(
+			"The remote refused this push — a branch protection rule or a server-side hook rejected it\nchecking 2 of 2\nerror: refused",
 		);
 	});
 

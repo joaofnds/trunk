@@ -47,6 +47,16 @@ const SERVER_LINE = /^\s*remote:\s*(\S.*?)\s*$/;
 function whatTheServerSaid(stderr: string): string[] {
 	return stderr
 		.split("\n")
-		.map((line) => SERVER_LINE.exec(line)?.[1])
+		.map(lastShown)
 		.filter((said) => said !== undefined);
+}
+
+// git prefixes each "\r"-ended part of a server line too, and a terminal shows only
+// the last, since each overwrites the one before: a hook's progress counter.
+function lastShown(line: string): string | undefined {
+	return line
+		.split("\r")
+		.map((part) => SERVER_LINE.exec(part)?.[1])
+		.filter((said) => said !== undefined)
+		.at(-1);
 }
