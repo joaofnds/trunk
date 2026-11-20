@@ -1,6 +1,6 @@
 use crate::commands::commit::conclude_with_message;
 use crate::state::{CommitCache, OpenRepos, RepoState};
-use crate::types::{OperationInfo, OperationType};
+use crate::types::{OperationCommit, OperationInfo, OperationType};
 use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -84,6 +84,19 @@ fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<Strin
     None
 }
 
+/// The commit `head_file` names, as a cherry-pick or a revert in progress records it.
+fn operation_commit(repo: &git2::Repository, head_file: &str) -> Option<OperationCommit> {
+    let commit = repo
+        .revparse_single(head_file)
+        .ok()?
+        .peel_to_commit()
+        .ok()?;
+    Some(OperationCommit {
+        oid: commit.id().to_string(),
+        summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+    })
+}
+
 /// Which operation the repository is in the middle of, if any.
 ///
 /// # Errors
@@ -114,6 +127,7 @@ pub fn get_operation_state_inner(
                 onto_oid: None,
                 progress: None,
                 rebase_message: None,
+                commit: None,
             })
         }
         git2::RepositoryState::Rebase
@@ -154,6 +168,7 @@ pub fn get_operation_state_inner(
                 onto_oid,
                 progress,
                 rebase_message,
+                commit: None,
             })
         }
         git2::RepositoryState::CherryPick | git2::RepositoryState::CherryPickSequence => {
@@ -164,6 +179,7 @@ pub fn get_operation_state_inner(
                 onto_oid: None,
                 progress: None,
                 rebase_message: None,
+                commit: operation_commit(&repo, "CHERRY_PICK_HEAD"),
             })
         }
         git2::RepositoryState::Revert | git2::RepositoryState::RevertSequence => {
@@ -174,6 +190,7 @@ pub fn get_operation_state_inner(
                 onto_oid: None,
                 progress: None,
                 rebase_message: None,
+                commit: operation_commit(&repo, "REVERT_HEAD"),
             })
         }
         _ => Ok(OperationInfo {
@@ -183,6 +200,7 @@ pub fn get_operation_state_inner(
             onto_oid: None,
             progress: None,
             rebase_message: None,
+            commit: None,
         }),
     }
 }

@@ -315,6 +315,15 @@ pub struct OperationInfo {
     pub onto_oid: Option<String>,
     pub progress: Option<String>,
     pub rebase_message: Option<String>,
+    /// The commit a cherry-pick applies or a revert undoes. None for a merge or a rebase.
+    pub commit: Option<OperationCommit>,
+}
+
+/// A commit an operation in progress is applying, as its banner names it.
+#[derive(Debug, Serialize, Clone)]
+pub struct OperationCommit {
+    pub oid: String,
+    pub summary: String,
 }
 
 #[derive(Debug, Serialize, Clone)]

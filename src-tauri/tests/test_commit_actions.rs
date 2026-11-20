@@ -467,6 +467,13 @@ fn revert_commit_begin_stages_removal_and_carries_default_message() {
         message.contains(&format!("This reverts commit {second_oid}.")),
         "message must carry the full 40-char OID; got: {message:?}"
     );
+    let commit = ctx
+        .get_operation_state()
+        .unwrap()
+        .commit
+        .expect("a revert names its commit");
+    assert_eq!(commit.oid, second_oid);
+    assert_eq!(commit.summary, "Second commit");
     // begin stages the revert without committing: REVERT_HEAD set, file gone.
     assert!(
         ctx.repo_path().join(".git").join("REVERT_HEAD").exists(),
@@ -632,6 +639,18 @@ mod cherry_pick_lifecycle {
         );
         let info = ctx.get_operation_state().unwrap();
         assert!(matches!(info.op_type, OperationType::None));
+    }
+
+    #[test]
+    fn a_stopped_cherry_pick_names_the_commit_it_applies() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+
+        let info = ctx.get_operation_state().unwrap();
+
+        let commit = info.commit.expect("a cherry-pick names its commit");
+        assert_eq!(commit.oid, side_oid);
+        assert_eq!(commit.summary, "Side change");
     }
 
     #[test]

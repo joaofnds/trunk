@@ -32,6 +32,7 @@ const NONE_OP = {
 	onto_oid: null,
 	progress: null,
 	rebase_message: null,
+	commit: null,
 };
 
 const REBASE_OP = { ...NONE_OP, op_type: "Rebase" };

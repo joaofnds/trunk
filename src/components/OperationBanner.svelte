@@ -8,6 +8,7 @@ import { showToast } from "../lib/toast.svelte.js";
 import type { Conclusion, OperationInfo } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import BranchChip from "./BranchChip.svelte";
+import CommitChip from "./CommitChip.svelte";
 
 interface Props {
 	info: OperationInfo;
@@ -175,7 +176,11 @@ async function handleRevertAbort() {
 				<BranchChip name={info.target_branch} />
 			{/if}
 		{:else}
-			<span>{label}</span>
+			<span class="shrink-0">{label}</span>
+			{#if info.commit !== null}
+				<CommitChip oid={info.commit.oid} />
+				<span class="truncate min-w-0">{info.commit.summary}</span>
+			{/if}
 		{/if}
 	</div>
 	{#if isCherryPick}

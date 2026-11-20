@@ -40,6 +40,7 @@ function makeInfo(overrides: Partial<OperationInfo> = {}): OperationInfo {
 		onto_oid: null,
 		progress: null,
 		rebase_message: null,
+		commit: null,
 		...overrides,
 	};
 }
@@ -158,6 +159,28 @@ describe("OperationBanner", () => {
 			},
 		});
 		expect(screen.getByText("Cherry-picking")).toBeInTheDocument();
+	});
+
+	it.each([
+		["CherryPick", "Cherry-picking"],
+		["Revert", "Reverting"],
+	] as const)("names the commit a %s applies", (op_type, label) => {
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({
+					op_type,
+					commit: {
+						oid: "abc1234def5678abc1234def5678abc1234def56",
+						summary: "Fix the parser",
+					},
+				}),
+				repoPath: "/repo",
+				resolved: true,
+			},
+		});
+
+		const banner = screen.getByText(label).parentElement;
+		expect(banner).toHaveTextContent(`${label} abc1234 Fix the parser`);
 	});
 
 	it("shows revert label", () => {

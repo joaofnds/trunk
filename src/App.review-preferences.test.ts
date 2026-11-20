@@ -283,6 +283,7 @@ class StatefulAppHost implements HostChannel {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				};
 			case "get_push_target":
 				return { remote: "origin", branch: "main" };

@@ -171,6 +171,7 @@ describe("App", () => {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				});
 			case "get_push_target":
 				return Promise.resolve({ remote: "origin", branch: "main" });

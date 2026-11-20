@@ -205,6 +205,13 @@ export interface OperationInfo {
 	onto_oid: string | null;
 	progress: string | null;
 	rebase_message: string | null;
+	/** The commit a cherry-pick applies or a revert undoes. Null for a merge or a rebase. */
+	commit: OperationCommit | null;
+}
+
+export interface OperationCommit {
+	oid: string;
+	summary: string;
 }
 
 /**

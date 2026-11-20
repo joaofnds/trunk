@@ -207,6 +207,7 @@ export class RepositoryReadHost implements HostChannel {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				};
 			default:
 				return null;

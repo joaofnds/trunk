@@ -29,6 +29,7 @@ async function openPausedRebase(message: string) {
 		onto_oid: null,
 		progress: "2/5",
 		rebase_message: message,
+		commit: null,
 	});
 	const installed: string[] = [];
 	const preparation = new UpdatePreparation({

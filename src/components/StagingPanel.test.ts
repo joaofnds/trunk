@@ -177,6 +177,7 @@ describe("StagingPanel", () => {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				});
 			return Promise.resolve(undefined);
 		});
@@ -635,6 +636,7 @@ describe("StagingPanel merge-continue", () => {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				});
 			if (cmd === "get_merge_message")
 				return Promise.resolve("Merge branch 'feature'");
@@ -1242,6 +1244,7 @@ function withOneUntrackedFileInSrc() {
 				onto_oid: null,
 				progress: null,
 				rebase_message: null,
+				commit: null,
 			});
 		return Promise.resolve(undefined);
 	});
@@ -1400,6 +1403,7 @@ describe("StagingPanel discarding a file", () => {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				});
 			return Promise.resolve(undefined);
 		});
@@ -1486,6 +1490,7 @@ describe("StagingPanel rebase form", () => {
 					onto_oid: null,
 					progress: "2/5",
 					rebase_message: "reword the parser",
+					commit: null,
 				});
 			return Promise.resolve(undefined);
 		});
@@ -1541,6 +1546,7 @@ describe("StagingPanel rebase form", () => {
 						onto_oid: ONTO,
 						progress: "2/5",
 						rebase_message: null,
+						commit: null,
 					});
 				return Promise.resolve(undefined);
 			});
@@ -1624,6 +1630,7 @@ describe("StagingPanel with no rebase form", () => {
 					onto_oid: null,
 					progress: null,
 					rebase_message: null,
+					commit: null,
 				});
 			return Promise.resolve(undefined);
 		});
