@@ -730,9 +730,10 @@ pub struct PushTarget {
 /// chain, which git2's `branch.upstream()` cannot see because it reads
 /// `branch.<name>.remote` only.
 ///
-/// The *branch* is HEAD's shorthand and nothing else: `branch.<name>.merge`,
-/// `push.default` and a renaming `remote.<name>.push` are not consulted, so under
-/// those configs this names a different ref than a bare `git push` would.
+/// The *branch* is HEAD's shorthand, except under `push.default=upstream` (or its old
+/// name `tracking`) when pushing to the upstream's remote, where git pushes to
+/// `branch.<name>.merge`. A renaming `remote.<name>.push` is not consulted, so under it
+/// this names a different ref than a bare `git push` would.
 ///
 /// # Errors
 ///
@@ -758,6 +759,16 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
         // A bare push falls back to `origin` by name, not to "the only remote":
         // with a sole differently-named remote git fatals with "no upstream branch".
         .or_else(|| repo.find_remote("origin").ok().map(|_| "origin".to_owned()));
+
+    let pushes_to_upstream = matches!(
+        config.get_string("push.default").ok().as_deref(),
+        Some("upstream" | "tracking")
+    ) && remote.is_some()
+        && branch_key("remote") == remote;
+    let upstream_branch = branch_key("merge")
+        .filter(|_| pushes_to_upstream)
+        .and_then(|merge| merge.strip_prefix("refs/heads/").map(str::to_owned));
+    let branch = upstream_branch.or(branch);
 
     Ok(PushTarget { remote, branch })
 }

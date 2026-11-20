@@ -837,6 +837,44 @@ fn publishing_refuses_when_the_repo_left_the_confirmed_branch() {
 }
 
 #[test]
+fn force_push_to_a_differently_named_upstream_never_creates_a_branch_of_the_local_name() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_file("main.txt", "main work")
+        .with_commit("Main commit")
+        .with_remote("origin")
+        .build();
+    set_config(
+        &ctx,
+        &[
+            ("push.default", "upstream"),
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/trunk"),
+        ],
+    );
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    let trunk_before = remote_tip(&bare, "trunk");
+    rewrite_tip(&ctx, "main", "rewritten main");
+
+    let err = remote.push_force("origin", "trunk").unwrap_err();
+
+    // `--force-if-includes` reads the reflog of the local branch named after the remote
+    // one, so git itself refuses this push from the user's terminal too.
+    assert_eq!(err.code, "push_lease_refused");
+    assert_eq!(remote_tip(&bare, "trunk"), trunk_before);
+    assert!(
+        git2::Repository::open(&bare)
+            .unwrap()
+            .find_reference("refs/heads/main")
+            .is_err(),
+        "the force push must not create a branch named after the local one"
+    );
+}
+
+#[test]
 fn force_push_targets_only_the_current_branch() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
@@ -1105,6 +1143,59 @@ fn push_target_has_no_remote_when_none_is_named_origin() {
         target.remote, None,
         "a sole non-origin remote is not a target"
     );
+    assert_eq!(target.branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn push_target_names_the_upstream_branch_when_push_default_is_upstream() {
+    let ctx = repo_on_main();
+    set_config(
+        &ctx,
+        &[
+            ("push.default", "upstream"),
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/trunk"),
+        ],
+    );
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("origin"));
+    assert_eq!(target.branch.as_deref(), Some("trunk"));
+}
+
+#[test]
+fn push_target_keeps_the_branch_name_when_pushing_to_a_remote_other_than_the_upstream() {
+    let ctx = repo_on_main();
+    set_config(
+        &ctx,
+        &[
+            ("push.default", "upstream"),
+            ("branch.main.pushRemote", "mirror"),
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/trunk"),
+        ],
+    );
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("mirror"));
+    assert_eq!(target.branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn push_target_keeps_the_branch_name_under_the_default_push_mode() {
+    let ctx = repo_on_main();
+    set_config(
+        &ctx,
+        &[
+            ("branch.main.remote", "origin"),
+            ("branch.main.merge", "refs/heads/trunk"),
+        ],
+    );
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
     assert_eq!(target.branch.as_deref(), Some("main"));
 }
 
