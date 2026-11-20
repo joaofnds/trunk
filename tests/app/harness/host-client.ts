@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { descendantsOf } from "./processes.js";
 
 /** One `TestContextBuilder` verb, as the host protocol carries it. */
 export type SpecStep =
@@ -305,13 +306,22 @@ export class HostClient {
 		this.sampled = true;
 
 		const path = join(tmpdir(), `trunk-app-host-stall-${pid}.txt`);
-		process.stderr.write(
-			`app host ${pid} has not answered ${waitingOn} in ${SAMPLE_STALLED_HOST_AFTER_MS}ms; sampling it into ${path} (TRUNK-413)\n`,
-		);
-		execFile("sample", [String(pid), "1", "-file", path], () => {
-			try {
-				appendFileSync(path, `\n${this.describeOutstanding()}\n`);
-			} catch {}
+		const table = ["-A", "-o", "pid=,ppid=,etime=,time=,command="];
+		execFile("ps", table, (_, processes) => {
+			const children = descendantsOf(processes ?? "", pid);
+			const started = children.length
+				? `processes the host started, still running (pid ppid elapsed cpu command):\n${children.map((line) => `  ${line}`).join("\n")}`
+				: "no process the host started is still running";
+			// The log is all CI keeps of a run, so what the host is waiting on goes
+			// there, and only the stacks stay in the file.
+			process.stderr.write(
+				`app host ${pid} has not answered ${waitingOn} in ${SAMPLE_STALLED_HOST_AFTER_MS}ms; ${started}\nsampling it into ${path} (TRUNK-413, TRUNK-500)\n`,
+			);
+			execFile("sample", [String(pid), "1", "-file", path], () => {
+				try {
+					appendFileSync(path, `\n${started}\n${this.describeOutstanding()}\n`);
+				} catch {}
+			});
 		});
 	}
 
@@ -368,6 +378,14 @@ export class HostClient {
 		if (!waiter) return false;
 		this.pending.delete(message.id as number);
 		clearTimeout(waiter.stallTimer);
+		const took = Date.now() - waiter.startedAt;
+		// A stall report says the host had not answered yet. This says when it did,
+		// so a slow test's time divides into the host's part and the page's.
+		if (took >= SAMPLE_STALLED_HOST_AFTER_MS) {
+			process.stderr.write(
+				`app host ${this.child.pid} answered request #${message.id} ${waiter.label} after ${took}ms (TRUNK-500)\n`,
+			);
+		}
 
 		if ("hostError" in message) {
 			waiter.reject(new Error(message.hostError as string));
