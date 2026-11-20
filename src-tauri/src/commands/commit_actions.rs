@@ -146,24 +146,71 @@ fn skip(path: &std::path::Path, operation: &str, code: &str) -> Result<(), Trunk
     UserGit::in_dir(path).args([operation, "--skip"]).run(code)
 }
 
+/// The git operations that stop on a conflict and are continued one commit at a time.
+#[derive(Debug, Clone, Copy)]
+enum Sequencer {
+    CherryPick,
+    Revert,
+}
+
+impl Sequencer {
+    const fn state(self) -> git2::RepositoryState {
+        match self {
+            Self::CherryPick => git2::RepositoryState::CherryPick,
+            Self::Revert => git2::RepositoryState::Revert,
+        }
+    }
+
+    const fn operation(self) -> &'static str {
+        match self {
+            Self::CherryPick => "cherry-pick",
+            Self::Revert => "revert",
+        }
+    }
+
+    const fn error_code(self) -> &'static str {
+        match self {
+            Self::CherryPick => "cherry_pick_error",
+            Self::Revert => "revert_error",
+        }
+    }
+}
+
 /// Ends a cherry-pick or revert with nothing left to commit by skipping it, and
 /// otherwise commits it with `message`, or reports that it needs one.
 fn conclude(
-    path: &std::path::Path,
+    path: &str,
     message: Option<&str>,
-    state: git2::RepositoryState,
-    operation: &str,
-    code: &str,
-) -> Result<Conclusion, TrunkError> {
-    if nothing_to_commit(path, state)? {
-        skip(path, operation, code)?;
-        return Ok(Conclusion::Skipped);
-    }
-    let Some(message) = message else {
-        return Ok(Conclusion::NeedsMessage);
-    };
-    conclude_with_message(path, message, code)?;
-    Ok(Conclusion::Committed)
+    state_map: &OpenRepos,
+    sequencer: Sequencer,
+) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
+    let path_buf = state_map.path_for(path)?;
+    let conclusion = state_map.hold_for_git(path, |_| {
+        if nothing_to_commit(path_buf, sequencer.state())? {
+            skip(path_buf, sequencer.operation(), sequencer.error_code())?;
+            return Ok(Conclusion::Skipped);
+        }
+        let Some(message) = message else {
+            return Ok(Conclusion::NeedsMessage);
+        };
+        conclude_with_message(path_buf, message, sequencer.error_code())?;
+        Ok(Conclusion::Committed)
+    })?;
+
+    Ok((state_map.read_graph(path)?, conclusion))
+}
+
+/// Whether continuing without a message would stop to ask for one, which changes
+/// nothing in the repository.
+fn asks_for_message(
+    path: &str,
+    state_map: &OpenRepos,
+    sequencer: Sequencer,
+) -> Result<bool, TrunkError> {
+    let path_buf = state_map.path_for(path)?;
+    state_map.hold_for_git(path, |_| {
+        Ok(!nothing_to_commit(path_buf, sequencer.state())?)
+    })
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -217,18 +264,7 @@ pub fn cherry_pick_continue_inner(
     message: Option<&str>,
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
-    let path_buf = state_map.path_for(path)?;
-    let conclusion = state_map.hold_for_git(path, |_| {
-        conclude(
-            path_buf,
-            message,
-            git2::RepositoryState::CherryPick,
-            "cherry-pick",
-            "cherry_pick_error",
-        )
-    })?;
-
-    Ok((state_map.read_graph(path)?, conclusion))
+    conclude(path, message, state_map, Sequencer::CherryPick)
 }
 
 /// Abandon an in-progress cherry-pick and restore the previous tree.
@@ -346,18 +382,7 @@ pub fn revert_continue_inner(
     message: Option<&str>,
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
-    let path_buf = state_map.path_for(path)?;
-    let conclusion = state_map.hold_for_git(path, |_| {
-        conclude(
-            path_buf,
-            message,
-            git2::RepositoryState::Revert,
-            "revert",
-            "revert_error",
-        )
-    })?;
-
-    Ok((state_map.read_graph(path)?, conclusion))
+    conclude(path, message, state_map, Sequencer::Revert)
 }
 
 /// Abandon an in-progress revert and restore a clean tree.
@@ -613,6 +638,37 @@ pub async fn revert_commit_begin<R: Runtime>(
     Ok(RevertBeginResult { graph, message })
 }
 
+/// Continue `sequencer`'s operation. Without a message, a resolution that needs one is
+/// reported before the graph is read, since nothing in the repository changes.
+async fn continue_sequence(
+    sequencer: Sequencer,
+    activity: &crate::activity::Activity,
+    rebuild: &crate::state::GraphRebuild<'_>,
+    path: String,
+    message: Option<String>,
+    state_map: OpenRepos,
+) -> Result<Conclusion, String> {
+    if message.is_none() {
+        let (asked_path, asked_map) = (path.clone(), state_map.clone());
+        let asks = activity
+            .spawn_blocking(move || asks_for_message(&asked_path, &asked_map, sequencer))
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+            .map_err(|e| e.to_json())?;
+        if asks {
+            return Ok(Conclusion::NeedsMessage);
+        }
+    }
+
+    let (_, conclusion) = rebuild
+        .rebuild_carrying(path.clone(), move || {
+            conclude(&path, message.as_deref(), &state_map, sequencer)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
+    Ok(conclusion)
+}
+
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses, or
@@ -632,14 +688,15 @@ pub async fn cherry_pick_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<Conclusion, String> {
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
-    let state_map = state.snapshot();
-    let path_clone = path.clone();
-    let (_, conclusion) = rebuild
-        .rebuild_carrying(path.clone(), move || {
-            cherry_pick_continue_inner(&path_clone, message.as_deref(), &state_map)
-        })
-        .await
-        .map_err(|e| e.to_json())?;
+    let conclusion = continue_sequence(
+        Sequencer::CherryPick,
+        &activity,
+        &rebuild,
+        path.clone(),
+        message,
+        state.snapshot(),
+    )
+    .await?;
 
     if conclusion != Conclusion::NeedsMessage {
         let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
@@ -697,14 +754,15 @@ pub async fn revert_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<Conclusion, String> {
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
-    let state_map = state.snapshot();
-    let path_clone = path.clone();
-    let (_, conclusion) = rebuild
-        .rebuild_carrying(path.clone(), move || {
-            revert_continue_inner(&path_clone, message.as_deref(), &state_map)
-        })
-        .await
-        .map_err(|e| e.to_json())?;
+    let conclusion = continue_sequence(
+        Sequencer::Revert,
+        &activity,
+        &rebuild,
+        path.clone(),
+        message,
+        state.snapshot(),
+    )
+    .await?;
 
     if conclusion != Conclusion::NeedsMessage {
         let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));

@@ -617,3 +617,79 @@ fn force_closing_a_repository_stops_the_push_it_started() {
     let error: Value = serde_json::from_str(pushed.unwrap_err().as_str().unwrap()).unwrap();
     assert_eq!(error["code"], "cancelled");
 }
+
+fn graph_revision(app: &App<MockRuntime>, ctx: &TestContext) -> Option<u64> {
+    let cache = app.state::<CommitCache>();
+    trunk_lib::watcher::RepoChanged::completed(ctx.path(), &cache).graph_revision
+}
+
+/// A repository whose `side` branch changes the line `main` also changed.
+fn diverged_on_one_line() -> (TestContext, String) {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "base\n")
+        .with_commit("Base")
+        .with_branch("side")
+        .checkout("side")
+        .with_file("f.txt", "side\n")
+        .with_commit("Side change")
+        .checkout("main")
+        .with_file("f.txt", "main\n")
+        .with_commit("Main change")
+        .build();
+    let side = ctx.repo().revparse_single("side").unwrap().id().to_string();
+    (ctx, side)
+}
+
+#[test]
+fn continuing_a_resolved_pick_asks_for_its_message_without_rebuilding_the_graph() {
+    let (ctx, side) = diverged_on_one_line();
+    let (app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
+    invoke(
+        &webview,
+        "cherry_pick",
+        json!({ "path": ctx.path(), "oid": side }),
+    )
+    .unwrap_err();
+    std::fs::write(ctx.repo_path().join("f.txt"), "resolved\n").unwrap();
+    ctx.stage_file("f.txt").unwrap();
+    let before = graph_revision(&app, &ctx);
+
+    let conclusion = invoke(
+        &webview,
+        "cherry_pick_continue",
+        json!({ "path": ctx.path(), "message": null }),
+    );
+
+    assert_eq!(conclusion, Ok(json!("needs_message")));
+    assert_eq!(graph_revision(&app, &ctx), before);
+}
+
+#[test]
+fn continuing_a_staged_revert_asks_for_its_message_without_rebuilding_the_graph() {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "one\n")
+        .with_commit("First")
+        .with_file("f.txt", "two\n")
+        .with_commit("Second")
+        .build();
+    let second = ctx.resolve_ref("HEAD").unwrap();
+    let (app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
+    invoke(
+        &webview,
+        "revert_commit_begin",
+        json!({ "path": ctx.path(), "oid": second }),
+    )
+    .unwrap();
+    let before = graph_revision(&app, &ctx);
+
+    let conclusion = invoke(
+        &webview,
+        "revert_continue",
+        json!({ "path": ctx.path(), "message": null }),
+    );
+
+    assert_eq!(conclusion, Ok(json!("needs_message")));
+    assert_eq!(graph_revision(&app, &ctx), before);
+}
