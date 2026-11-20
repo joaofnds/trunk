@@ -2,6 +2,7 @@ mod common;
 
 use common::context::TestContext;
 use trunk_git::conflicted_file::MergeRegion;
+use trunk_lib::commands::commit_actions::Conclusion;
 use trunk_lib::types::MergeSides;
 
 // ── GraphResult (via stash_save which returns GraphResult) ──────────────────
@@ -1006,4 +1007,16 @@ fn shown_hunk_deserializes_from_what_the_view_sends() {
     assert_eq!(shown.lines.len(), 1);
     assert_eq!(shown.lines[0].origin, trunk_lib::types::DiffOrigin::Add);
     assert_eq!(shown.lines[0].content, "x\n");
+}
+
+#[test]
+fn a_conclusion_travels_as_the_name_the_banner_reads() {
+    let names = [
+        Conclusion::Committed,
+        Conclusion::Skipped,
+        Conclusion::NeedsMessage,
+    ]
+    .map(|conclusion| serde_json::to_value(conclusion).unwrap());
+
+    assert_eq!(names, ["committed", "skipped", "needs_message"]);
 }

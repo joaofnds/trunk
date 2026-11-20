@@ -109,6 +109,20 @@ describe("a push whose tab closes before it ends", () => {
 		await screen.findByText("pre-push hook refused");
 		expect(toasts.items).toEqual([]);
 	});
+	it("leaves a failure it already reported out of a tab opened after it", async () => {
+		await openApp();
+		const push = await pushThenCloseTab();
+		push.reject({ code: "remote_error", message: "pre-push hook refused" });
+		await waitFor(() => expect(toasts.items).toHaveLength(1));
+
+		await reopenRepository();
+
+		expect(screen.queryByText("pre-push hook refused")).toBeNull();
+		expect(screen.getByRole("button", { name: "Push" })).not.toHaveAttribute(
+			"aria-busy",
+			"true",
+		);
+	});
 });
 
 describe("a pull whose tab closes before it lands", () => {

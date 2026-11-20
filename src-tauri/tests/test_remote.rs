@@ -1305,6 +1305,21 @@ fn push_target_falls_back_to_origin() {
 }
 
 #[test]
+fn push_target_reports_a_config_git_cannot_read_rather_than_no_remote() {
+    let ctx = repo_on_main();
+    let repo = ctx.repo();
+    let config = std::path::Path::new(ctx.path()).join(".git/config");
+    let mut text = std::fs::read_to_string(&config).unwrap();
+    text.push_str("[branch \"main\"\n\tremote = origin\n");
+    std::fs::write(&config, text).unwrap();
+
+    let err = resolve_push_target(&repo).unwrap_err();
+
+    assert_eq!(err.code, "git_error");
+    assert!(err.message.contains("config"), "{}", err.message);
+}
+
+#[test]
 fn push_target_has_no_remote_when_none_is_named_origin() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")

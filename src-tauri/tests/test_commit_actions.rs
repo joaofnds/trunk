@@ -546,13 +546,6 @@ fn revert_commit_begin_stages_removal_and_carries_default_message() {
         message.contains(&format!("This reverts commit {second_oid}.")),
         "message must carry the full 40-char OID; got: {message:?}"
     );
-    let commit = ctx
-        .get_operation_state()
-        .unwrap()
-        .commit
-        .expect("a revert names its commit");
-    assert_eq!(commit.oid, second_oid);
-    assert_eq!(commit.summary, "Second commit");
     // begin stages the revert without committing: REVERT_HEAD set, file gone.
     assert!(
         ctx.repo_path().join(".git").join("REVERT_HEAD").exists(),
@@ -562,6 +555,18 @@ fn revert_commit_begin_stages_removal_and_carries_default_message() {
         !ctx.repo_path().join("second.txt").exists(),
         "second.txt should be removed by the staged revert"
     );
+}
+
+#[test]
+fn a_stopped_revert_names_the_commit_it_undoes() {
+    let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
+    ctx.revert_commit_begin(&second_oid).unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+
+    let commit = info.commit.expect("a revert names its commit");
+    assert_eq!(commit.oid, second_oid);
+    assert_eq!(commit.summary, "Second commit");
 }
 
 #[test]
@@ -588,9 +593,11 @@ fn revert_continue_commits_and_clears_revert_head() {
     ctx.revert_commit_begin(&second_oid)
         .expect("begin should succeed");
 
-    ctx.revert_continue("Revert \"Second commit\"\n\nedited")
+    let conclusion = ctx
+        .revert_continue("Revert \"Second commit\"\n\nedited")
         .expect("continue should succeed");
 
+    assert_eq!(conclusion, Conclusion::Committed);
     assert!(
         !ctx.repo_path().join(".git").join("REVERT_HEAD").exists(),
         "git commit -m clears REVERT_HEAD"
@@ -738,8 +745,9 @@ mod cherry_pick_lifecycle {
         ctx.cherry_pick(&side_oid).unwrap_err();
         resolve_conflict(&ctx);
 
-        ctx.cherry_pick_continue("Pick the side change").unwrap();
+        let conclusion = ctx.cherry_pick_continue("Pick the side change").unwrap();
 
+        assert_eq!(conclusion, Conclusion::Committed);
         assert!(!cherry_pick_head_exists(&ctx));
         let head = ctx.get_head_commit_message().unwrap();
         assert_eq!(head.subject, "Pick the side change");

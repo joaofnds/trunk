@@ -208,6 +208,10 @@ describe("deleteBranch", () => {
 		const outcome = await deleteBranch("/repo", "topic");
 
 		expect(outcome.kind).toBe("deleted");
+		expect(ask).toHaveBeenCalledWith(
+			"Delete branch 'topic'? Trunk could not check whether another branch or tag contains its commits.",
+			expect.anything(),
+		);
 	});
 
 	it("deletes nothing once the user declines", async () => {
