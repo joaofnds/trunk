@@ -53,9 +53,18 @@ const canSubmit = $derived(
 		.every((f) => (values[f.key] ?? "").trim().length > 0),
 );
 
+function submittedValues(): Record<string, string> {
+	return Object.fromEntries(
+		fields.map((f) => {
+			const value = values[f.key] ?? "";
+			return [f.key, f.multiline ? value : value.trim()];
+		}),
+	);
+}
+
 function handleSubmit() {
 	if (!canSubmit) return;
-	onsubmit(values);
+	onsubmit(submittedValues());
 }
 
 function handleKeydown(e: KeyboardEvent) {

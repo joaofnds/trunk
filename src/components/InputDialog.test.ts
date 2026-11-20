@@ -47,6 +47,36 @@ describe("InputDialog", () => {
 		expect(confirmBtn).not.toBeDisabled();
 	});
 
+	it("submits a single-line field without its surrounding whitespace", async () => {
+		const onsubmit = vi.fn();
+		render(InputDialog, {
+			props: { ...defaultProps, onsubmit },
+		});
+		const input = screen.getByPlaceholderText("feature/...");
+		await fireEvent.input(input, { target: { value: "  my-branch \n" } });
+
+		await fireEvent.click(screen.getByText("OK"));
+
+		expect(onsubmit).toHaveBeenCalledWith({ name: "my-branch" });
+	});
+
+	it("submits a multiline field as typed", async () => {
+		const onsubmit = vi.fn();
+		render(InputDialog, {
+			props: {
+				...defaultProps,
+				fields: [{ key: "message", label: "Message", multiline: true }],
+				onsubmit,
+			},
+		});
+		const message = screen.getByRole("textbox");
+		await fireEvent.input(message, { target: { value: "  indented\n" } });
+
+		await fireEvent.click(screen.getByText("OK"));
+
+		expect(onsubmit).toHaveBeenCalledWith({ message: "  indented\n" });
+	});
+
 	it("calls onsubmit with field values", async () => {
 		const onsubmit = vi.fn();
 		render(InputDialog, {
