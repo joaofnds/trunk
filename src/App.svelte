@@ -544,12 +544,10 @@ interface TabState {
 
 const tabStates = new SvelteMap<string, TabState>();
 
-function createTabState(tabId: string): void {
-	const remoteState = createRemoteState(() => {
-		const tab = tabs.find((tab) => tab.id === tabId);
-		if (tab?.repoPath && tabStates.get(tabId)?.remoteState === remoteState)
-			autofetch.checked(tab.repoPath);
-	});
+const remoteStatesOfClosedTabs = new Map<string, RemoteState>();
+
+function createTabState(tabId: string, repoPath: string | null = null): void {
+	const remoteState = adoptRemoteState(repoPath) ?? createTabRemoteState();
 
 	const shownHead = $state<TabState["shownHead"]>({ oid: null });
 	tabStates.set(tabId, {
@@ -557,6 +555,38 @@ function createTabState(tabId: string): void {
 		undoRedo: createUndoRedoState(),
 		shownHead,
 	});
+}
+
+function createTabRemoteState(): RemoteState {
+	const remoteState = createRemoteState(() => {
+		const tab = tabs.find(
+			(tab) => tabStates.get(tab.id)?.remoteState === remoteState,
+		);
+		if (tab?.repoPath) autofetch.checked(tab.repoPath);
+	});
+	return remoteState;
+}
+
+function adoptRemoteState(repoPath: string | null): RemoteState | null {
+	if (repoPath === null) return null;
+	const key = repositoryPathKey(repoPath);
+	const running = remoteStatesOfClosedTabs.get(key);
+	remoteStatesOfClosedTabs.delete(key);
+	if (!running?.isRunning) return null;
+
+	running.closedTabName = null;
+	return running;
+}
+
+/** Drops a tab's state, keeping a remote operation it still runs for the next
+ *  tab that opens its repository. */
+function dropTabState(tab: TabInfo): void {
+	const remoteState = tabStates.get(tab.id)?.remoteState;
+	tabStates.delete(tab.id);
+	if (tab.repoPath === null || !remoteState?.isRunning) return;
+
+	remoteState.closedTabName = tab.repoName;
+	remoteStatesOfClosedTabs.set(repositoryPathKey(tab.repoPath), remoteState);
 }
 
 function getTabState(tabId: string): TabState {
@@ -597,7 +627,7 @@ function closeOtherTabs(keepTabId: string) {
 		if (t.repoPath) {
 			void closeUnusedRepository(t.repoPath);
 		}
-		tabStates.delete(t.id);
+		dropTabState(t);
 	}
 	activeTabId = keepTabId;
 	persistTabs();
@@ -611,7 +641,7 @@ function closeAllTabs() {
 		if (t.repoPath) {
 			void closeUnusedRepository(t.repoPath);
 		}
-		tabStates.delete(t.id);
+		dropTabState(t);
 	}
 	addNewTab();
 }
@@ -677,8 +707,8 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 		// following the tab to a repository it says nothing about — a pull still
 		// marked running would leave the incoming repository's Pull and Push
 		// disabled with no way back.
-		tabStates.delete(tabId);
-		createTabState(tabId);
+		dropTabState(tab);
+		createTabState(tabId, path);
 		repositories.opened({ id: tabId, repoPath: path });
 		tab.repoPath = path;
 		tab.repoName = name;
@@ -728,8 +758,7 @@ function closeTab(tabId: string) {
 	// Remove tab from array
 	tabs = tabs.filter((t) => t.id !== tabId);
 
-	// Clean up per-tab state
-	tabStates.delete(tabId);
+	dropTabState(tab);
 
 	// If last tab closed, add empty tab
 	if (tabs.length === 0) {
@@ -1098,6 +1127,8 @@ $effect(() => {
 	return () => window.removeEventListener("keydown", handleKeydown);
 });
 
+function repositoryPathKey(path: string): string;
+function repositoryPathKey(path: string | null): string | null;
 function repositoryPathKey(path: string | null): string | null {
 	return path?.replace(/\/+$/, "") ?? null;
 }

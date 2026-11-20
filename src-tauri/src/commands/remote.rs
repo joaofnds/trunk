@@ -234,13 +234,17 @@ async fn refresh_graph<R: Runtime>(
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), cache, ref_visibility);
-    rebuild
+    match rebuild
         .rebuild_in_session(
             path_owned.clone(),
             session,
             move || -> Result<crate::state::GraphRead, TrunkError> { repository.read_graph() },
         )
-        .await?;
+        .await
+    {
+        Err(error) if error.code == "not_open" => return Ok(()),
+        outcome => outcome?,
+    };
 
     let _ = app.emit("repo-changed", RepoChanged::completed(path_owned, cache));
     Ok(())

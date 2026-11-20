@@ -492,75 +492,80 @@ fn reopening_after_preparation_invalidates_graphs_and_refreshes_reviews() {
     assert_eq!(reviews.try_recv(), Ok(()));
 }
 
+/// A repository with one commit its remote lacks, so `git_push` has work to do.
+#[cfg(unix)]
+fn ahead_of_origin() -> TestContext {
+    TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("First")
+        .with_remote("origin")
+        .with_tracking("origin", "main")
+        .with_pushed("origin", "main")
+        .with_file("b.txt", "two")
+        .with_commit("Second")
+        .build()
+}
+
+/// Starts a push, runs `close` once its pre-push hook has started, and returns the
+/// push's answer.
+#[cfg(unix)]
+fn push_closed_by(ctx: &TestContext, close: &str) -> Result<Value, Value> {
+    let hook = common::hooks::PausedHook::install(ctx, "pre-push");
+    let (_app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
+
+    std::thread::scope(|scope| {
+        let push = scope.spawn(|| invoke(&webview, "git_push", json!({ "path": ctx.path() })));
+        hook.wait_until_started();
+        invoke(&webview, close, json!({ "path": ctx.path() })).expect("close it");
+        hook.let_go_if_still_running();
+        push.join().unwrap()
+    })
+}
+
+#[cfg(unix)]
+fn origin_main(ctx: &TestContext) -> git2::Oid {
+    git2::Repository::open(ctx.repo_path().join("origin.git"))
+        .unwrap()
+        .refname_to_id("refs/heads/main")
+        .unwrap()
+}
+
 /// Closing a tab is not a cancel: the push the user started still reaches the remote.
 /// A pull stopped partway can leave a rebase half done, so only a force close stops one.
 #[cfg(unix)]
 #[test]
 fn closing_a_repository_lets_the_push_it_started_finish() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("First")
-        .with_remote("origin")
-        .with_tracking("origin", "main")
-        .with_pushed("origin", "main")
-        .with_file("b.txt", "two")
-        .with_commit("Second")
-        .build();
-    let hook = common::hooks::PausedHook::install(&ctx, "pre-push");
-    let (_app, webview) = boot(WatcherState::disabled());
-    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
+    let ctx = ahead_of_origin();
 
-    let pushed = std::thread::scope(|scope| {
-        let push = scope.spawn(|| invoke(&webview, "git_push", json!({ "path": ctx.path() })));
-        hook.wait_until_started();
-        invoke(&webview, "close_repo", json!({ "path": ctx.path() })).expect("close it");
-        hook.let_go_if_still_running();
-        push.join().unwrap()
-    });
+    let pushed = push_closed_by(&ctx, "close_repo");
 
-    let remote_main = git2::Repository::open(ctx.repo_path().join("origin.git"))
-        .unwrap()
-        .refname_to_id("refs/heads/main")
-        .unwrap();
     assert_eq!(
-        Some(remote_main),
+        Some(origin_main(&ctx)),
         ctx.repo().head().unwrap().target(),
-        "the push finished on the remote; the command answered {pushed:?}"
+        "the command answered {pushed:?}"
     );
 }
 
 #[cfg(unix)]
 #[test]
+fn a_push_that_lands_after_its_repository_closed_answers_that_it_landed() {
+    let ctx = ahead_of_origin();
+
+    let pushed = push_closed_by(&ctx, "close_repo");
+
+    assert_eq!(pushed, Ok(Value::Null));
+}
+
+#[cfg(unix)]
+#[test]
 fn force_closing_a_repository_stops_the_push_it_started() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("First")
-        .with_remote("origin")
-        .with_tracking("origin", "main")
-        .with_pushed("origin", "main")
-        .with_file("b.txt", "two")
-        .with_commit("Second")
-        .build();
-    let hook = common::hooks::PausedHook::install(&ctx, "pre-push");
-    let (_app, webview) = boot(WatcherState::disabled());
-    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
-    let before = git2::Repository::open(ctx.repo_path().join("origin.git"))
-        .unwrap()
-        .refname_to_id("refs/heads/main")
-        .unwrap();
+    let ctx = ahead_of_origin();
+    let before = origin_main(&ctx);
 
-    let pushed = std::thread::scope(|scope| {
-        let push = scope.spawn(|| invoke(&webview, "git_push", json!({ "path": ctx.path() })));
-        hook.wait_until_started();
-        invoke(&webview, "force_close_repo", json!({ "path": ctx.path() })).expect("close it");
-        hook.let_go_if_still_running();
-        push.join().unwrap()
-    });
+    let pushed = push_closed_by(&ctx, "force_close_repo");
 
-    let after = git2::Repository::open(ctx.repo_path().join("origin.git"))
-        .unwrap()
-        .refname_to_id("refs/heads/main")
-        .unwrap();
-    assert_eq!(after, before, "the command answered {pushed:?}");
-    assert!(pushed.unwrap_err().to_string().contains("cancelled"));
+    assert_eq!(origin_main(&ctx), before, "the command answered {pushed:?}");
+    let error: Value = serde_json::from_str(pushed.unwrap_err().as_str().unwrap()).unwrap();
+    assert_eq!(error["code"], "cancelled");
 }

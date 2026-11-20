@@ -1,5 +1,6 @@
 import type { FetchReport } from "./autofetch-status.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "./invoke.js";
+import { remoteErrorMessage } from "./remote-error.js";
 import type { RemoteOpKind, RemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
 
@@ -58,9 +59,16 @@ export async function runRemoteOp(
 		});
 		showToast(successMsg, "success");
 	} catch (e: unknown) {
-		remoteState.failedOp = OP_KINDS[cmd];
-		remoteState.error = isTrunkError(e)
+		const kind = OP_KINDS[cmd];
+		const error = isTrunkError(e)
 			? e
 			: { code: "unknown_error", message: String(e) };
+		remoteState.failedOp = kind;
+		remoteState.error = error;
+		if (remoteState.closedTabName !== null)
+			showToast(
+				`The ${kind} from ${remoteState.closedTabName} failed after its tab closed. ${remoteErrorMessage(error, kind)}`,
+				"error",
+			);
 	}
 }
