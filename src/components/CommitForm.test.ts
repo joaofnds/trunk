@@ -19,6 +19,13 @@ vi.mock("../lib/invoke.js", async () => {
 	};
 });
 
+function drafted(subject: string, body = ""): CommitFormSession {
+	const session = new CommitFormSession();
+	session.draftSubject = subject;
+	session.draftBody = body;
+	return session;
+}
+
 function errorsShown(): string[] {
 	return toasts.items
 		.filter((toast) => toast.kind === "error")
@@ -71,12 +78,11 @@ describe("CommitForm", () => {
 	});
 
 	describe("draft seeding and lifting", () => {
-		it("seeds inputs from initialSubject and initialBody at mount", () => {
+		it("shows the session's draft at mount", () => {
 			render(CommitForm, {
 				props: {
 					...defaultProps,
-					initialSubject: "seeded summary",
-					initialBody: "seeded body",
+					session: drafted("seeded summary", "seeded body"),
 				},
 			});
 			expect(
@@ -91,26 +97,23 @@ describe("CommitForm", () => {
 			).toBe("seeded body");
 		});
 
-		it("fires onbodychange when the body is typed", async () => {
-			const onbodychange = vi.fn();
-			render(CommitForm, { props: { ...defaultProps, onbodychange } });
+		it("keeps the typed body as the draft", async () => {
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.input(
 				screen.getByPlaceholderText("Description (optional)"),
 				{ target: { value: "new body" } },
 			);
 
-			expect(onbodychange).toHaveBeenCalledWith("new body");
+			expect(session.draftBody).toBe("new body");
 		});
 
-		it("emits empty subject and body on successful commit", async () => {
+		it("clears the draft on a successful commit", async () => {
 			vi.mocked(safeInvoke).mockReset();
 			vi.mocked(safeInvoke).mockResolvedValue(undefined);
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.input(screen.getByTestId("commit-form-subject"), {
 				target: { value: "real commit" },
@@ -121,9 +124,40 @@ describe("CommitForm", () => {
 			);
 			await fireEvent.click(screen.getByTestId("commit-form-submit"));
 
-			await waitFor(() => expect(onsubjectchange).toHaveBeenLastCalledWith(""));
-			expect(onbodychange).toHaveBeenLastCalledWith("");
+			await waitFor(() => expect(session.draftSubject).toBe(""));
+			expect(session.draftBody).toBe("");
 		});
+	});
+
+	it("clears the committed draft from a form reopened while the commit ran", async () => {
+		let finishCommit: () => void = () => {};
+		vi.mocked(safeInvoke).mockReset();
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "create_commit"
+				? new Promise<void>((resolve) => {
+						finishCommit = resolve;
+					})
+				: Promise.resolve(undefined),
+		);
+		const session = new CommitFormSession();
+		const first = render(CommitForm, { props: { ...defaultProps, session } });
+		await fireEvent.input(screen.getByTestId("commit-form-subject"), {
+			target: { value: "fix: one" },
+		});
+		await fireEvent.click(screen.getByTestId("commit-form-submit"));
+		first.unmount();
+		render(CommitForm, { props: { ...defaultProps, session } });
+
+		finishCommit();
+
+		await waitFor(() =>
+			expect(screen.getByTestId("commit-form-submit").textContent).toContain(
+				"Commit",
+			),
+		);
+		expect(
+			(screen.getByTestId("commit-form-subject") as HTMLInputElement).value,
+		).toBe("");
 	});
 
 	describe("summary char counter", () => {
@@ -295,8 +329,7 @@ describe("CommitForm", () => {
 			render(CommitForm, {
 				props: {
 					...defaultProps,
-					initialSubject: "seeded summary",
-					initialBody: "seeded body",
+					session: drafted("seeded summary", "seeded body"),
 				},
 			});
 
@@ -309,12 +342,9 @@ describe("CommitForm", () => {
 			expect(bodyTextarea().value).toBe("seeded body");
 		});
 
-		it("never lifts amend edits to the parent draft callbacks", async () => {
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+		it("never writes amend edits into the draft", async () => {
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
@@ -330,18 +360,15 @@ describe("CommitForm", () => {
 			});
 			await fireEvent.click(tab("Commit"));
 
-			expect(onsubjectchange).not.toHaveBeenCalledWith("amend subject");
-			expect(onbodychange).not.toHaveBeenCalledWith("amend body");
-			expect(onsubjectchange).toHaveBeenLastCalledWith("wip draft");
-			expect(onbodychange).toHaveBeenLastCalledWith("wip body");
+			expect([session.draftSubject, session.draftBody]).toEqual([
+				"wip draft",
+				"wip body",
+			]);
 		});
 
-		it("does not lift an edited HEAD prefill when leaving amend with an empty draft", async () => {
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+		it("does not carry an edited HEAD prefill into an empty draft", async () => {
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.click(tab("Amend"));
 			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
@@ -351,18 +378,14 @@ describe("CommitForm", () => {
 			});
 			await fireEvent.click(tab("Commit"));
 
-			expect(onsubjectchange).not.toHaveBeenCalledWith("Prev subject");
-			expect(onbodychange).not.toHaveBeenCalledWith("stray edit");
+			expect([session.draftSubject, session.draftBody]).toEqual(["", ""]);
 			expect(subjectInput().value).toBe("");
 			expect(bodyTextarea().value).toBe("");
 		});
 
 		it("preserves the WIP draft through a successful amend", async () => {
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
@@ -377,8 +400,10 @@ describe("CommitForm", () => {
 					expect.anything(),
 				),
 			);
-			expect(onsubjectchange).not.toHaveBeenCalledWith("");
-			expect(onbodychange).not.toHaveBeenCalledWith("");
+			expect([session.draftSubject, session.draftBody]).toEqual([
+				"wip draft",
+				"wip body",
+			]);
 			expect(subjectInput().value).toBe("wip draft");
 			expect(bodyTextarea().value).toBe("wip body");
 		});
@@ -482,20 +507,20 @@ describe("CommitForm", () => {
 		});
 
 		it("clears the stash name on a successful stash", async () => {
-			const onsubjectchange = vi.fn();
-			render(CommitForm, { props: { ...defaultProps, onsubjectchange } });
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 
 			await fireEvent.click(tab("Stash"));
 			await fireEvent.click(screen.getByTestId("commit-form-submit"));
 
-			await waitFor(() => expect(onsubjectchange).toHaveBeenLastCalledWith(""));
+			await waitFor(() => expect(session.draftSubject).toBe(""));
 			expect(subjectInput().value).toBe("");
 		});
 
 		it("keeps the description a stash leaves out", async () => {
-			const onbodychange = vi.fn();
-			render(CommitForm, { props: { ...defaultProps, onbodychange } });
+			const session = new CommitFormSession();
+			render(CommitForm, { props: { ...defaultProps, session } });
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
 
@@ -504,7 +529,7 @@ describe("CommitForm", () => {
 
 			await waitFor(() => expect(subjectInput().value).toBe(""));
 			expect(bodyTextarea().value).toBe("wip body");
-			expect(onbodychange).toHaveBeenLastCalledWith("wip body");
+			expect(session.draftBody).toBe("wip body");
 		});
 
 		it("keeps body text typed during an in-flight HEAD fetch over the stale prefill", async () => {
@@ -581,17 +606,14 @@ describe("CommitForm", () => {
 		});
 
 		it("preserves the draft when a commit submit fails", async () => {
-			const onsubjectchange = vi.fn();
-			const onbodychange = vi.fn();
+			const session = new CommitFormSession();
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "create_commit") {
 					return Promise.reject(new Error("commit failed"));
 				}
 				return Promise.resolve(undefined);
 			});
-			render(CommitForm, {
-				props: { ...defaultProps, onsubjectchange, onbodychange },
-			});
+			render(CommitForm, { props: { ...defaultProps, session } });
 
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
@@ -604,8 +626,10 @@ describe("CommitForm", () => {
 					expect.anything(),
 				),
 			);
-			expect(onsubjectchange).not.toHaveBeenCalledWith("");
-			expect(onbodychange).not.toHaveBeenCalledWith("");
+			expect([session.draftSubject, session.draftBody]).toEqual([
+				"wip draft",
+				"wip body",
+			]);
 			expect(subjectInput().value).toBe("wip draft");
 			expect(bodyTextarea().value).toBe("wip body");
 		});
@@ -639,7 +663,7 @@ describe("CommitForm", () => {
 			const { component, unmount } = render(CommitForm, {
 				props: {
 					...defaultProps,
-					initialSubject: DRAFT,
+					session: drafted(DRAFT),
 					ondraftsummaryfocuschange: (focused: boolean) => focus.push(focused),
 				},
 			});

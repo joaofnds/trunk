@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onDestroy, onMount, tick, untrack } from "svelte";
+import { onDestroy, onMount, tick } from "svelte";
 import {
 	type CommitFormMode,
 	CommitFormSession,
@@ -17,10 +17,6 @@ interface Props {
 	repoPath: string;
 	stagedCount: number;
 	session?: CommitFormSession;
-	initialSubject?: string;
-	initialBody?: string;
-	onsubjectchange?: (value: string) => void;
-	onbodychange?: (value: string) => void;
 	/** The Summary field took or lost the focus while it holds the commit draft. */
 	ondraftsummaryfocuschange?: (focused: boolean) => void;
 }
@@ -29,15 +25,9 @@ let {
 	repoPath,
 	stagedCount,
 	session = new CommitFormSession(),
-	initialSubject,
-	initialBody,
-	onsubjectchange,
-	onbodychange,
 	ondraftsummaryfocuschange,
 }: Props = $props();
 
-let draftSubject = $state(untrack(() => initialSubject) ?? "");
-let draftBody = $state(untrack(() => initialBody) ?? "");
 let subjectError = $state("");
 let stagedError = $state("");
 let subjectInput = $state<HTMLInputElement>();
@@ -49,7 +39,7 @@ const draftSummaryFocused = $derived(
 let reportedDraftSummaryFocus = false;
 
 function getSubject() {
-	return session.mode === "amend" ? session.amendSubject : draftSubject;
+	return session.mode === "amend" ? session.amendSubject : session.draftSubject;
 }
 
 function setSubject(value: string) {
@@ -57,36 +47,28 @@ function setSubject(value: string) {
 	if (session.mode === "amend") {
 		session.amendSubject = value;
 	} else {
-		draftSubject = value;
-		onsubjectchange?.(value);
+		session.draftSubject = value;
 	}
 }
 
 function getBody() {
-	return session.mode === "amend" ? session.amendBody : draftBody;
+	return session.mode === "amend" ? session.amendBody : session.draftBody;
 }
 
 function setBody(value: string) {
 	if (session.mode === "amend") {
 		session.amendBody = value;
 	} else {
-		draftBody = value;
-		onbodychange?.(value);
+		session.draftBody = value;
 	}
 }
 
 function clearCommittedSubject(subject: string) {
-	if (draftSubject !== subject) return;
-
-	draftSubject = "";
-	onsubjectchange?.("");
+	if (session.draftSubject === subject) session.draftSubject = "";
 }
 
 function clearCommittedBody(body: string) {
-	if (draftBody !== body) return;
-
-	draftBody = "";
-	onbodychange?.("");
+	if (session.draftBody === body) session.draftBody = "";
 }
 
 let counterVisible = $derived(getSubject().length >= 60);
@@ -199,9 +181,8 @@ async function handleSubmit() {
 	subjectError = "";
 	stagedError = "";
 
-	const subject =
-		session.mode === "amend" ? session.amendSubject : draftSubject;
-	const body = session.mode === "amend" ? session.amendBody : draftBody;
+	const subject = getSubject();
+	const body = getBody();
 
 	// Stash mode: subject is optional (stash name). Commit/amend: subject required.
 	if (session.mode !== "stash" && !subject.trim()) {

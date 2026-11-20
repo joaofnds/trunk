@@ -422,8 +422,6 @@ let dirtyCounts = $state<DirtyCounts>({
 // disagrees with the worktree until the next fs event.
 let dirtyCountsSeq = 0;
 let headBranch = $state<string | undefined>(undefined);
-let wipSubject = $state("");
-let wipBody = $state("");
 const commitFormSession = new CommitFormSession();
 let draftSummaryFocused = $state(false);
 let draftLoaded = $state(false);
@@ -2018,15 +2016,14 @@ $effect(() => {
 });
 
 // Rehydrate the persisted WIP commit draft once, before the first StagingPanel
-// mount. CommitForm seeds its fields from props at init, so the StagingPanel
-// render is gated on `draftLoaded` (below) — mounting before this resolves would
-// seed from "" and never pick up the draft.
+// mount. The StagingPanel render is gated on `draftLoaded` (below), since text
+// typed into a form mounted before this resolves would be replaced by the load.
 let commitRecoveryError = $state<string | null>(null);
 const commitRecovery = getCommitDraft(untrack(() => repoPath))
 	.then((d) => {
 		if (d) {
-			wipSubject = d.subject;
-			wipBody = d.body;
+			commitFormSession.draftSubject = d.subject;
+			commitFormSession.draftBody = d.body;
 		}
 		draftLoaded = true;
 	})
@@ -2042,8 +2039,8 @@ const commitDraftTimer = createOwnedTimer();
 let unsavedDraft: CommitDraft | null = null;
 let initialDraftEffect = true;
 $effect(() => {
-	const subject = wipSubject;
-	const body = wipBody;
+	const subject = commitFormSession.draftSubject;
+	const body = commitFormSession.draftBody;
 	if (!draftLoaded) return;
 	if (initialDraftEffect) {
 		initialDraftEffect = false;
@@ -2144,7 +2141,10 @@ void Promise.all([commitRecovery, reviewRecovery]).then(() => {
 
 registerUpdateParticipant({
 	capture: () => {
-		const draft = { subject: wipSubject, body: wipBody };
+		const draft = {
+			subject: commitFormSession.draftSubject,
+			body: commitFormSession.draftBody,
+		};
 		const review = reviewEditors.captureUpdate();
 		const path = repoPath;
 		return {
@@ -2821,7 +2821,7 @@ async function handleRebaseStart(
 							graphHasMore = hasMore;
 						}}
 						{wipCount}
-						wipMessage={wipSubject.trim()}
+						wipMessage={commitFormSession.draftSubject.trim()}
 						{wipStats}
 						onWipClick={handleWipClick}
 						onFocusDraftSummary={focusDraftSummary}
@@ -2927,12 +2927,8 @@ async function handleRebaseStart(
 						bind:this={stagingPanelRef}
 						{repoPath}
 						currentBranch={headBranch}
-						initialSubject={wipSubject}
 						{commitFormSession}
-						initialBody={wipBody}
 						onfileselect={handleFileSelect}
-						onsubjectchange={(v) => (wipSubject = v)}
-						onbodychange={(v) => (wipBody = v)}
 						ondraftsummaryfocuschange={(focused) =>
 							(draftSummaryFocused = focused)}
 						onfileadvance={(path, kind) => {

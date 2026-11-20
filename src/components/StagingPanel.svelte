@@ -52,11 +52,7 @@ interface Props {
 		path: string,
 		kind: "unstaged" | "staged" | "conflicted",
 	) => void;
-	initialSubject?: string;
-	initialBody?: string;
 	commitFormSession?: CommitFormSession;
-	onsubjectchange?: (value: string) => void;
-	onbodychange?: (value: string) => void;
 	ondraftsummaryfocuschange?: (focused: boolean) => void;
 	onfileadvance?: (
 		path: string,
@@ -83,12 +79,8 @@ interface Props {
 let {
 	repoPath,
 	currentBranch,
-	initialSubject,
-	initialBody,
 	commitFormSession,
 	onfileselect,
-	onsubjectchange,
-	onbodychange,
 	ondraftsummaryfocuschange,
 	onfileadvance,
 	selectedPath = null,
@@ -1295,11 +1287,7 @@ registerUpdateBlocker(() => {
 			<CommitForm
 				{repoPath}
 				stagedCount={status?.staged.length ?? 0}
-				{initialSubject}
-				{initialBody}
 				session={commitFormSession}
-				{onsubjectchange}
-				{onbodychange}
 				{ondraftsummaryfocuschange}
 				bind:this={commitForm}
 			/>
