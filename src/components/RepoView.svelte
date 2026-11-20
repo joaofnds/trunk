@@ -2812,6 +2812,7 @@ async function handleRebaseStart(
 						{remoteState}
 						bind:this={commitGraphRef}
 						{repoPath}
+						{headBranch}
 						oncommitselect={handleCommitSelect}
 						oncomparecommits={handleCompareCommits}
 						oncommitnavigate={selectCommitIdempotent}

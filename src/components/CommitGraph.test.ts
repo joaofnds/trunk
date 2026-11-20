@@ -3742,6 +3742,54 @@ describe("CommitGraph", () => {
 			);
 		});
 
+		it("warns that a hard reset deletes new files that were only staged", async () => {
+			installReads({ commits: [HEAD_COMMIT, TARGET] });
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Hard")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringContaining(
+					"Hard reset discards your uncommitted changes to tracked files and deletes new files you staged but never committed. Neither can be recovered. Untracked files stay.",
+				),
+				expect.anything(),
+			);
+		});
+
+		it("names the checked-out branch even when its tip is not among the loaded rows", async () => {
+			const OTHER = makeCommit({
+				oid: "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc",
+				short_oid: "ccc333c",
+				summary: "newer work elsewhere",
+			});
+			installReads({ commits: [OTHER, TARGET] });
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					headBranch: "main",
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+
+			await getMenuAction("Mixed")();
+			await flush();
+
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringMatching(/^Reset main to bbb222b "older work"\?/),
+				expect.anything(),
+			);
+		});
+
 		it("names HEAD as what moves when no branch is checked out", async () => {
 			const detached = makeCommit({
 				oid: HEAD_COMMIT.oid,

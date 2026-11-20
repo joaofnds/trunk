@@ -135,6 +135,9 @@ interface Props {
 	repoPath: string;
 	/** The tab's remote operation, which a remote delete from a menu runs as. */
 	remoteState?: RemoteState;
+	/** The checked-out branch, read from every ref, so it is known while HEAD's row
+	 *  is not yet loaded. Undefined while HEAD is detached. */
+	headBranch?: string;
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncomparecommits?: (baseOid: string, targetOid: string) => void;
 	oncommitnavigate?: (oid: string) => void;
@@ -192,6 +195,7 @@ interface Props {
 let {
 	repoPath,
 	remoteState = createRemoteState(),
+	headBranch,
 	onready,
 	oncommitselect,
 	oncomparecommits,
@@ -1002,20 +1006,24 @@ async function handleRevert(commit: GraphCommit) {
 	}
 }
 
+const checkedOutBranch = $derived(
+	headBranch ??
+		commits
+			.find((c) => c.is_head)
+			?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name,
+);
+
 async function handleReset(
 	commit: GraphCommit,
 	mode: "soft" | "mixed" | "hard",
 ) {
-	const branch = commits
-		.find((c) => c.is_head)
-		?.refs.find((r) => r.ref_type === "LocalBranch" && r.is_head)?.short_name;
 	const labels: Record<typeof mode, string> = {
 		soft: `Soft reset keeps your files as they are. The difference from ${commit.short_oid} shows as staged, and unstaged changes stay unstaged.`,
 		mixed: "Mixed reset keeps every change, unstaged.",
-		hard: `Hard reset discards your uncommitted changes to tracked files, which cannot be recovered, and leaves ${branch ?? "HEAD"} with only the history of ${commit.short_oid}.`,
+		hard: `Hard reset discards your uncommitted changes to tracked files and deletes new files you staged but never committed. Neither can be recovered. Untracked files stay. It leaves ${checkedOutBranch ?? "HEAD"} with only the history of ${commit.short_oid}.`,
 	};
 	const confirmed = await ask(
-		`Reset ${branch ?? "HEAD"} to ${commit.short_oid} "${commit.summary}"?\n\n${labels[mode]}`,
+		`Reset ${checkedOutBranch ?? "HEAD"} to ${commit.short_oid} "${commit.summary}"?\n\n${labels[mode]}`,
 		{
 			title: `Reset (${mode})`,
 			kind: mode === "hard" ? "warning" : "info",
@@ -1062,25 +1070,20 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		(r) => r.ref_type === "LocalBranch" && !r.is_head,
 	);
 	const headCommit = commits.find((c) => c.is_head);
-	const headRef = headCommit?.refs.find(
-		(r) => r.ref_type === "LocalBranch" && r.is_head,
-	);
-	const headBranchName = headRef?.short_name;
-
 	const mergeRebaseItems: (
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
-	if (clickedBranch && headBranchName) {
+	if (clickedBranch && checkedOutBranch) {
 		mergeRebaseItems.push(
 			await MenuItem.new({
-				text: `Merge ${clickedBranch.short_name} into ${headBranchName}`,
+				text: `Merge ${clickedBranch.short_name} into ${checkedOutBranch}`,
 				action: () => {
 					handleMergeBranch(clickedBranch.name).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
-				text: `Rebase ${headBranchName} onto ${clickedBranch.short_name}`,
+				text: `Rebase ${checkedOutBranch} onto ${clickedBranch.short_name}`,
 				action: () => {
 					handleRebaseBranch(clickedBranch.name).catch(() => {});
 				},
@@ -1095,10 +1098,10 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
-	if (headCommit && headBranchName && !commit.is_stash && !commit.is_head) {
+	if (headCommit && checkedOutBranch && !commit.is_stash && !commit.is_head) {
 		fastForwardItems.push(
 			await MenuItem.new({
-				text: `Fast-forward ${headBranchName} to here`,
+				text: `Fast-forward ${checkedOutBranch} to here`,
 				enabled: canFastForward(commits, {
 					head: headCommit.oid,
 					target: commit.oid,
@@ -1122,7 +1125,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
-	if (headBranchName && !commit.is_stash && !commit.is_head) {
+	if (checkedOutBranch && !commit.is_stash && !commit.is_head) {
 		interactiveRebaseItems.push(
 			await MenuItem.new({
 				text: "Interactive Rebase...",
@@ -1453,12 +1456,6 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 		"@tauri-apps/api/menu"
 	);
 
-	const headCommit = commits.find((c) => c.is_head);
-	const headRef = headCommit?.refs.find(
-		(r) => r.ref_type === "LocalBranch" && r.is_head,
-	);
-	const headBranchName = headRef?.short_name;
-
 	if (ref.refType === "LocalBranch") {
 		const menu = await Menu.new({
 			items: [
@@ -1473,16 +1470,16 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 							await PredefinedMenuItem.new({ item: "Separator" }),
 						]
 					: []),
-				...(!ref.isHead && headBranchName
+				...(!ref.isHead && checkedOutBranch
 					? [
 							await MenuItem.new({
-								text: `Merge ${ref.shortName} into ${headBranchName}`,
+								text: `Merge ${ref.shortName} into ${checkedOutBranch}`,
 								action: () => {
 									handleMergeBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Rebase ${headBranchName} onto ${ref.shortName}`,
+								text: `Rebase ${checkedOutBranch} onto ${ref.shortName}`,
 								action: () => {
 									handleRebaseBranch(ref.name).catch(() => {});
 								},
@@ -1529,17 +1526,17 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 						handleRefCheckout(e, ref);
 					},
 				}),
-				...(headBranchName
+				...(checkedOutBranch
 					? [
 							await PredefinedMenuItem.new({ item: "Separator" }),
 							await MenuItem.new({
-								text: `Merge ${ref.shortName} into ${headBranchName}`,
+								text: `Merge ${ref.shortName} into ${checkedOutBranch}`,
 								action: () => {
 									handleMergeBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Rebase ${headBranchName} onto ${ref.shortName}`,
+								text: `Rebase ${checkedOutBranch} onto ${ref.shortName}`,
 								action: () => {
 									handleRebaseBranch(ref.name).catch(() => {});
 								},
