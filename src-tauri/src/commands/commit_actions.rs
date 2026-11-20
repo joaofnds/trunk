@@ -827,7 +827,7 @@ pub(crate) fn head_if_still<'r>(
 /// longer `expected_head_oid`, the commit the user pressed Undo on, `nothing_to_undo` for the
 /// initial commit or a HEAD that last moved by something other than a commit,
 /// `merge_commit` for a merge, `undo_error` carrying git's own message when
-/// the reset fails, and the git error when HEAD will not read.
+/// the reset fails, and the git error when HEAD or its log will not read.
 pub fn undo_commit_inner(
     path: &str,
     expected_head_oid: &str,
@@ -856,7 +856,7 @@ pub fn undo_commit_inner(
                 "Cannot undo a merge commit",
             ));
         }
-        if !made_by_a_commit(repo, &head) {
+        if !made_by_a_commit(repo, &head)? {
             return Err(TrunkError::new(
                 "nothing_to_undo",
                 "HEAD last moved by something other than a commit, so there is nothing to undo",
@@ -911,24 +911,28 @@ fn run_reflogged_reset(
 }
 
 /// Whether `head` was made by a commit since HEAD last moved any other way. Trunk's own
-/// undo and redo are steps through those commits, so the walk passes over them.
-fn made_by_a_commit(repo: &git2::Repository, head: &git2::Commit<'_>) -> bool {
-    let Ok(reflog) = repo.reflog("HEAD") else {
-        return false;
-    };
+/// undo and redo are steps through those commits, and a reset that left HEAD where it was,
+/// as a stash or an unstaging reset is, moved nothing, so the walk passes over them all. A
+/// checkout that stays on the commit still moves HEAD to another branch, so it is not one.
+fn made_by_a_commit(repo: &git2::Repository, head: &git2::Commit<'_>) -> Result<bool, TrunkError> {
+    let reflog = repo.reflog("HEAD")?;
     for entry in reflog.iter() {
-        let message = entry.message().ok().flatten().unwrap_or("");
-        if message.starts_with(UNDO_ACTION) || message.starts_with(REDO_ACTION) {
+        let message = entry.message_bytes().unwrap_or_default();
+        let reset_in_place = entry.id_old() == entry.id_new() && message.starts_with(b"reset: ");
+        if reset_in_place
+            || message.starts_with(UNDO_ACTION.as_bytes())
+            || message.starts_with(REDO_ACTION.as_bytes())
+        {
             continue;
         }
-        if !message.starts_with("commit: ") {
-            return false;
+        if !message.starts_with(b"commit: ") {
+            return Ok(false);
         }
         if entry.id_new() == head.id() {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// Restore the commit an undo took back, refusing if HEAD or the repository has moved.
@@ -1003,8 +1007,8 @@ pub fn redo_commit_inner(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository. An unborn or unreadable HEAD is
-/// not an error: it answers false.
+/// Returns `not_open` when `path` names no open repository, and the git error when HEAD's log
+/// will not read. An unborn or unreadable HEAD is not an error: it answers false.
 pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<bool, TrunkError> {
     let repo = state_map.open(path)?;
     let head = match repo.head() {
@@ -1014,7 +1018,7 @@ pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<b
         },
         Err(_) => return Ok(false),
     };
-    Ok(head.parent_count() == 1 && made_by_a_commit(&repo, &head))
+    Ok(head.parent_count() == 1 && made_by_a_commit(&repo, &head)?)
 }
 
 /// Where HEAD is now, or `None` when it cannot be read as a commit.

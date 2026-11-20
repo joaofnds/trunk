@@ -438,6 +438,85 @@ fn undo_stays_offered_for_the_commit_beneath_an_undone_one() {
     assert!(ctx.check_undo_available().unwrap());
 }
 
+fn terminal_git(ctx: &TestContext, args: &[&std::ffi::OsStr]) {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?} failed in setup: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn undo_stays_offered_once_a_terminal_reset_left_head_where_it_was() {
+    let (ctx, _, _) = build_two_commit_ctx();
+    std::fs::write(ctx.repo_path().join("second.txt"), "edited").unwrap();
+    terminal_git(&ctx, &["add".as_ref(), "second.txt".as_ref()]);
+
+    terminal_git(&ctx, &["reset".as_ref(), "-q".as_ref()]);
+
+    assert!(ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_is_not_offered_once_a_new_branch_was_checked_out_at_head() {
+    let (ctx, _, _) = build_two_commit_ctx();
+
+    terminal_git(
+        &ctx,
+        &[
+            "checkout".as_ref(),
+            "-q".as_ref(),
+            "-b".as_ref(),
+            "feature".as_ref(),
+        ],
+    );
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
+#[test]
+fn undo_reports_a_head_log_it_cannot_read_rather_than_nothing_to_undo() {
+    let (ctx, _, second_oid) = build_two_commit_ctx();
+    let head_log = ctx.repo().path().join("logs/HEAD");
+    std::fs::remove_file(&head_log).unwrap();
+    std::fs::create_dir(&head_log).unwrap();
+
+    let err = ctx.undo_commit().unwrap_err();
+
+    assert!(err.code.starts_with("git_"), "got {err:?}");
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), second_oid);
+}
+
+#[test]
+fn undo_takes_back_a_commit_whose_message_is_not_utf8() {
+    use std::os::unix::ffi::OsStrExt;
+    let (ctx, _, second_oid) = build_two_commit_ctx();
+    std::fs::write(ctx.repo_path().join("third.txt"), "latin").unwrap();
+    terminal_git(&ctx, &["add".as_ref(), "third.txt".as_ref()]);
+    terminal_git(
+        &ctx,
+        &[
+            "-c".as_ref(),
+            "i18n.commitEncoding=ISO-8859-1".as_ref(),
+            "-c".as_ref(),
+            "commit.gpgsign=false".as_ref(),
+            "commit".as_ref(),
+            "-q".as_ref(),
+            "-m".as_ref(),
+            std::ffi::OsStr::from_bytes(b"caf\xe9"),
+        ],
+    );
+
+    ctx.undo_commit().unwrap();
+
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), second_oid);
+}
+
 #[test]
 fn undo_is_offered_again_once_a_redo_restored_the_commit() {
     let (ctx, _, _) = build_two_commit_ctx();

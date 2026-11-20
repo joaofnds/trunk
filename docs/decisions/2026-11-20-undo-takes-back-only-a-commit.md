@@ -14,9 +14,13 @@ HEAD last moved any other way. `made_by_a_commit` in
 `src-tauri/src/commands/commit_actions.rs` reads HEAD's reflog newest first. An
 entry git writes for `git commit` starts with `commit: `. The walk passes over
 Trunk's own undo and redo, and answers true when it meets the `commit: ` entry
-that made HEAD. Any other entry ends it with false: `checkout:`, `pull:`,
-`merge`, `commit (amend):`, `cherry-pick:`, `rebase`, a `reset:` from the
-terminal or from Trunk's Reset.
+that made HEAD. It also passes over a `reset:` that left HEAD on the commit it
+was on, which `git stash` and an unstaging `git reset` write, since HEAD did not
+move. Any other entry ends it with false: `checkout:`, even one that stays on the
+commit, since it moves HEAD to another branch, `pull:`, `merge`,
+`commit (amend):`, `cherry-pick:`, `rebase`, and a `reset:` that moved HEAD, from
+the terminal or from Trunk's Reset. A log git cannot read is an error rather than
+a false, so Undo says why it refused.
 
 Trunk's undo and redo run `git reset` with `GIT_REFLOG_ACTION` set to
 `trunk undo` and `trunk redo`, so their entries read `trunk undo: updating HEAD`
