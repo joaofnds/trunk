@@ -219,9 +219,10 @@ pub fn cherry_pick_abort_inner(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `conflict_state` when the revert
-/// conflicts, and `revert_error` carrying git's own message when `git` will
-/// not run or the revert fails for any other reason.
+/// Returns `not_open` when `path` names no open repository, `staged_changes` when the index
+/// differs from HEAD, `conflict_state` when the revert conflicts, and `revert_error`
+/// carrying git's own message when `git` will not run or the revert fails for any other
+/// reason.
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
@@ -229,6 +230,8 @@ pub fn revert_commit_begin_inner(
 ) -> Result<(crate::state::GraphRead, Option<String>), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let message = state_map.hold_for_git(path, |repo| {
+        refuse_staged_changes(repo)?;
+
         // Stage the revert without committing so the editor can edit the message.
         // git writes the default message (Revert "<subject>" + full 40-char OID) to
         // .git/MERGE_MSG. REVERT_HEAD is set; the wrapper emits repo-changed.
@@ -249,6 +252,23 @@ pub fn revert_commit_begin_inner(
 
     let source = state_map.read_graph(path)?;
     Ok((source, message))
+}
+
+/// git's own revert refuses while anything is staged, because its commit would take
+/// the staged changes too, and Abort would then throw them away. `--no-commit`
+/// skips that check, so it is made here.
+fn refuse_staged_changes(repo: &git2::Repository) -> Result<(), TrunkError> {
+    let head_tree = repo.head()?.peel_to_tree()?;
+    let index = repo.index()?;
+    let staged = repo.diff_tree_to_index(Some(&head_tree), Some(&index), None)?;
+    if staged.deltas().len() == 0 {
+        return Ok(());
+    }
+
+    Err(TrunkError::new(
+        "staged_changes",
+        "Your staged changes would go into the revert commit. Commit or stash them, then revert.",
+    ))
 }
 
 /// Conclude a staged revert by committing it.

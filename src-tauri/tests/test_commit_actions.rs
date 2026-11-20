@@ -338,6 +338,24 @@ fn revert_commit_begin_stages_removal_and_carries_default_message() {
 }
 
 #[test]
+fn revert_commit_begin_refuses_while_changes_are_staged() {
+    let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
+    std::fs::write(ctx.repo_path().join("file.txt"), "staged edit").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+
+    let refusal = ctx
+        .revert_commit_begin(&second_oid)
+        .expect_err("a revert would take the staged edit into its commit");
+
+    assert_eq!(refusal.code, "staged_changes");
+    assert!(
+        !ctx.repo_path().join(".git").join("REVERT_HEAD").exists(),
+        "no revert was started"
+    );
+    assert_eq!(ctx.staged_content("file.txt"), "staged edit");
+}
+
+#[test]
 fn revert_continue_commits_and_clears_revert_head() {
     let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
     ctx.revert_commit_begin(&second_oid)
@@ -572,15 +590,18 @@ mod when_another_writer_runs_meanwhile {
     }
 
     #[test]
-    fn revert_commit_begin_stages_its_revert_beside_the_other_writers_file() {
+    fn revert_commit_begin_refuses_once_the_other_writer_staged_a_file() {
         let (mut ctx, _first_oid, second_oid) = build_two_commit_ctx();
 
-        ctx.act_while_another_writer_stages("a.txt", |ctx| {
-            ctx.revert_commit_begin(&second_oid).map(drop)
-        })
-        .expect("revert_commit_begin failed");
+        let err = ctx
+            .act_while_another_writer_stages("a.txt", |ctx| {
+                ctx.revert_commit_begin(&second_oid).map(drop)
+            })
+            .expect_err("revert_commit_begin ran over a staged file");
 
-        assert_eq!(ctx.paths_staged_over_head(), ["a.txt", "second.txt"]);
+        assert_eq!(err.code, "staged_changes");
+        assert!(!ctx.repo_path().join(".git").join("REVERT_HEAD").exists());
+        assert_eq!(ctx.paths_staged_over_head(), ["a.txt"]);
     }
 
     #[test]
