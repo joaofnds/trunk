@@ -523,6 +523,33 @@ describe("CommitForm", () => {
 			expect(subjectInput().value).toBe("");
 		});
 
+		it("keeps the message typed while the commit ran", async () => {
+			let finishCommit: () => void = () => {};
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "create_commit") {
+					return new Promise<void>((resolve) => {
+						finishCommit = resolve;
+					});
+				}
+				return Promise.resolve(undefined);
+			});
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.input(subjectInput(), { target: { value: "fix: one" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "why one" } });
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await fireEvent.input(subjectInput(), { target: { value: "fix: two" } });
+			finishCommit();
+
+			await waitFor(() =>
+				expect(screen.getByTestId("commit-form-submit")).toHaveTextContent(
+					"Commit",
+				),
+			);
+			expect(subjectInput().value).toBe("fix: two");
+			expect(bodyTextarea().value).toBe("");
+		});
+
 		it("preserves the draft when a commit submit fails", async () => {
 			const onsubjectchange = vi.fn();
 			const onbodychange = vi.fn();

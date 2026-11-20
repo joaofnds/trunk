@@ -77,9 +77,16 @@ function setBody(value: string) {
 	}
 }
 
-function clearDraft() {
+function clearCommittedSubject(subject: string) {
+	if (draftSubject !== subject) return;
+
 	draftSubject = "";
 	onsubjectchange?.("");
+}
+
+function clearCommittedBody(body: string) {
+	if (draftBody !== body) return;
+
 	draftBody = "";
 	onbodychange?.("");
 }
@@ -218,14 +225,16 @@ async function handleSubmit() {
 				message: subject.trim(),
 			});
 			showToast("Stash created", "success");
-			clearDraft();
+			clearCommittedSubject(subject);
+			clearCommittedBody(body);
 		} else {
 			await safeInvoke("create_commit", {
 				path: repoPath,
 				subject: subject.trim(),
 				body: body.trim() || null,
 			});
-			clearDraft();
+			clearCommittedSubject(subject);
+			clearCommittedBody(body);
 		}
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
