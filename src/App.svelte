@@ -25,6 +25,7 @@ import { errorMessage } from "./lib/error-report.js";
 import { invokesSettled, safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
 import { createOwnedTimer } from "./lib/owned-timer.js";
+import { repositoryName } from "./lib/path.js";
 import { perfEnabled, record } from "./lib/perf.js";
 import {
 	createRemoteState,
@@ -1217,8 +1218,7 @@ $effect(() => {
 	let disposed = false;
 	let unlisten: (() => void) | undefined;
 	listen<{ repo: string }>("watch-unavailable", ({ payload }) => {
-		const name =
-			repositoryPathKey(payload.repo)?.split("/").at(-1) || payload.repo;
+		const name = repositoryName(payload.repo);
 		showToast(
 			`Changes made outside Trunk won't show in ${name} until you close it and open it again.`,
 			"error",

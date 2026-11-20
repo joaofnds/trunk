@@ -1,7 +1,8 @@
 <script lang="ts">
 import { tick } from "svelte";
 import { open } from "../lib/dialog.js";
-import { displayPath } from "../lib/path.js";
+import { errorMessage } from "../lib/error-report.js";
+import { displayPath, repositoryName } from "../lib/path.js";
 import { filterRecents } from "../lib/recent-filter.js";
 import {
 	clampHighlightedIdx,
@@ -10,6 +11,7 @@ import {
 } from "../lib/recent-picker-keys.js";
 import { repositoryToOpen } from "../lib/repository-to-open.js";
 import { getRecentRepos, type RecentRepo } from "../lib/store.js";
+import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
 
@@ -110,10 +112,19 @@ async function handleOpenDialog() {
 	const selected = await open({ directory: true, multiple: false });
 	if (typeof selected !== "string") return;
 
-	const repository = await repositoryToOpen(selected);
+	let repository: string | null;
+	try {
+		repository = await repositoryToOpen(selected);
+	} catch (e: unknown) {
+		showToast(
+			`Could not open ${repositoryName(selected)}: ${errorMessage(e, "unknown error")}`,
+			"error",
+		);
+		return;
+	}
 	if (repository === null) return;
 
-	onpick(repository, repository.split("/").at(-1) || repository);
+	onpick(repository, repositoryName(repository));
 }
 
 $effect(() => {

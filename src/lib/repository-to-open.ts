@@ -1,4 +1,5 @@
 import { ask } from "./dialog.js";
+import { forDisplay, MAX_PATH_CHARS } from "./display-text.js";
 import { safeInvoke } from "./invoke.js";
 import { displayPath } from "./path.js";
 
@@ -12,8 +13,12 @@ export async function repositoryToOpen(folder: string): Promise<string | null> {
 	if (enclosing === null) return folder;
 
 	const agreed = await ask(
-		`${await displayPath(folder)} is a folder inside the repository ${await displayPath(enclosing)}. Open that repository?`,
+		`${await shownPath(folder)} is a folder inside the repository ${await shownPath(enclosing)}. Open that repository?`,
 		{ title: "Open Repository", kind: "info", okLabel: "Open Repository" },
 	);
 	return agreed ? enclosing : null;
+}
+
+async function shownPath(path: string): Promise<string> {
+	return forDisplay(await displayPath(path), MAX_PATH_CHARS);
 }

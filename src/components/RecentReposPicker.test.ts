@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { getRecentRepos } from "../lib/store.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import RecentReposPicker from "./RecentReposPicker.svelte";
 import "../__tests__/helpers/tauri-mock";
 
@@ -103,6 +104,26 @@ describe("RecentReposPicker", () => {
 		await vi.waitFor(() => {
 			expect(onpick).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
 		});
+	});
+
+	it("says why a chosen folder could not be opened when looking it up fails", async () => {
+		_resetToasts();
+		vi.mocked(getRecentRepos).mockResolvedValue([]);
+		const dialog = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
+		vi.mocked(invoke).mockRejectedValue({
+			code: "spawn_error",
+			message: "the lookup stopped",
+		});
+		mount();
+
+		await fireEvent.click(await screen.findByText("Open Repository"));
+
+		await vi.waitFor(() =>
+			expect(toasts.items.map((toast) => toast.message)).toEqual([
+				"Could not open src: the lookup stopped",
+			]),
+		);
 	});
 
 	it("closes when the dialog is cancelled", async () => {

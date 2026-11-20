@@ -138,6 +138,20 @@ describe("WelcomeScreen", () => {
 		});
 	});
 
+	it("shows why a chosen folder could not be opened when looking it up fails", async () => {
+		const dialog = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
+		vi.mocked(safeInvoke).mockRejectedValue({
+			code: "spawn_error",
+			message: "the lookup stopped",
+		});
+		render(WelcomeScreen, { props: { onopen: vi.fn() } });
+
+		await fireEvent.click(screen.getByText("Open Repository"));
+
+		expect(await screen.findByText("the lookup stopped")).toBeInTheDocument();
+	});
+
 	it("opens a recent repository once when it is clicked twice", async () => {
 		const onopen = vi.fn(() => new Promise<void>(() => {}));
 		const { row } = await renderWithRecentRepo(onopen);

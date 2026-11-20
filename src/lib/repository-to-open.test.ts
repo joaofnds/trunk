@@ -39,6 +39,18 @@ describe("repositoryToOpen", () => {
 		);
 	});
 
+	it("shows a line break in the folder's path as a mark, so the path cannot add lines to the question", async () => {
+		mockInvoke.mockResolvedValue("/code/trunk");
+		mockAsk.mockResolvedValue(false);
+
+		await repositoryToOpen("/code/trunk/a\u2028b");
+
+		expect(mockAsk).toHaveBeenCalledWith(
+			"/code/trunk/a\ufffdb is a folder inside the repository /code/trunk. Open that repository?",
+			expect.anything(),
+		);
+	});
+
 	it("opens nothing when the user declines the repository above the folder", async () => {
 		mockInvoke.mockResolvedValue("/code/trunk");
 		mockAsk.mockResolvedValue(false);

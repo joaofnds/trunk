@@ -2,7 +2,7 @@
 import X from "@lucide/svelte/icons/x";
 import { open } from "../lib/dialog.js";
 import { errorMessage } from "../lib/error-report.js";
-import { displayPath } from "../lib/path.js";
+import { displayPath, repositoryName } from "../lib/path.js";
 import { repositoryToOpen } from "../lib/repository-to-open.js";
 import {
 	getRecentRepos,
@@ -51,16 +51,23 @@ async function openRepository() {
 	const selected = await open({ directory: true, multiple: false });
 	if (typeof selected !== "string") return;
 
-	const repository = await repositoryToOpen(selected);
-	if (repository !== null) await openPath(repository);
+	await reportingFailure(async () => {
+		const repository = await repositoryToOpen(selected);
+		if (repository !== null)
+			await onopen(repository, repositoryName(repository));
+	});
 }
 
-async function openPath(path: string) {
+function openPath(path: string) {
+	return reportingFailure(() => onopen(path, repositoryName(path)));
+}
+
+async function reportingFailure(opening: () => Promise<void>) {
 	if (loading) return;
 	error = null;
 	loading = true;
 	try {
-		await onopen(path, path.split("/").at(-1) || path);
+		await opening();
 	} catch (e: unknown) {
 		error = errorMessage(e, "Failed to open repository");
 	} finally {
