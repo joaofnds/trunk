@@ -42,6 +42,15 @@ describe("ToastCard", () => {
 		);
 	});
 
+	it("scrolls a message taller than a dropdown list may grow", () => {
+		render(ToastCard, { props: { children: message } });
+
+		expect(screen.getByRole("button")).toHaveClass(
+			"max-h-dropdown-max",
+			"overflow-y-auto",
+		);
+	});
+
 	it("paints as news unless a tone is named", () => {
 		render(ToastCard, { props: { children: message } });
 
