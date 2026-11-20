@@ -28,10 +28,25 @@ function describeFailure(
 		case "no_upstream":
 			return "This branch has no upstream on the remote";
 		case "push_declined":
-			return "The remote refused this push — a branch protection rule or a server-side hook rejected it";
+			return [
+				"The remote refused this push — a branch protection rule or a server-side hook rejected it",
+				...whatTheServerSaid(error.message),
+			].join("\n");
 		case "rebase_conflict":
 			return "Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase";
 		default:
 			return error.message;
 	}
+}
+
+// The server's reason for a refusal, a required review or a protected branch, is
+// on the lines git prefixes with "remote:". The rest is git's own summary of the
+// refusal, which the sentence above already says.
+const SERVER_LINE = /^\s*remote:\s*(\S.*?)\s*$/;
+
+function whatTheServerSaid(stderr: string): string[] {
+	return stderr
+		.split("\n")
+		.map((line) => SERVER_LINE.exec(line)?.[1])
+		.filter((said) => said !== undefined);
 }

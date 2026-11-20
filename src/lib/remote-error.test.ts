@@ -46,6 +46,20 @@ describe("remoteErrorMessage", () => {
 		expect(message).not.toContain("hint:");
 	});
 
+	// git 2.56's output for a push a pre-receive hook declined, as it reaches a
+	// pipe: each "remote:" line padded with the spaces that clear a terminal
+	// line, and a blank one where the hook printed an empty line.
+	it("follows a declined push with the reason the server gave", () => {
+		const declined = err(
+			"push_declined",
+			"remote: error: pushing to a protected branch is not allowed        \nremote:         \nTo ../remote.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to '../remote.git'",
+		);
+
+		expect(remoteErrorMessage(declined, "push")).toBe(
+			"The remote refused this push — a branch protection rule or a server-side hook rejected it\nerror: pushing to a protected branch is not allowed",
+		);
+	});
+
 	it("passes an unrecognised failure through unchanged", () => {
 		expect(remoteErrorMessage(err("remote_error", "ssh: no route"))).toBe(
 			"ssh: no route",
