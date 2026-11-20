@@ -245,6 +245,54 @@ fn cherry_pick_of_a_change_head_already_has_ends_the_pick_and_says_so() {
     assert_eq!(ctx.resolve_ref("HEAD").unwrap(), head_before);
 }
 
+#[test]
+fn cherry_pick_refused_by_a_conflicted_merge_says_why_and_leaves_the_merge() {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "base\n")
+        .with_commit("Base")
+        .with_branch("side")
+        .checkout("side")
+        .with_file("f.txt", "side\n")
+        .with_commit("Side change")
+        .with_file("g.txt", "g\n")
+        .with_commit("Add g")
+        .checkout("main")
+        .with_file("f.txt", "main\n")
+        .with_commit("Main change")
+        .with_conflict("side")
+        .build();
+    let add_g = ctx.resolve_ref("side").unwrap();
+
+    let err = ctx.cherry_pick(&add_g).unwrap_err();
+
+    assert_eq!(err.code, "conflict_in_progress");
+    assert_eq!(ctx.repo().state(), git2::RepositoryState::Merge);
+}
+
+#[test]
+fn revert_refused_by_a_conflicted_merge_says_why_and_leaves_the_merge() {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "base\n")
+        .with_commit("Base")
+        .with_file("g.txt", "g\n")
+        .with_commit("Add g")
+        .with_branch("side")
+        .checkout("side")
+        .with_file("f.txt", "side\n")
+        .with_commit("Side change")
+        .checkout("main")
+        .with_file("f.txt", "main\n")
+        .with_commit("Main change")
+        .with_conflict("side")
+        .build();
+    let add_g = ctx.resolve_ref("HEAD~1").unwrap();
+
+    let err = ctx.revert_commit_begin(&add_g).unwrap_err();
+
+    assert_eq!(err.code, "conflict_in_progress");
+    assert_eq!(ctx.repo().state(), git2::RepositoryState::Merge);
+}
+
 // --- undo_commit tests ---
 
 #[test]

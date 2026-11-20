@@ -137,17 +137,20 @@ fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `conflict_state` when the pick
-/// conflicts, `cherry_pick_empty` when HEAD already has the commit's changes (the pick is
-/// then ended, since there is nothing left to commit), and `cherry_pick_error` carrying
-/// git's own message when `git` will not run or the pick fails for any other reason.
+/// Returns `not_open` when `path` names no open repository, `conflict_in_progress` when
+/// files are already conflicted, `conflict_state` when the pick conflicts,
+/// `cherry_pick_empty` when HEAD already has the commit's changes (the pick is then ended,
+/// since there is nothing left to commit), and `cherry_pick_error` carrying git's own
+/// message when `git` will not run or the pick fails for any other reason.
 pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    state_map.hold_for_git(path, |_| {
+    state_map.hold_for_git(path, |repo| {
+        refuse_conflicts(repo, "cherry-pick")?;
+
         let output = UserGit::in_dir(path_buf)
             .args(["cherry-pick", "--", oid])
             .output()
@@ -212,7 +215,8 @@ pub fn cherry_pick_abort_inner(
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `staged_changes` when the index
+/// Returns `not_open` when `path` names no open repository, `conflict_in_progress` when
+/// files are already conflicted, `staged_changes` when the index
 /// differs from HEAD, `conflict_state` when the revert conflicts, and `revert_error`
 /// carrying git's own message when `git` will not run or the revert fails for any other
 /// reason.
@@ -223,6 +227,7 @@ pub fn revert_commit_begin_inner(
 ) -> Result<(crate::state::GraphRead, Option<String>), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let message = state_map.hold_for_git(path, |repo| {
+        refuse_conflicts(repo, "revert")?;
         refuse_staged_changes(repo)?;
 
         // Stage the revert without committing so the editor can edit the message.
@@ -245,6 +250,19 @@ pub fn revert_commit_begin_inner(
 
     let source = state_map.read_graph(path)?;
     Ok((source, message))
+}
+
+/// A pick or revert cannot start over conflicted files, and git's own refusal names
+/// them in its plumbing terms, so the refusal is made here in the user's.
+fn refuse_conflicts(repo: &git2::Repository, action: &str) -> Result<(), TrunkError> {
+    if !repo.index()?.has_conflicts() {
+        return Ok(());
+    }
+
+    Err(TrunkError::new(
+        "conflict_in_progress",
+        format!("Resolve the conflicted files before you {action}."),
+    ))
 }
 
 /// git's own revert refuses while anything is staged, because its commit would take
