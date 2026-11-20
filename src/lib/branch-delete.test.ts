@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { deletePrompt } from "./branch-delete.js";
+import { ask, message } from "@tauri-apps/plugin-dialog";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { deleteBranch, deletePrompt } from "./branch-delete.js";
+import { safeInvoke } from "./invoke.js";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+	ask: vi.fn(),
+	message: vi.fn(),
+}));
+
+vi.mock("./invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("./invoke.js")>()),
+	safeInvoke: vi.fn(),
+}));
 
 const PATH = "/work/wt";
 
@@ -115,6 +127,34 @@ describe("deletePrompt", () => {
 			expect(
 				deletePrompt("topic", { kind: "refuse", paths: [...paths], reason }),
 			).toEqual({ kind: "refuse", message });
+		});
+	});
+});
+
+describe("deleteBranch", () => {
+	beforeEach(() => {
+		vi.mocked(ask).mockReset();
+		vi.mocked(message).mockReset();
+		vi.mocked(safeInvoke).mockReset();
+	});
+
+	describe("when Trunk refuses to remove the worktree", () => {
+		it("rejects with the reason and asks nothing", async () => {
+			vi.mocked(safeInvoke).mockResolvedValue({
+				kind: "refuse",
+				paths: [PATH],
+				reason: "rebasing",
+			});
+
+			const deleting = deleteBranch("/repo", "topic");
+
+			await expect(deleting).rejects.toEqual({
+				code: "delete_refused",
+				message:
+					"Cannot delete 'topic' while the worktree at /work/wt is rebasing it. Finish or abort the rebase there, then delete again.",
+			});
+			expect(ask).not.toHaveBeenCalled();
+			expect(message).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -87,6 +87,7 @@ import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
 import { announcePan, type Pan } from "../lib/scrollbar-activity.js";
+import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -1277,37 +1278,6 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 	await menu.popup();
 }
 
-// Stash context menu actions
-
-async function handleStashPop(oid: string) {
-	try {
-		await safeInvoke("stash_pop", { path: repoPath, oid });
-	} catch (e) {
-		reportErrorToast(e, "Failed to pop stash");
-	}
-}
-
-async function handleStashApply(oid: string) {
-	try {
-		await safeInvoke("stash_apply", { path: repoPath, oid });
-	} catch (e) {
-		reportErrorToast(e, "Failed to apply stash");
-	}
-}
-
-async function handleStashDrop(commit: GraphCommit) {
-	const confirmed = await ask(
-		`Drop stash "${commit.summary}"? This cannot be undone.`,
-		{ title: "Confirm Drop", kind: "warning" },
-	);
-	if (!confirmed) return;
-	try {
-		await safeInvoke("stash_drop", { path: repoPath, oid: commit.oid });
-	} catch (e) {
-		reportErrorToast(e, "Failed to drop stash");
-	}
-}
-
 async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
 	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
@@ -1317,19 +1287,22 @@ async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
 			await MenuItem.new({
 				text: "Pop",
 				action: () => {
-					handleStashPop(commit.oid).catch(() => {});
+					void popStash(repoPath, commit.oid);
 				},
 			}),
 			await MenuItem.new({
 				text: "Apply",
 				action: () => {
-					handleStashApply(commit.oid).catch(() => {});
+					void applyStash(repoPath, commit.oid);
 				},
 			}),
 			await MenuItem.new({
 				text: "Drop",
 				action: () => {
-					handleStashDrop(commit).catch(() => {});
+					void dropStash(repoPath, {
+						oid: commit.oid,
+						message: commit.summary,
+					});
 				},
 			}),
 		],
@@ -1369,7 +1342,7 @@ function handleRenameBranch(branchName: string) {
 		],
 		onsubmit: async (values) => {
 			closeDialog();
-			await renameBranch(repoPath, branchName, values.name);
+			await renameBranch(repoPath, { from: branchName, to: values.name });
 		},
 	};
 }
@@ -1542,7 +1515,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						deleteRemoteBranch(repoPath, ref.shortName).catch(() => {});
+						void deleteRemoteBranch(repoPath, ref.shortName);
 					},
 				}),
 			],
@@ -1554,7 +1527,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						deleteTag(repoPath, ref.shortName).catch(() => {});
+						void deleteTag(repoPath, ref.shortName);
 					},
 				}),
 			],

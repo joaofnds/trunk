@@ -318,8 +318,8 @@ drive until 'window.__trunkDrive.list("button").includes("Commit") || null'
 drive context button feature --in complementary
 drive menu         # the context menu's items and whether each is enabled
 drive choose Delete
-drive alert        # {"buttons":["OK"],"texts":["Cannot delete 'feature' while the worktree at … is rebasing it. …","Delete Branch"]}
-drive press OK
+drive until 'document.querySelector("[role=status]")?.textContent?.trim() || null'
+                   # "Cannot delete 'feature' while the worktree at … is rebasing it. …"
 git -C "$REPO" branch --list   # feature is still there
 drive quit
 rm -rf "$TRUNK_DRIVE_DIR" "$(dirname "$REPO")"

@@ -50,6 +50,26 @@ describe("deleteRemoteBranch", () => {
 		expect(shown()).toEqual([]);
 	});
 
+	it("asks with the name flattened, so it cannot add lines to the question", async () => {
+		await deleteRemoteBranch("/repo", "origin/a\u2028b");
+
+		expect(mockAsk.mock.calls[0]?.[0]).toBe(
+			"Delete remote branch 'origin/a\uFFFDb'? This will remove it from the remote.",
+		);
+	});
+
+	it("reports in an error toast when the question cannot be asked", async () => {
+		mockAsk.mockRejectedValue(new Error("dialog plugin unavailable"));
+
+		const changed = await deleteRemoteBranch("/repo", "origin/topic");
+
+		expect(changed).toBe(false);
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(shown()).toEqual([
+			{ kind: "error", message: "dialog plugin unavailable" },
+		]);
+	});
+
 	it("reports what git said in an error toast when the delete fails", async () => {
 		mockInvoke.mockRejectedValue({
 			code: "remote_error",
@@ -84,6 +104,27 @@ describe("deleteTag", () => {
 
 		expect(changed).toBe(false);
 		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(shown()).toEqual([]);
+	});
+
+	it("asks with the name flattened, so it cannot add lines to the question", async () => {
+		await deleteTag("/repo", "v1\u202E0");
+
+		expect(mockAsk.mock.calls[0]?.[0]).toBe(
+			"Delete tag 'v1\uFFFD0'? This cannot be undone.",
+		);
+	});
+
+	it("reports in an error toast when the question cannot be asked", async () => {
+		mockAsk.mockRejectedValue(new Error("dialog plugin unavailable"));
+
+		const changed = await deleteTag("/repo", "v1.0");
+
+		expect(changed).toBe(false);
+		expect(mockInvoke).not.toHaveBeenCalled();
+		expect(shown()).toEqual([
+			{ kind: "error", message: "dialog plugin unavailable" },
+		]);
 	});
 
 	it("reports what git said in an error toast when the delete fails", async () => {
@@ -101,7 +142,10 @@ describe("deleteTag", () => {
 
 describe("renameBranch", () => {
 	it("renames the branch to the trimmed name and says so", async () => {
-		const changed = await renameBranch("/repo", "topic", "  feature  ");
+		const changed = await renameBranch("/repo", {
+			from: "topic",
+			to: "  feature  ",
+		});
 
 		expect(changed).toBe(true);
 		expect(mockInvoke).toHaveBeenCalledWith("rename_branch", {
@@ -114,10 +158,10 @@ describe("renameBranch", () => {
 		]);
 	});
 
-	it.each(["", "   ", "topic"])(
+	it.each(["", "   ", "topic", "  topic  "])(
 		"changes nothing when the name typed is %j",
 		async (typed) => {
-			const changed = await renameBranch("/repo", "topic", typed);
+			const changed = await renameBranch("/repo", { from: "topic", to: typed });
 
 			expect(changed).toBe(false);
 			expect(mockInvoke).not.toHaveBeenCalled();
@@ -130,7 +174,10 @@ describe("renameBranch", () => {
 			message: "a branch named 'feature' already exists",
 		});
 
-		const changed = await renameBranch("/repo", "topic", "feature");
+		const changed = await renameBranch("/repo", {
+			from: "topic",
+			to: "feature",
+		});
 
 		expect(changed).toBe(false);
 		expect(shown()).toEqual([

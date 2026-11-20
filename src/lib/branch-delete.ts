@@ -1,10 +1,10 @@
-import { ask, message } from "./dialog.js";
+import { ask } from "./dialog.js";
 import {
 	forDisplay,
 	MAX_MESSAGE_CHARS,
 	MAX_PATH_CHARS,
 } from "./display-text.js";
-import { isTrunkError, safeInvoke } from "./invoke.js";
+import { isTrunkError, safeInvoke, type TrunkError } from "./invoke.js";
 import type { BranchHold, RemovalRisk, WorktreeRemoval } from "./types.js";
 
 export type DeletePrompt =
@@ -26,7 +26,8 @@ const ASK_AGAIN = new Set(["worktree_at_risk", "worktree_changed"]);
 /**
  * Asks before deleting `branchName` and deletes it once the user agrees,
  * removing the linked worktree that holds it when they agreed to that too.
- * Resolves false when the user declined or Trunk refused.
+ * Resolves false when the user declined, and rejects with the reason when
+ * Trunk refuses or the delete fails.
  */
 export async function deleteBranch(
 	repoPath: string,
@@ -51,8 +52,11 @@ async function askThenDelete(
 	const prompt = deletePrompt(branchName, hold);
 
 	if (prompt.kind === "refuse") {
-		await message(prompt.message, { title: TITLE, kind: "warning" });
-		return false;
+		const refusal: TrunkError = {
+			code: "delete_refused",
+			message: prompt.message,
+		};
+		throw refusal;
 	}
 
 	const confirmed = await ask(

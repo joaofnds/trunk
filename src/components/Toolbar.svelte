@@ -22,6 +22,7 @@ import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { getScheduler } from "../lib/scheduler.js";
+import { popStash } from "../lib/stash-actions.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -258,13 +259,12 @@ async function handlePop() {
 		const stashes = await safeInvoke<StashEntry[]>("list_stashes", { path });
 		const latest = stashes[0];
 		if (!latest) {
-			showToast("No stash to apply", "error");
+			showToast("No stash to pop", "error");
 			return;
 		}
-		await safeInvoke("stash_pop", { path, oid: latest.oid });
-		showToast("Stash applied", "success");
+		await popStash(path, latest.oid);
 	} catch (e) {
-		reportErrorToast(e, "Failed to apply stash");
+		reportErrorToast(e, "Failed to read the stashes");
 	} finally {
 		poppingIn.delete(path);
 	}

@@ -334,12 +334,11 @@ describe("branch mutation", () => {
 
 				const refusal = await waitFor(
 					"the delete refusal",
-					() => app.dialog.shown.at(0) ?? null,
+					() => app.toasts().at(0) ?? null,
 				);
-				expect(app.dialog.questions).toEqual([]);
-				await askedAgain(app);
+				await app.settled();
 				expect(refusal).toContain("does not point back at this repository");
-				expect(app.toasts()).toEqual([]);
+				expect(app.dialog.shown).toEqual([]);
 				expect(app.branches.lists("wt-branch")).toBe(true);
 				expect(existsSync(join(askedPath(refusal), "c1.txt"))).toBe(true);
 			});
@@ -357,10 +356,10 @@ describe("branch mutation", () => {
 
 				const refusal = await waitFor(
 					"the delete refusal",
-					() => app.dialog.shown.at(0) ?? null,
+					() => app.toasts().at(0) ?? null,
 				);
-				expect(app.dialog.questions).toEqual([]);
-				await askedAgain(app);
+				await app.settled();
+				expect(app.dialog.shown).toEqual([]);
 				expect(refusal).toBe(
 					`Cannot delete 'wt-branch' while the worktree at ${worktree} is rebasing it. Finish or abort the rebase there, then delete again.`,
 				);

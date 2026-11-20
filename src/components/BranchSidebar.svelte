@@ -15,8 +15,7 @@ import {
 	reportCheckoutFailure,
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
-import { ask } from "../lib/dialog.js";
-import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	deleteRemoteBranch,
@@ -38,6 +37,7 @@ import {
 	visibilityVerb,
 } from "../lib/ref-visibility.js";
 import { getScheduler } from "../lib/scheduler.js";
+import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -123,11 +123,8 @@ let stashesExpanded = $state(false);
 let showStashForm = $state(false);
 let stashName = $state("");
 let stashSaving = $state(false);
-let stashCreateError = $state<string | null>(null);
-let stashEntryErrors = $state<Record<string, string | null>>({});
 let showCreateInput = $state(false);
 let newBranchName = $state("");
-let createError = $state<string | null>(null);
 let visibility = $state<RefVisibility>(EVERYTHING_VISIBLE);
 
 /** The full ref name the hidden set is keyed by, for a row the sidebar lists by short name. */
@@ -390,7 +387,7 @@ async function handleCheckoutRemoteBranch(fullName: string) {
 async function handleCreateBranch() {
 	const trimmed = newBranchName.trim();
 	if (!trimmed) return;
-	createError = null;
+
 	try {
 		await safeInvoke<void>("create_branch", { path: repoPath, name: trimmed });
 		showCreateInput = false;
@@ -403,7 +400,7 @@ async function handleCreateBranch() {
 			// Nothing was written, so the name stays in the input for a retry.
 			showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 		} else {
-			createError = errorMessage(e, "Failed to create branch");
+			reportErrorToast(e, "Failed to create branch");
 		}
 	}
 }
@@ -415,7 +412,6 @@ function autoFocus(node: HTMLElement) {
 
 async function handleStashSave() {
 	stashSaving = true;
-	stashCreateError = null;
 	try {
 		await safeInvoke("stash_save", {
 			path: repoPath,
@@ -425,7 +421,7 @@ async function handleStashSave() {
 		stashName = "";
 		await loadRefs(repoPath);
 	} catch (e) {
-		stashCreateError = errorMessage(e, "Failed to create stash");
+		reportErrorToast(e, "Failed to create stash");
 	} finally {
 		stashSaving = false;
 	}
@@ -460,47 +456,19 @@ async function showStashEntryMenu(e: MouseEvent, stash: StashEntry) {
 }
 
 async function handleStashPop(oid: string) {
-	stashEntryErrors = { ...stashEntryErrors, [oid]: null };
-	try {
-		await safeInvoke("stash_pop", { path: repoPath, oid });
-		await loadRefs(repoPath);
-	} catch (e) {
-		stashEntryErrors = {
-			...stashEntryErrors,
-			[oid]: errorMessage(e, "Failed to pop stash"),
-		};
-	}
+	if (await popStash(repoPath, oid)) await loadRefs(repoPath);
 }
 
 async function handleStashApply(oid: string) {
-	stashEntryErrors = { ...stashEntryErrors, [oid]: null };
-	try {
-		await safeInvoke("stash_apply", { path: repoPath, oid });
-		await loadRefs(repoPath);
-	} catch (e) {
-		stashEntryErrors = {
-			...stashEntryErrors,
-			[oid]: errorMessage(e, "Failed to apply stash"),
-		};
-	}
+	if (await applyStash(repoPath, oid)) await loadRefs(repoPath);
 }
 
 async function handleStashDrop(stash: StashEntry) {
-	const confirmed = await ask(
-		`Drop ${stash.short_name} (${stash.name})? This cannot be undone.`,
-		{ title: "Confirm Drop", kind: "warning" },
-	);
-	if (!confirmed) return;
-	stashEntryErrors = { ...stashEntryErrors, [stash.oid]: null };
-	try {
-		await safeInvoke("stash_drop", { path: repoPath, oid: stash.oid });
-		await loadRefs(repoPath);
-	} catch (e) {
-		stashEntryErrors = {
-			...stashEntryErrors,
-			[stash.oid]: errorMessage(e, "Failed to drop stash"),
-		};
-	}
+	const dropped = await dropStash(repoPath, {
+		oid: stash.oid,
+		message: stash.name,
+	});
+	if (dropped) await loadRefs(repoPath);
 }
 
 // --- Branch/Tag context menu support ---
@@ -550,7 +518,7 @@ function handleRenameBranch(branchName: string) {
 		],
 		onsubmit: async (values) => {
 			closeDialog();
-			if (await renameBranch(repoPath, branchName, values.name)) {
+			if (await renameBranch(repoPath, { from: branchName, to: values.name })) {
 				await refreshAfterAction();
 			}
 		},
@@ -767,15 +735,9 @@ registerUpdateBlocker(() =>
 								if (e.key === "Escape") {
 									showCreateInput = false;
 									newBranchName = "";
-									createError = null;
 								}
 							}}
 						>
-						{#if createError}
-							<div class="error-text text-small leading-normal mt-1"
-								>{createError}</div
-							>
-						{/if}
 					</div>
 				{/if}
 				{#each filteredLocal as branch (branch.name)}
@@ -935,7 +897,6 @@ registerUpdateBlocker(() =>
 			createLabel="Create new stash"
 			oncreate={() => {
 				showStashForm = !showStashForm;
-				stashCreateError = null;
 				stashName = "";
 				stashesExpanded = true;
 			}}
@@ -960,9 +921,6 @@ registerUpdateBlocker(() =>
 						{stashSaving ? "Stashing…" : "Stash"}
 					</Button>
 				</div>
-				{#if stashCreateError}
-					<p class="stash-error">{stashCreateError}</p>
-				{/if}
 			{/if}
 
 			<!-- Stash list entries -->
@@ -992,11 +950,6 @@ registerUpdateBlocker(() =>
 					<span class="stash-index">{stash.short_name}</span>
 					<span class="stash-message" title={stash.name}>{stash.name}</span>
 				</Row>
-				{#if stashEntryErrors[stash.oid]}
-					<p class="stash-error stash-entry-error"
-						>{stashEntryErrors[stash.oid]}</p
-					>
-				{/if}
 			{/each}
 		</BranchSection>
 	</div>
@@ -1041,20 +994,6 @@ registerUpdateBlocker(() =>
 	color: var(--color-text-muted);
 }
 
-.stash-error {
-	font-size: var(--text-small);
-	color: var(--color-danger);
-	padding: var(--space-1) var(--space-3) var(--space-1);
-	margin: 0;
-}
-
-.stash-entry-error {
-	padding-left: calc(var(--space-4) + var(--space-2));
-}
-
-.error-text {
-	color: var(--color-danger);
-}
 .create-input-ring {
 	box-shadow: 0 0 0 3px
 		color-mix(in oklch, var(--color-accent) 18%, transparent);

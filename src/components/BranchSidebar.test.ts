@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -1198,6 +1199,10 @@ describe("BranchSidebar ref visibility", () => {
 });
 
 describe("BranchSidebar stash creation", () => {
+	beforeEach(() => {
+		_resetToasts();
+	});
+
 	// TRUNK-231: the backend refuses with nothing staged and names staging as the next
 	// step. The form used to overwrite that with its own "working tree is clean", which
 	// is wrong now that a tree full of unstaged changes still stashes nothing.
@@ -1218,9 +1223,13 @@ describe("BranchSidebar stash creation", () => {
 		await fireEvent.click(await screen.findByLabelText("Create new stash"));
 		await fireEvent.click(await screen.findByText("Stash"));
 
-		expect(
-			await screen.findByText("Nothing to stash — stage changes first."),
-		).toBeInTheDocument();
+		await waitFor(() =>
+			expect(
+				toasts.items.map(({ message, kind }) => ({ message, kind })),
+			).toEqual([
+				{ message: "Nothing to stash — stage changes first.", kind: "error" },
+			]),
+		);
 	});
 
 	it("draws Stash as the small primary action", async () => {
@@ -1449,5 +1458,117 @@ describe("BranchSidebar checking out or creating a branch", () => {
 				{ message: CHECKOUT_CONFLICT_MESSAGE, kind: "error" },
 			]);
 		});
+	});
+});
+
+// The sidebar runs the same stash and ref actions as the graph, and reads the refs
+// again once one has changed them, so the list shows what is in the repository.
+describe("BranchSidebar stash and tag actions", () => {
+	let stashes: ReturnType<typeof mockListRefs>["stashes"];
+	let tags: ReturnType<typeof mockListRefs>["tags"];
+	let failing: { cmd: string; message: string } | null;
+
+	function shown() {
+		return toasts.items.map(({ message, kind }) => ({ message, kind }));
+	}
+
+	async function choose(item: string, onRow: string) {
+		menuActions.clear();
+		await fireEvent.contextMenu(await screen.findByLabelText(onRow));
+		await waitFor(() => expect(menuActions.has(item)).toBe(true));
+		await getMenuAction(item)();
+	}
+
+	beforeEach(() => {
+		_resetToasts();
+		vi.mocked(ask).mockResolvedValue(true);
+		stashes = [
+			{
+				index: 0,
+				name: "On main: wip",
+				short_name: "stash@{0}",
+				oid: "stash-0",
+				parent_oid: null,
+			},
+		];
+		tags = [
+			{
+				name: "refs/tags/v1.0",
+				short_name: "v1.0",
+				ref_type: "tag",
+				is_head: false,
+				color_index: 0,
+			},
+		];
+		failing = null;
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (failing?.cmd === cmd)
+				return Promise.reject(
+					JSON.stringify({ code: "git_error", message: failing.message }),
+				);
+			const { oid, tagName } = (args ?? {}) as {
+				oid?: string;
+				tagName?: string;
+			};
+			if (cmd === "list_refs")
+				return Promise.resolve(mockListRefs({ stashes, tags }));
+			if (cmd === "stash_pop" || cmd === "stash_drop")
+				stashes = stashes.filter((stash) => stash.oid !== oid);
+			if (cmd === "delete_tag")
+				tags = tags.filter((tag) => tag.short_name !== tagName);
+			return Promise.resolve(undefined);
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+	});
+
+	it("takes a popped stash off the list", async () => {
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+
+		await choose("Pop", "Hide stash@{0}");
+
+		await waitFor(() =>
+			expect(screen.queryByText("stash@{0}")).not.toBeInTheDocument(),
+		);
+		expect(shown()).toEqual([{ message: "Stash popped", kind: "success" }]);
+	});
+
+	it("takes a dropped stash off the list", async () => {
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+
+		await choose("Drop", "Hide stash@{0}");
+
+		await waitFor(() =>
+			expect(screen.queryByText("stash@{0}")).not.toBeInTheDocument(),
+		);
+		expect(vi.mocked(ask)).toHaveBeenCalledWith(
+			'Drop stash "On main: wip"? This cannot be undone.',
+			expect.anything(),
+		);
+	});
+
+	it("reports a failed pop in a toast and keeps the stash listed", async () => {
+		failing = { cmd: "stash_pop", message: "The stash conflicts." };
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+
+		await choose("Pop", "Hide stash@{0}");
+
+		await waitFor(() =>
+			expect(shown()).toEqual([
+				{ message: "The stash conflicts.", kind: "error" },
+			]),
+		);
+		expect(screen.getByText("stash@{0}")).toBeInTheDocument();
+	});
+
+	it("takes a deleted tag off the list", async () => {
+		await fireEvent.click(await screen.findByText("Tags (1)"));
+
+		await choose("Delete", "Hide v1.0");
+
+		await waitFor(() =>
+			expect(screen.queryByText("Tags (1)")).not.toBeInTheDocument(),
+		);
+		expect(shown()).toEqual([{ message: "Deleted tag v1.0", kind: "success" }]);
 	});
 });

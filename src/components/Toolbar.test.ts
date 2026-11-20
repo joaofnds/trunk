@@ -10,7 +10,7 @@ import {
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
-import { showToast } from "../lib/toast.svelte.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import {
 	createUndoRedoState,
 	type UndoEntry,
@@ -49,14 +49,13 @@ vi.mock("../lib/invoke.js", async (importActual) => ({
 	safeInvoke: vi.fn().mockResolvedValue(false),
 }));
 
-// Mock toast module
-vi.mock("../lib/toast.svelte.js", () => ({
-	showToast: vi.fn(),
-}));
+function toasted(): { message: string; kind: string }[] {
+	return toasts.items.map(({ message, kind }) => ({ message, kind }));
+}
 
 beforeEach(() => {
 	vi.mocked(safeInvoke).mockReset();
-	vi.mocked(showToast).mockReset();
+	_resetToasts();
 	vi.mocked(emit).mockReset();
 	vi.mocked(listen)
 		.mockReset()
@@ -356,7 +355,7 @@ describe("Toolbar", () => {
 	/** Render a Toolbar holding one redo entry whose `redo_commit` fails with
 	 *  `error`, click Redo, and hand back the store. */
 	async function redoFailingWith(error: { code: string; message: string }) {
-		vi.mocked(showToast).mockClear();
+		_resetToasts();
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
 			if (cmd === "redo_commit") throw error;
 			return cmd === "head_oid" ? "abc123" : false;
@@ -383,7 +382,10 @@ describe("Toolbar", () => {
 		});
 		await fireEvent.click(redoBtn);
 		await waitFor(() =>
-			expect(showToast).toHaveBeenCalledWith(error.message, "error"),
+			expect(toasted()).toContainEqual({
+				message: error.message,
+				kind: "error",
+			}),
 		);
 		return undoRedo;
 	}
@@ -681,7 +683,6 @@ describe("Toolbar", () => {
 
 describe("Toolbar remote failure feedback", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
-	const mockToast = vi.mocked(showToast);
 
 	it("records a failed push on remoteState.error without an auto-dismissing toast", async () => {
 		mockInvoke.mockImplementation((cmd: string) =>
@@ -708,7 +709,7 @@ describe("Toolbar remote failure feedback", () => {
 				message: "rejected",
 			}),
 		);
-		expect(mockToast).not.toHaveBeenCalled();
+		expect(toasted()).toEqual([]);
 	});
 
 	it("still shows a success toast on a successful push", async () => {
@@ -727,7 +728,10 @@ describe("Toolbar remote failure feedback", () => {
 		await fireEvent.click(screen.getByRole("button", { name: "Push" }));
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("Pushed successfully", "success"),
+			expect(toasted()).toContainEqual({
+				message: "Pushed successfully",
+				kind: "success",
+			}),
 		);
 		expect(remoteState.error).toBeNull();
 	});
@@ -735,7 +739,6 @@ describe("Toolbar remote failure feedback", () => {
 
 describe("Toolbar stash", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
-	const mockToast = vi.mocked(showToast);
 
 	// TRUNK-231: with nothing staged the backend names staging as the next step. A bare
 	// "Failed to create stash" tells the user nothing they can act on.
@@ -761,10 +764,10 @@ describe("Toolbar stash", () => {
 		await fireEvent.click(screen.getByRole("button", { name: "Stash" }));
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith(
-				"Nothing to stash — stage changes first.",
-				"error",
-			),
+			expect(toasted()).toContainEqual({
+				message: "Nothing to stash — stage changes first.",
+				kind: "error",
+			}),
 		);
 	});
 
@@ -818,7 +821,10 @@ describe("Toolbar stash", () => {
 		const pop = screen.getByRole("button", { name: "Pop" });
 		await fireEvent.click(pop);
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("Stash applied", "success"),
+			expect(toasted()).toContainEqual({
+				message: "Stash popped",
+				kind: "success",
+			}),
 		);
 
 		await fireEvent.click(pop);
@@ -849,17 +855,16 @@ describe("Toolbar stash", () => {
 		await fireEvent.click(screen.getByRole("button", { name: "Pop" }));
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith(
-				"The stash conflicts with your changes.",
-				"error",
-			),
+			expect(toasted()).toContainEqual({
+				message: "The stash conflicts with your changes.",
+				kind: "error",
+			}),
 		);
 	});
 });
 
 describe("Toolbar undo", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
-	const mockToast = vi.mocked(showToast);
 
 	let view: ReturnType<typeof render<typeof Toolbar>>;
 	let undoRedo: ReturnType<typeof makeUndoRedo>;
@@ -956,7 +961,7 @@ describe("Toolbar undo", () => {
 		await waitFor(() => expect(undo).toBeEnabled());
 		await fireEvent.click(undo);
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("not yet", "error"),
+			expect(toasted()).toContainEqual({ message: "not yet", kind: "error" }),
 		);
 
 		await fireEvent.click(undo);
@@ -1004,7 +1009,10 @@ describe("Toolbar undo", () => {
 		await fireEvent.click(undo);
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("HEAD has no parent", "error"),
+			expect(toasted()).toContainEqual({
+				message: "HEAD has no parent",
+				kind: "error",
+			}),
 		);
 	});
 });
@@ -1357,7 +1365,6 @@ describe("Toolbar undo and redo shortcuts", () => {
 
 describe("Toolbar branch creation", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
-	const mockToast = vi.mocked(showToast);
 
 	async function createBranch(name: string, answer: Promise<unknown>) {
 		mockInvoke.mockImplementation((cmd: string) =>
@@ -1383,7 +1390,10 @@ describe("Toolbar branch creation", () => {
 		await createBranch("feature", Promise.resolve(undefined));
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("Checked out feature", "success"),
+			expect(toasted()).toContainEqual({
+				message: "Checked out feature",
+				kind: "success",
+			}),
 		);
 	});
 
@@ -1395,10 +1405,10 @@ describe("Toolbar branch creation", () => {
 		);
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith(
-				CHECKOUT_CONFLICT_MESSAGE,
-				"error",
-			),
+			expect(toasted()).toContainEqual({
+				message: CHECKOUT_CONFLICT_MESSAGE,
+				kind: "error",
+			}),
 		);
 	});
 
@@ -1411,7 +1421,7 @@ describe("Toolbar branch creation", () => {
 		);
 
 		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith(message, "error"),
+			expect(toasted()).toContainEqual({ message: message, kind: "error" }),
 		);
 	});
 });

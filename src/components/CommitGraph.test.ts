@@ -27,7 +27,7 @@ import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
-import { showToast } from "../lib/toast.svelte.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { GraphCommit, ReviewTally } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
@@ -81,10 +81,6 @@ vi.mock("../lib/invoke.js", async () => {
 		safeInvoke: vi.fn(),
 	};
 });
-
-vi.mock("../lib/toast.svelte.js", () => ({
-	showToast: vi.fn(),
-}));
 
 // search-toggle is webview-global, so every mounted instance gets one and the
 // fire helper calls them all.
@@ -250,9 +246,20 @@ function observeListAt(width: number) {
 	};
 }
 
+function toasted(): { message: string; kind: string }[] {
+	return toasts.items.map(({ message, kind }) => ({ message, kind }));
+}
+
+function errorsShown(): string[] {
+	return toasted()
+		.filter(({ kind }) => kind === "error")
+		.map(({ message }) => message);
+}
+
 beforeEach(() => {
 	searchToggleHandlers = [];
 	vi.clearAllMocks();
+	_resetToasts();
 	menuActions.clear();
 	menusShown.length = 0;
 	resetCache();
@@ -627,10 +634,7 @@ describe("CommitGraph", () => {
 			await getMenuAction("Cherry-pick")();
 			await flush();
 
-			expect(vi.mocked(showToast)).not.toHaveBeenCalledWith(
-				expect.anything(),
-				"error",
-			);
+			expect(errorsShown()).toEqual([]);
 		});
 
 		it("reports a cherry-pick that fails for another reason", async () => {
@@ -652,7 +656,7 @@ describe("CommitGraph", () => {
 			await getMenuAction("Cherry-pick")();
 			await flush();
 
-			expect(vi.mocked(showToast)).toHaveBeenCalledWith("bad object", "error");
+			expect(errorsShown()).toEqual(["bad object"]);
 		});
 
 		it("says why nothing was picked when HEAD already has the commit's changes", async () => {
@@ -675,10 +679,12 @@ describe("CommitGraph", () => {
 			await flush();
 
 			const picked = MERGE_FIXTURE[1];
-			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-				`HEAD already has the changes in ${picked.short_oid} "${picked.summary}", so there was nothing to cherry-pick.`,
-				"success",
-			);
+			expect(toasted()).toEqual([
+				{
+					message: `HEAD already has the changes in ${picked.short_oid} "${picked.summary}", so there was nothing to cherry-pick.`,
+					kind: "success",
+				},
+			]);
 		});
 
 		it("revert: begin -> editor -> revert_continue with edited message", async () => {
@@ -738,10 +744,7 @@ describe("CommitGraph", () => {
 			await getMenuAction("Revert")();
 			await flush();
 
-			expect(vi.mocked(showToast)).not.toHaveBeenCalledWith(
-				expect.anything(),
-				"error",
-			);
+			expect(errorsShown()).toEqual([]);
 		});
 
 		it("revert: cancel (null) does not invoke revert_continue", async () => {
@@ -4082,7 +4085,7 @@ describe("CommitGraph", () => {
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
-			vi.mocked(showToast).mockClear();
+			_resetToasts();
 		}
 
 		async function doubleClick(label: string) {
@@ -4110,7 +4113,9 @@ describe("CommitGraph", () => {
 
 			await doubleClick("feature");
 
-			expect(showToast).toHaveBeenCalledWith("Checked out feature", "success");
+			expect(toasted()).toEqual([
+				{ message: "Checked out feature", kind: "success" },
+			]);
 		});
 
 		it("toasts the local branch a remote checkout landed on", async () => {
@@ -4120,7 +4125,9 @@ describe("CommitGraph", () => {
 
 			await doubleClick("origin/topic");
 
-			expect(showToast).toHaveBeenCalledWith("Checked out landed", "success");
+			expect(toasted()).toEqual([
+				{ message: "Checked out landed", kind: "success" },
+			]);
 		});
 
 		it("toasts the branch it created", async () => {
@@ -4128,7 +4135,9 @@ describe("CommitGraph", () => {
 
 			await createBranchFromRow("fresh");
 
-			expect(showToast).toHaveBeenCalledWith("Checked out fresh", "success");
+			expect(toasted()).toEqual([
+				{ message: "Checked out fresh", kind: "success" },
+			]);
 		});
 
 		describe("when uncommitted changes conflict", () => {
@@ -4137,10 +4146,7 @@ describe("CommitGraph", () => {
 
 				await doubleClick("feature");
 
-				expect(showToast).toHaveBeenCalledWith(
-					CHECKOUT_CONFLICT_MESSAGE,
-					"error",
-				);
+				expect(errorsShown()).toEqual([CHECKOUT_CONFLICT_MESSAGE]);
 			});
 
 			it("says so for a remote checkout", async () => {
@@ -4150,10 +4156,20 @@ describe("CommitGraph", () => {
 
 				await doubleClick("origin/topic");
 
-				expect(showToast).toHaveBeenCalledWith(
-					CHECKOUT_CONFLICT_MESSAGE,
-					"error",
-				);
+				expect(errorsShown()).toEqual([CHECKOUT_CONFLICT_MESSAGE]);
+			});
+
+			it("says so for a commit checked out detached", async () => {
+				await mountAnswering("checkout_commit", () => Promise.reject(CONFLICT));
+				vi.mocked(ask).mockResolvedValue(true);
+				const rows = await screen.findAllByTestId("commit-row");
+
+				await fireEvent.contextMenu(rows[1]);
+				await flush();
+				await getMenuAction("Checkout Commit...")();
+				await flush();
+
+				expect(errorsShown()).toEqual([CHECKOUT_CONFLICT_MESSAGE]);
 			});
 
 			it("says so for a branch it was asked to create", async () => {
@@ -4161,11 +4177,93 @@ describe("CommitGraph", () => {
 
 				await createBranchFromRow("fresh");
 
-				expect(showToast).toHaveBeenCalledWith(
-					CHECKOUT_CONFLICT_MESSAGE,
-					"error",
-				);
+				expect(errorsShown()).toEqual([CHECKOUT_CONFLICT_MESSAGE]);
 			});
 		});
+	});
+});
+
+// The graph runs the same ref and stash actions as the sidebar, so a failure
+// reads the same wherever the user started it.
+describe("CommitGraph ref and stash actions", () => {
+	const OID = "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa";
+	const STASH_OID = "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc";
+
+	async function mountFailing(
+		cmd: string,
+		commit: ReturnType<typeof makeCommit>,
+	) {
+		vi.mocked(ask).mockResolvedValue(true);
+		installReads({
+			commits: [commit],
+			override: (called) => {
+				if (called === "list_stashes")
+					return Promise.resolve([{ oid: STASH_OID }]);
+				if (called === cmd)
+					return Promise.reject({ code: "git_error", message: "it failed" });
+				return undefined;
+			},
+		});
+		render(CommitGraph, {
+			props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+		});
+		await screen.findAllByTestId("commit-row");
+		await flush();
+	}
+
+	async function chooseOnPill(item: string, label: string) {
+		await fireEvent.contextMenu(
+			await screen.findByRole("button", { name: label }),
+		);
+		await flush();
+		await getMenuAction(item)();
+		await flush();
+	}
+
+	it("reports a failed remote branch delete in a toast", async () => {
+		const remote = makeRef({
+			short_name: "origin/topic",
+			name: "refs/remotes/origin/topic",
+			ref_type: "RemoteBranch",
+		});
+		await mountFailing(
+			"delete_remote_branch",
+			makeCommit({ oid: OID, is_head: true, refs: [remote] }),
+		);
+
+		await chooseOnPill("Delete", "origin/topic");
+
+		expect(errorsShown()).toEqual(["it failed"]);
+	});
+
+	it("reports a failed tag delete in a toast", async () => {
+		const tag = makeRef({
+			short_name: "v1.0",
+			name: "refs/tags/v1.0",
+			ref_type: "Tag",
+		});
+		await mountFailing(
+			"delete_tag",
+			makeCommit({ oid: OID, is_head: true, refs: [tag] }),
+		);
+
+		await chooseOnPill("Delete", "v1.0");
+
+		expect(errorsShown()).toEqual(["it failed"]);
+	});
+
+	it("reports a failed stash pop in a toast", async () => {
+		await mountFailing(
+			"stash_pop",
+			makeCommit({ oid: STASH_OID, summary: "On main: wip", is_stash: true }),
+		);
+		const [row] = await screen.findAllByTestId("commit-row");
+
+		await fireEvent.contextMenu(row);
+		await flush();
+		await getMenuAction("Pop")();
+		await flush();
+
+		expect(errorsShown()).toEqual(["it failed"]);
 	});
 });
