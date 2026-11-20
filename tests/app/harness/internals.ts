@@ -43,6 +43,7 @@ const LISTEN = "plugin:event|listen";
 const UNLISTEN = "plugin:event|unlisten";
 const EMIT = "plugin:event|emit";
 const WINDOW_LABEL = "main";
+const TRAIL_LENGTH = 100;
 
 /**
  * The transport seam. `@tauri-apps/api` reaches the runtime only through
@@ -78,6 +79,7 @@ export class TauriInternals {
 	private heldCommand: string | null = null;
 	private readonly heldCommands: Array<() => void> = [];
 	private inFlight = 0;
+	private readonly trail: string[] = [];
 
 	constructor(private readonly host: HostChannel) {}
 
@@ -127,12 +129,22 @@ export class TauriInternals {
 		return this.inFlight;
 	}
 
+	/**
+	 * The latest commands sent, their answers and the events read, one a line in
+	 * the order they happened. An assertion that fails on a stale screen says
+	 * only what the screen showed. This says which read the application made
+	 * after the change it was told about, and whether its answer came back.
+	 */
+	describeTrail(): string {
+		return this.trail.join("\n");
+	}
+
 	install(): void {
 		this.host.onEvent((event, payload) => this.deliver(event, payload));
 
 		window.__TAURI_INTERNALS__ = {
 			invoke: (cmd: string, args: Record<string, unknown> = {}) =>
-				this.counted(this.invoke(cmd, args)),
+				this.counted(cmd, args, this.invoke(cmd, args)),
 			transformCallback: (handler: (payload: unknown) => void, once = false) =>
 				this.transformCallback(handler, once),
 			unregisterCallback: (id: number) => this.callbacks.delete(id),
@@ -241,10 +253,18 @@ export class TauriInternals {
 
 	// Hands the application the answer itself rather than a promise chained on
 	// it, so counting a command adds no turn before the application sees it.
-	private counted(answer: Promise<unknown>): Promise<unknown> {
+	private counted(
+		cmd: string,
+		args: Record<string, unknown>,
+		answer: Promise<unknown>,
+	): Promise<unknown> {
 		this.inFlight += 1;
+		const { path: _path, ...named } = args;
+		const detail = Object.keys(named).length ? ` ${JSON.stringify(named)}` : "";
+		this.record(`sent ${cmd}${detail}`);
 		const answered = () => {
 			this.inFlight -= 1;
+			this.record(`answered ${cmd}`);
 		};
 		answer.then(answered, answered);
 		return answer;
@@ -276,6 +296,12 @@ export class TauriInternals {
 	private deliver(event: string, payload: unknown): void {
 		if (this.closed) return;
 
+		const heard = [...this.listeners.values()].filter(
+			(listener) => listener.event === event,
+		).length;
+		this.record(
+			`read event ${event} ${JSON.stringify(payload)}, heard by ${heard} listeners`,
+		);
 		for (const [eventId, listener] of this.listeners) {
 			if (listener.event !== event) continue;
 			this.runCallback(listener.callbackId, {
@@ -284,6 +310,11 @@ export class TauriInternals {
 				payload,
 			});
 		}
+	}
+
+	private record(entry: string): void {
+		this.trail.push(entry);
+		if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
 	}
 }
 

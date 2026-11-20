@@ -40,4 +40,39 @@ describe("TauriInternals", () => {
 
 		expect(received).toEqual([]);
 	});
+
+	it("describes the commands it sent, their answers and the events it read, in order", async () => {
+		const host = new FakeHostChannel();
+		internals = new TauriInternals(host);
+		internals.install();
+		const invoke = window.__TAURI_INTERNALS__?.invoke as (
+			cmd: string,
+			args: Record<string, unknown>,
+		) => Promise<unknown>;
+
+		const graph = invoke("get_commit_graph", { path: "/repo", loaded: 1 });
+		host.push("repo-changed", { repo: "/repo", refs_only: true });
+		host.reply({ commits: [] });
+		await graph;
+
+		expect(internals.describeTrail()).toBe(
+			[
+				'sent get_commit_graph {"loaded":1}',
+				'read event repo-changed {"repo":"/repo","refs_only":true}, heard by 0 listeners',
+				"answered get_commit_graph",
+			].join("\n"),
+		);
+	});
+
+	it("keeps only the latest hundred entries of its trail", () => {
+		const host = new FakeHostChannel();
+		internals = new TauriInternals(host);
+		internals.install();
+
+		for (let n = 0; n < 101; n++) host.push(`event-${n}`, null);
+
+		const trail = internals.describeTrail().split("\n");
+		expect(trail).toHaveLength(100);
+		expect(trail[0]).toBe("read event event-1 null, heard by 0 listeners");
+	});
 });

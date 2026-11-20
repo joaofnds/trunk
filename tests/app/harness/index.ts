@@ -107,14 +107,27 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	}
 }
 
+/** What `afterEach` hands its hook, as far as teardown reads it. */
+interface FinishedTest {
+	task: { result?: { state?: string } };
+}
+
 /** Unmounts the application, ends the CLI runs still going, reaps the host
  *  process and removes its tempdir `HOME`. A leaked host holds a tempdir open,
- *  which is a defect, not untidiness. */
-export async function teardown(): Promise<void> {
+ *  which is a defect, not untidiness.
+ *
+ *  Given the finished test, as `afterEach(teardown)` gives it, a failed test
+ *  also prints the application's latest commands and events to stderr, since a
+ *  flaky interleaving on CI leaves no other evidence. */
+export async function teardown(finished?: FinishedTest): Promise<void> {
 	if (!running) return;
 
 	const { host, internals, root, app, untrackScroll } = running;
 	running = null;
+	if (finished?.task.result?.state === "fail")
+		process.stderr.write(
+			`the application's latest commands and events, oldest first:\n${internals.describeTrail()}\n`,
+		);
 	describeTimeout(null);
 	driveWaitsWith(null);
 
