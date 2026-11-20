@@ -15,10 +15,10 @@ import { waitFor } from "./harness/wait.js";
 const COMMIT_COUNT = 60;
 
 const MANY_COMMITS: RepoSpec = {
-	steps: Array.from({ length: COMMIT_COUNT }, (_, i) => [
-		{ step: "file" as const, path: `f${i}.txt`, content: `${i}` },
-		{ step: "commit" as const, message: `commit ${i}` },
-	]).flat(),
+	steps: Array.from({ length: COMMIT_COUNT }, (_, i) => ({
+		step: "commit" as const,
+		message: `commit ${i}`,
+	})),
 };
 
 describe("the commit list behind a short viewport", () => {

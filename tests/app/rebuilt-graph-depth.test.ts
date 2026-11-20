@@ -17,10 +17,10 @@ const PAGE = 200;
 const DEPTH = 2 * PAGE + 40;
 
 function commits(count: number): SpecStep[] {
-	return Array.from({ length: count }, (_, i) => [
-		{ step: "file" as const, path: `f${i}.txt`, content: `${i}` },
-		{ step: "commit" as const, message: `commit ${i}` },
-	]).flat();
+	return Array.from({ length: count }, (_, i) => ({
+		step: "commit" as const,
+		message: `commit ${i}`,
+	}));
 }
 
 describe("a rebuild and the depth the caller already holds", () => {

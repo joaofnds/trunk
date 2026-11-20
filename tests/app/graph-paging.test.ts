@@ -22,10 +22,10 @@ const DEPTH = 2 * PAGE + 50;
 const VIEWPORT_HEIGHT = 600;
 
 const DEEP_HISTORY: RepoSpec = {
-	steps: Array.from({ length: DEPTH }, (_, i) => [
-		{ step: "file" as const, path: `f${i}.txt`, content: `${i}` },
-		{ step: "commit" as const, message: `commit ${i}` },
-	]).flat(),
+	steps: Array.from({ length: DEPTH }, (_, i) => ({
+		step: "commit" as const,
+		message: `commit ${i}`,
+	})),
 };
 
 describe("paging the commit graph by scrolling", () => {
