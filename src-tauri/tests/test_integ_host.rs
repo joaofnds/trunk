@@ -506,21 +506,45 @@ fn ahead_of_origin() -> TestContext {
         .build()
 }
 
-/// Starts a push, runs `close` once its pre-push hook has started, and returns the
-/// push's answer.
+/// A repository whose remote has a commit it lacks, so `git_pull` and `git_fetch` have
+/// work to do.
 #[cfg(unix)]
-fn push_closed_by(ctx: &TestContext, close: &str) -> Result<Value, Value> {
-    let hook = common::hooks::PausedHook::install(ctx, "pre-push");
+fn behind_origin() -> TestContext {
+    TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("First")
+        .with_remote("origin")
+        .with_tracking("origin", "main")
+        .with_pushed("origin", "main")
+        .with_remote_commit("origin", "main", "b.txt", "two", "Second")
+        .build()
+}
+
+/// Starts `command`, runs `close` once the `hook` it reaches has started, and returns
+/// the command's answer.
+#[cfg(unix)]
+fn closed_while_running(
+    ctx: &TestContext,
+    command: &str,
+    hook: &str,
+    close: &str,
+) -> Result<Value, Value> {
+    let hook = common::hooks::PausedHook::install(ctx, hook);
     let (_app, webview) = boot(WatcherState::disabled());
     invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
 
     std::thread::scope(|scope| {
-        let push = scope.spawn(|| invoke(&webview, "git_push", json!({ "path": ctx.path() })));
+        let running = scope.spawn(|| invoke(&webview, command, json!({ "path": ctx.path() })));
         hook.wait_until_started();
         invoke(&webview, close, json!({ "path": ctx.path() })).expect("close it");
         hook.let_go_if_still_running();
-        push.join().unwrap()
+        running.join().unwrap()
     })
+}
+
+#[cfg(unix)]
+fn push_closed_by(ctx: &TestContext, close: &str) -> Result<Value, Value> {
+    closed_while_running(ctx, "git_push", "pre-push", close)
 }
 
 #[cfg(unix)]
@@ -555,6 +579,30 @@ fn a_push_that_lands_after_its_repository_closed_answers_that_it_landed() {
     let pushed = push_closed_by(&ctx, "close_repo");
 
     assert_eq!(pushed, Ok(Value::Null));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_pull_that_lands_after_its_repository_closed_answers_that_it_landed() {
+    let ctx = behind_origin();
+
+    let pulled = closed_while_running(&ctx, "git_pull", "post-merge", "close_repo");
+
+    assert_eq!(pulled, Ok(Value::Null));
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("b.txt")).unwrap(),
+        "two"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fetch_that_lands_after_its_repository_closed_answers_that_it_landed() {
+    let ctx = behind_origin();
+
+    let fetched = closed_while_running(&ctx, "git_fetch", "reference-transaction", "close_repo");
+
+    assert_eq!(fetched, Ok(Value::Null));
 }
 
 #[cfg(unix)]

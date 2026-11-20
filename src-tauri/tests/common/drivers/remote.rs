@@ -101,7 +101,7 @@ impl RemoteDriver<'_> {
         ))
     }
 
-    pub fn fetch(&self) -> Result<trunk_lib::background_fetch::FetchReport, TrunkError> {
+    pub fn fetch(&self) -> Result<Option<trunk_lib::background_fetch::FetchReport>, TrunkError> {
         tauri::async_runtime::block_on(remote::git_fetch_inner(
             &trunk_lib::activity::ActivityState::default()
                 .acquire()

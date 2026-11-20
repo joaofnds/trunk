@@ -15,7 +15,9 @@ impl LeftRunning {
     }
 }
 
-/// A hook that says it has started, then waits to be let go.
+/// A hook that says it has started, then waits to be let go. Only its first run
+/// pauses, since git runs some hooks, such as `reference-transaction`, several times
+/// in one command.
 pub struct PausedHook {
     fifos: tempfile::TempDir,
 }
@@ -34,7 +36,8 @@ impl PausedHook {
         ctx.install_hook(
             name,
             &format!(
-                "echo started > '{}'\nread line < '{}'",
+                "mkdir '{}' 2>/dev/null || exit 0\necho started > '{}'\nread line < '{}'",
+                hook.fifo("ran").display(),
                 hook.fifo("started").display(),
                 hook.fifo("go").display()
             ),

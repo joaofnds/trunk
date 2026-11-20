@@ -60,18 +60,23 @@ export async function runRemoteOp(
 ): Promise<void> {
 	if (refusedWhileRunning(remoteState)) return;
 	const args = { path: repoPath, ...extra };
+	const kind = OP_KINDS[cmd];
 	try {
-		await whileRemoteRuns(remoteState, OP_KINDS[cmd], async () => {
+		await whileRemoteRuns(remoteState, kind, async () => {
 			remoteState.error = null;
 			if (cmd === "git_fetch" || cmd === "git_pull") {
-				const report = await safeInvoke<FetchReport>(cmd, args);
-				remoteState.autofetch = report;
+				const report = await safeInvoke<FetchReport | null>(cmd, args);
+				if (report !== null) remoteState.autofetch = report;
 				if (cmd === "git_fetch") remoteState.fetchCompleted();
 			} else await safeInvoke<void>(cmd, args);
 		});
-		showToast(successMsg, "success");
+		if (remoteState.closedTabName === null) showToast(successMsg, "success");
+		else
+			showToast(
+				`The ${kind} from ${remoteState.closedTabName} finished after its tab closed.`,
+				"success",
+			);
 	} catch (e: unknown) {
-		const kind = OP_KINDS[cmd];
 		const error = isTrunkError(e)
 			? e
 			: { code: "unknown_error", message: String(e) };

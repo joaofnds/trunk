@@ -266,7 +266,7 @@ pub async fn git_fetch<R: Runtime>(
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<crate::background_fetch::FetchReport, String> {
+) -> Result<Option<crate::background_fetch::FetchReport>, String> {
     let state_map = state.snapshot();
     git_fetch_inner(
         &activity,
@@ -281,16 +281,16 @@ pub async fn git_fetch<R: Runtime>(
     .map_err(|e| e.to_json())
 }
 
-/// Fetch every remote, then rebuild the graph and report what each remote's fetch did.
+/// Fetch every remote, then rebuild the graph and report what each remote's fetch did,
+/// or `None` when the repository closed while the fetch ran, since its report went with it.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository or it closes during the
-/// fetch, `op_in_progress` while another remote operation runs on it, `cancelled`
-/// when the user cancels the fetch, a `git_*` code when the repository cannot be
-/// opened, `spawn_error` when a blocking step cannot be joined, and otherwise the
-/// code [`classify_git_error`] gives what git said, such as `auth_failure` or
-/// `remote_error`.
+/// Returns `not_open` when `path` names no open repository, `op_in_progress` while
+/// another remote operation runs on it, `cancelled` when the user cancels the fetch,
+/// a `git_*` code when the repository cannot be opened, `spawn_error` when a blocking
+/// step cannot be joined, and otherwise the code [`classify_git_error`] gives what git
+/// said, such as `auth_failure` or `remote_error`.
 pub async fn git_fetch_inner<R: Runtime>(
     activity: &crate::activity::Activity,
     path: &str,
@@ -299,7 +299,7 @@ pub async fn git_fetch_inner<R: Runtime>(
     running: &Mutex<RemoteOps>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
-) -> Result<crate::background_fetch::FetchReport, TrunkError> {
+) -> Result<Option<crate::background_fetch::FetchReport>, TrunkError> {
     let repository = state_map.repository(path)?.clone();
     let path_buf = repository.location().to_path_buf();
 
@@ -317,12 +317,19 @@ pub async fn git_fetch_inner<R: Runtime>(
         completion.session,
     )
     .await?;
-    let session = cache
-        .session_id(path)
-        .ok_or_else(|| TrunkError::new("not_open", "Repository is closed"))?;
-    Ok(app
-        .state::<crate::background_fetch::BackgroundFetch>()
-        .report(path, session))
+    Ok(fetch_report(app, cache, path))
+}
+
+fn fetch_report<R: Runtime>(
+    app: &AppHandle<R>,
+    cache: &CommitCache,
+    path: &str,
+) -> Option<crate::background_fetch::FetchReport> {
+    let session = cache.session_id(path)?;
+    Some(
+        app.state::<crate::background_fetch::BackgroundFetch>()
+            .report(path, session),
+    )
 }
 
 /// Check all configured remotes without foreground dialogs.
@@ -410,7 +417,7 @@ pub async fn git_pull<R: Runtime>(
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<crate::background_fetch::FetchReport, String> {
+) -> Result<Option<crate::background_fetch::FetchReport>, String> {
     let state_map = state.snapshot();
     git_pull_inner(
         &activity,
@@ -424,12 +431,7 @@ pub async fn git_pull<R: Runtime>(
     )
     .await
     .map_err(|e| e.to_json())?;
-    let session = cache
-        .session_id(&path)
-        .ok_or_else(|| TrunkError::new("not_open", "Repository is closed").to_json())?;
-    Ok(app
-        .state::<crate::background_fetch::BackgroundFetch>()
-        .report(&path, session))
+    Ok(fetch_report(&app, &cache, &path))
 }
 
 /// Pull with the chosen strategy, then rebuild the graph.

@@ -51,13 +51,17 @@ async function openApp(): Promise<void> {
 	await screen.findAllByText("head commit");
 }
 
-async function pushThenCloseTab() {
-	const push = host.holdNextReply("git_push");
-	await fireEvent.click(screen.getByRole("button", { name: "Push" }));
-	await push.entered;
+async function startThenCloseTab(command: string, button: string) {
+	const operation = host.holdNextReply(command);
+	await fireEvent.click(screen.getByRole("button", { name: button }));
+	await operation.entered;
 	await fireEvent.click(screen.getByRole("button", { name: "Close tab" }));
 	await waitFor(() => expect(host.count("close_repo")).toBe(1));
-	return push;
+	return operation;
+}
+
+function pushThenCloseTab() {
+	return startThenCloseTab("git_push", "Push");
 }
 
 async function reopenRepository(): Promise<void> {
@@ -104,5 +108,20 @@ describe("a push whose tab closes before it ends", () => {
 
 		await screen.findByText("pre-push hook refused");
 		expect(toasts.items).toEqual([]);
+	});
+});
+
+describe("a pull whose tab closes before it lands", () => {
+	it("names its repository when it lands, since no tab shows it", async () => {
+		await openApp();
+		const pull = await startThenCloseTab("git_pull", "Pull");
+
+		pull.release(null);
+
+		await waitFor(() =>
+			expect(toasts.items.map((toast) => toast.message)).toEqual([
+				"The pull from repo finished after its tab closed.",
+			]),
+		);
 	});
 });
