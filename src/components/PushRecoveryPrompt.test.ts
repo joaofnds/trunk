@@ -267,6 +267,18 @@ describe("PushRecoveryPrompt actionless failures", () => {
 			expect(screen.getAllByRole("button")).toHaveLength(1);
 		},
 	);
+
+	it("keeps each line git wrote on a line of its own", async () => {
+		const said = "run the tests first\nerror: failed to push some refs";
+		const rs = stateWith(err("remote_error", said));
+
+		render(PushRecoveryPrompt, { props: propsFor(rs) });
+
+		const text = await screen.findByText(
+			(_, node) => node?.textContent === said,
+		);
+		expect(getComputedStyle(text).whiteSpace).toBe("pre-line");
+	});
 });
 
 describe("PushRecoveryPrompt push target", () => {

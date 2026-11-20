@@ -185,6 +185,10 @@ async function handleForcePush(target: Target) {
 	flex: 1;
 	min-width: 0;
 }
+.recovery-said {
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+}
 </style>
 
 {#if display.kind !== "none"}
@@ -222,7 +226,7 @@ async function handleForcePush(target: Target) {
 					>
 				</div>
 			{:else}
-				<span class="recovery-text">{display.text}</span>
+				<span class="recovery-text recovery-said">{display.text}</span>
 				<div class="flex shrink-0 gap-1">
 					<Button size="sm" onclick={dismiss}>Dismiss</Button>
 				</div>
