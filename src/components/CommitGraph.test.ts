@@ -4019,14 +4019,22 @@ describe("CommitGraph", () => {
 	});
 
 	describe("copying a commit's message", () => {
-		it("copies the whole message, body included", async () => {
+		it("copies the message as written, where the summary joined its lines", async () => {
 			const commit = makeCommit({
 				oid: "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc",
-				summary: "Fix the parser",
-				body: "It dropped empty rows.",
+				summary: "Fix the parser for empty rows",
 				is_head: true,
 			});
-			installReads({ commits: [commit] });
+			installReads({
+				commits: [commit],
+				override: (cmd) =>
+					cmd === "get_commit_detail"
+						? Promise.resolve({
+								message:
+									"Fix the parser\nfor empty rows\n\n  It dropped them.\n",
+							})
+						: undefined,
+			});
 			render(CommitGraph, {
 				props: {
 					...noReviewCounts(),
@@ -4041,8 +4049,10 @@ describe("CommitGraph", () => {
 
 			await getMenuAction("Copy Message")();
 
-			expect(vi.mocked(writeText)).toHaveBeenCalledWith(
-				"Fix the parser\n\nIt dropped empty rows.",
+			await waitFor(() =>
+				expect(vi.mocked(writeText)).toHaveBeenCalledWith(
+					"Fix the parser\nfor empty rows\n\n  It dropped them.",
+				),
 			);
 		});
 	});

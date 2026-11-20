@@ -1157,6 +1157,7 @@ function recordGraphScrolls(container: HTMLElement): number[] {
 function detailFor(oid: string): CommitDetail {
 	return {
 		...makeCommit({ oid, summary: `${oid} change` }),
+		message: `${oid} change`,
 		committer_name: "Test",
 		committer_email: "test@example.invalid",
 		committer_timestamp: 0,

@@ -287,6 +287,7 @@ describe("composer operation lifetime", () => {
 			short_oid: "commit-a",
 			summary: "A",
 			body: null,
+			message: "A",
 			author_name: "Test",
 			author_email: "test@example.com",
 			author_timestamp: 0,

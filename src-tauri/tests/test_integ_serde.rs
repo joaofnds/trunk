@@ -437,6 +437,7 @@ fn commit_detail_serializes_correctly() {
         "short_oid should be a string"
     );
     assert!(json["summary"].is_string(), "summary should be a string");
+    assert!(json["message"].is_string(), "message should be a string");
     // body is Option<String>
     let body = &json["body"];
     assert!(

@@ -40,6 +40,7 @@ const detail: CommitDetail = {
 	short_oid: "abc123d",
 	summary: "fix: null check",
 	body: null,
+	message: "fix: null check",
 	author_name: "Test User",
 	author_email: "test@test.com",
 	author_timestamp: 1700000000,

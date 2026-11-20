@@ -288,6 +288,8 @@ pub struct CommitDetail {
     pub short_oid: String,
     pub summary: String,
     pub body: Option<String>,
+    /// The whole message as written, which `summary` and `body` reshape for display.
+    pub message: String,
     pub author_name: String,
     pub author_email: String,
     pub author_timestamp: i64,

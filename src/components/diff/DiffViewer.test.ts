@@ -337,6 +337,7 @@ describe("DiffViewer on a file the selected commit does not change", () => {
 		short_oid: "6cca1d9",
 		summary: "touch two files",
 		body: null,
+		message: "touch two files",
 		author_name: "A",
 		author_email: "a@example.com",
 		author_timestamp: 0,

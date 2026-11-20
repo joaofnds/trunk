@@ -218,6 +218,20 @@ fn commit_detail_returns_metadata() {
 }
 
 #[test]
+fn commit_detail_carries_the_message_as_written() {
+    let written = "Fix the parser\nfor empty rows\n\n  It dropped them.\n";
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit(written)
+        .build();
+    let head_oid = ctx.resolve_ref("HEAD").unwrap();
+
+    let detail = ctx.get_commit_detail(&head_oid).unwrap();
+
+    assert_eq!(detail.message, written);
+}
+
+#[test]
 fn commit_detail_includes_committer_fields() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

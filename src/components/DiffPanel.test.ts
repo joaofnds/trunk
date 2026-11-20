@@ -2270,6 +2270,7 @@ const nonMergeCommit: CommitDetail = {
 	short_oid: "abc123d",
 	summary: "a normal commit",
 	body: null,
+	message: "a normal commit",
 	author_name: "A",
 	author_email: "a@example.com",
 	author_timestamp: 0,

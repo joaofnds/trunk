@@ -972,6 +972,7 @@ pub fn get_commit_detail_inner(
         short_oid: commit.id().to_string()[..7].to_owned(),
         summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
         body: commit.body().ok().flatten().map(str::to_owned),
+        message: String::from_utf8_lossy(commit.message_bytes()).into_owned(),
         author_name: author.name().unwrap_or("").to_owned(),
         author_email: author.email().unwrap_or("").to_owned(),
         author_timestamp: author.when().seconds(),

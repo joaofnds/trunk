@@ -106,6 +106,7 @@ import { measureTextWidth } from "../lib/text-measure.js";
 import { textOverrun } from "../lib/text-overrun.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
+	CommitDetail,
 	Conclusion,
 	DiffStat,
 	GraphCommit,
@@ -1005,6 +1006,14 @@ async function handleRevert(commit: GraphCommit) {
 	}
 }
 
+async function copyMessage(commit: GraphCommit) {
+	const detail = await safeInvoke<CommitDetail>("get_commit_detail", {
+		path: repoPath,
+		oid: commit.oid,
+	});
+	await copyText(detail.message.trimEnd(), commit.summary);
+}
+
 const loadedHead = $derived(commits.find((c) => c.is_head));
 const checkedOutBranch = $derived(
 	loadedHead === undefined
@@ -1245,11 +1254,8 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 			await MenuItem.new({
 				text: "Copy Message",
 				action: () => {
-					copyText(
-						commit.body
-							? `${commit.summary}\n\n${commit.body}`
-							: commit.summary,
-						commit.summary,
+					copyMessage(commit).catch((e: unknown) =>
+						reportErrorToast(e, "Could not copy the message."),
 					);
 				},
 			}),

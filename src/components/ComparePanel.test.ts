@@ -18,6 +18,7 @@ function detail(oid: string, summary: string): CommitDetail {
 		short_oid: oid.slice(0, 7),
 		summary,
 		body: null,
+		message: summary,
 		author_name: "Test User",
 		author_email: "test@test.com",
 		author_timestamp: 1700000000,

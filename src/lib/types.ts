@@ -326,6 +326,7 @@ export interface CommitDetail {
 	short_oid: string;
 	summary: string;
 	body: string | null;
+	message: string;
 	author_name: string;
 	author_email: string;
 	author_timestamp: number;

@@ -1062,6 +1062,7 @@ function commitDetail(oid: string): CommitDetail {
 		short_oid: oid,
 		summary: oid,
 		body: null,
+		message: oid,
 		author_name: "Test",
 		author_email: "test@example.com",
 		author_timestamp: 0,

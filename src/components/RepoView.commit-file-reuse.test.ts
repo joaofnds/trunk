@@ -63,6 +63,7 @@ function detail(oid: string): CommitDetail {
 		short_oid: oid,
 		summary: "first commit",
 		body: null,
+		message: "first commit",
 		author_name: "Test",
 		author_email: "test@test.com",
 		author_timestamp: 0,
