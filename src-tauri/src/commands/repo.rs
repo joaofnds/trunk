@@ -4,6 +4,26 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
 use trunk_git::repository;
 
+/// The repository a chosen folder lies inside, when the folder is not its root, so
+/// the user can be offered the repository instead of a refusal.
+///
+/// # Errors
+///
+/// Returns `spawn_error` as JSON when the blocking task cannot be joined.
+#[tauri::command]
+pub async fn enclosing_repository(
+    activity: crate::activity::Activity,
+    path: String,
+) -> Result<Option<String>, String> {
+    activity
+        .spawn_blocking(move || {
+            repository::enclosing_repository(std::path::Path::new(&path))
+                .map(|root| root.display().to_string())
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())
+}
+
 /// Open a repository, cache its first graph, and start watching it. It returns
 /// without waiting for the watch, which reports its own failure.
 ///

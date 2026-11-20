@@ -8,6 +8,7 @@ import {
 	nextHighlightedIdx,
 	pickerKeyAction,
 } from "../lib/recent-picker-keys.js";
+import { repositoryToOpen } from "../lib/repository-to-open.js";
 import { getRecentRepos, type RecentRepo } from "../lib/store.js";
 import Button from "../lib/ui/Button.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
@@ -108,8 +109,11 @@ function handleKeydown(e: KeyboardEvent) {
 async function handleOpenDialog() {
 	const selected = await open({ directory: true, multiple: false });
 	if (typeof selected !== "string") return;
-	const name = selected.split("/").at(-1) || selected;
-	onpick(selected, name);
+
+	const repository = await repositoryToOpen(selected);
+	if (repository === null) return;
+
+	onpick(repository, repository.split("/").at(-1) || repository);
 }
 
 $effect(() => {

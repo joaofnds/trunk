@@ -85,6 +85,26 @@ describe("RecentReposPicker", () => {
 		);
 	});
 
+	it("picks the repository a chosen folder lies inside once the user agrees", async () => {
+		vi.mocked(getRecentRepos).mockResolvedValue([]);
+		const dialog = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
+		vi.mocked(dialog.ask).mockResolvedValueOnce(true);
+		vi.mocked(invoke).mockImplementation((cmd: string) =>
+			Promise.resolve(
+				cmd === "enclosing_repository" ? "/Users/test/code/trunk" : undefined,
+			),
+		);
+		const onpick = vi.fn();
+		mount({ onpick });
+
+		await fireEvent.click(await screen.findByText("Open Repository"));
+
+		await vi.waitFor(() => {
+			expect(onpick).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
+		});
+	});
+
 	it("closes when the dialog is cancelled", async () => {
 		const onclose = vi.fn();
 		mount({ onclose });

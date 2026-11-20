@@ -303,6 +303,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::perf::perf_reset,
         commands::prefs::prefs_get,
         commands::prefs::prefs_set,
+        commands::repo::enclosing_repository,
         commands::repo::open_repo,
         commands::repo::close_repo,
         commands::repo::force_close_repo,

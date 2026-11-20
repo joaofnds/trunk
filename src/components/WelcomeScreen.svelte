@@ -4,6 +4,7 @@ import { open } from "../lib/dialog.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";
+import { repositoryToOpen } from "../lib/repository-to-open.js";
 import {
 	addRecentRepo,
 	getRecentRepos,
@@ -51,7 +52,8 @@ async function openRepository() {
 	const selected = await open({ directory: true, multiple: false });
 	if (typeof selected !== "string") return;
 
-	await openPath(selected);
+	const repository = await repositoryToOpen(selected);
+	if (repository !== null) await openPath(repository);
 }
 
 async function openPath(path: string) {

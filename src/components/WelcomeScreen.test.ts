@@ -115,6 +115,25 @@ describe("WelcomeScreen", () => {
 		expect(opened).toEqual([]);
 	});
 
+	it("opens the repository a chosen folder lies inside once the user agrees", async () => {
+		const dialog = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
+		vi.mocked(dialog.ask).mockResolvedValueOnce(true);
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			Promise.resolve(
+				cmd === "enclosing_repository" ? "/Users/test/code/trunk" : undefined,
+			),
+		);
+		const onopen = vi.fn();
+		render(WelcomeScreen, { props: { onopen } });
+
+		await fireEvent.click(screen.getByText("Open Repository"));
+
+		await vi.waitFor(() => {
+			expect(onopen).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
+		});
+	});
+
 	it("shows the backend message when opening a repo fails", async () => {
 		// Command-scoped, not mockRejectedValueOnce: a leaked flow must not consume it.
 		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>

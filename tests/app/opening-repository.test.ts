@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { pressButton } from "./drivers/dom.js";
 import type { AppDriver } from "./drivers/index.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
@@ -94,5 +95,31 @@ describe("opening a repository", () => {
 				showsCommitMadeElsewhere(app),
 			),
 		).resolves.toBe(true);
+	});
+
+	it("opens the repository a chosen folder lies inside once the user agrees", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "src/a.txt", content: "a" },
+					{ step: "commit", message: "First" },
+				],
+			},
+		});
+		await app.settled();
+		app.dialog.chooses(`${app.repo.path}/src`);
+		app.dialog.confirms();
+
+		await pressButton("Open Repository");
+
+		await expect(
+			app.elapseUntil("the repository's commits", () =>
+				app.repo.commitRows().includes("First") ? true : null,
+			),
+		).resolves.toBe(true);
+		expect(app.dialog.questions).toHaveLength(1);
+		expect(app.dialog.questions[0]).toMatch(
+			/is a folder inside the repository .*\. Open that repository\?$/,
+		);
 	});
 });

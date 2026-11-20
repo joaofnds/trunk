@@ -87,6 +87,16 @@ pub fn validate_and_open(path: &std::path::Path) -> Result<(), TrunkError> {
     Ok(())
 }
 
+/// The working tree a folder lies inside, found as git finds it from there, and
+/// `None` when the folder is a repository's root itself or lies in no repository.
+#[must_use]
+pub fn enclosing_repository(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let repo = git2::Repository::discover(path).ok()?;
+    let root = std::fs::canonicalize(repo.workdir()?).ok()?;
+    let folder = std::fs::canonicalize(path).ok()?;
+    (root != folder).then_some(root)
+}
+
 pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefLabel>> {
     let mut map: HashMap<git2::Oid, Vec<RefLabel>> = HashMap::new();
 
