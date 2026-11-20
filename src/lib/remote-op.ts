@@ -84,3 +84,19 @@ export async function runRemoteOp(
 			);
 	}
 }
+
+/** The toolbar's Pull: the checked-out branch, the way the repository's settings say. */
+export function pullCheckedOut(
+	remoteState: RemoteState,
+	repoPath: string,
+): Promise<void> {
+	return runRemoteOp(remoteState, repoPath, "git_pull", "Pulled successfully");
+}
+
+/** The toolbar's Push: the checked-out branch, to where the user's git would push it. */
+export function pushCheckedOut(
+	remoteState: RemoteState,
+	repoPath: string,
+): Promise<void> {
+	return runRemoteOp(remoteState, repoPath, "git_push", "Pushed successfully");
+}

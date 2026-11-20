@@ -5,8 +5,9 @@ import { errorMessage, reportErrorToast } from "./error-report.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
 import { remoteErrorMessage } from "./remote-error.js";
 import {
+	pullCheckedOut,
+	pushCheckedOut,
 	refusedWhileRunning,
-	runRemoteOp,
 	whileRemoteRuns,
 } from "./remote-op.js";
 import type { RemoteState } from "./remote-state.svelte.js";
@@ -153,24 +154,14 @@ async function branchRemoteMenuItems(
 			text: "Pull",
 			enabled,
 			action: () => {
-				void runRemoteOp(
-					remoteState,
-					repoPath,
-					"git_pull",
-					"Pulled successfully",
-				);
+				void pullCheckedOut(remoteState, repoPath);
 			},
 		}),
 		MenuItem.new({
 			text: "Push",
 			enabled,
 			action: () => {
-				void runRemoteOp(
-					remoteState,
-					repoPath,
-					"git_push",
-					"Pushed successfully",
-				);
+				void pushCheckedOut(remoteState, repoPath);
 			},
 		}),
 	]);

@@ -19,7 +19,7 @@ import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "../lib/keyboard.js";
-import { runRemoteOp } from "../lib/remote-op.js";
+import { pullCheckedOut, pushCheckedOut } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -241,11 +241,11 @@ function handleUndoRedoKey(e: KeyboardEvent) {
 }
 
 function handlePull() {
-	runRemoteOp(remoteState, repoPath, "git_pull", "Pulled successfully");
+	void pullCheckedOut(remoteState, repoPath);
 }
 
 function handlePush() {
-	runRemoteOp(remoteState, repoPath, "git_push", "Pushed successfully");
+	void pushCheckedOut(remoteState, repoPath);
 }
 
 async function handleStash() {
