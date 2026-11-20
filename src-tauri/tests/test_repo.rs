@@ -31,7 +31,22 @@ fn a_folder_inside_a_repository_names_the_repository_above_it() {
 
     let enclosing = trunk_git::repository::enclosing_repository(&ctx.repo_path().join("src"));
 
-    assert_eq!(enclosing, Some(ctx.repo_path().canonicalize().unwrap()));
+    assert_eq!(enclosing, Some(ctx.repo_path().to_path_buf()));
+}
+
+#[test]
+fn a_folder_reached_through_a_link_names_the_repository_the_way_the_user_reached_it() {
+    let ctx = TestContext::builder()
+        .with_file("src/main.rs", "fn main() {}\n")
+        .with_commit("Initial commit")
+        .build();
+    let links = tempfile::tempdir().unwrap();
+    let link = links.path().join("project");
+    std::os::unix::fs::symlink(ctx.repo_path(), &link).unwrap();
+
+    let enclosing = trunk_git::repository::enclosing_repository(&link.join("src"));
+
+    assert_eq!(enclosing, Some(link));
 }
 
 #[test]
