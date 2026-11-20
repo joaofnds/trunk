@@ -135,9 +135,16 @@ describe("RebaseEditor", () => {
 		Element.prototype.scrollIntoView = originalScrollIntoView;
 	});
 
+	type StartedItem = {
+		oid: string;
+		action: string;
+		summary: string;
+		newMessage: string | null;
+	};
+
 	function renderEditor({
 		onclose = () => {},
-		onstart = (): Promise<void> => Promise.resolve(),
+		onstart = (_items: StartedItem[]): Promise<void> => Promise.resolve(),
 	} = {}) {
 		return render(RebaseEditor, {
 			props: {
@@ -856,7 +863,11 @@ describe("RebaseEditor", () => {
 			await fireEvent.keyDown(update, { key: "Escape" });
 
 			expect(screen.queryByRole("dialog")).toBeNull();
-			expect(plan(container)).toEqual(REWORDING_THE_NEWEST);
+			expect(plan(container)).toEqual([
+				["pick", "docs: readme"],
+				["pick", "fix: null check"],
+				["pick", "feat: add login"],
+			]);
 			expect(closed).toEqual([]);
 		});
 
@@ -899,6 +910,148 @@ describe("RebaseEditor", () => {
 
 			expect(actions(first.container)).toEqual(["pick", "pick", "pick"]);
 			expect(actions(second.container)).toEqual(["squash", "pick", "pick"]);
+		});
+	});
+
+	describe("when the message editor closes", () => {
+		const NEWEST = TEST_ITEMS[2].oid;
+
+		function answerDetails() {
+			mockInvoke.mockImplementation(async (command, args) => {
+				if (command !== "get_commit_detail") return undefined;
+				const { oid } = args as { oid: string };
+				const item = TEST_ITEMS.find((candidate) => candidate.oid === oid);
+				return {
+					summary: item?.summary,
+					body: "Wrapped\nbody",
+					message: `${item?.summary}\n\nWrapped\nbody\n`,
+				};
+			});
+		}
+
+		async function editTheNewest(container: HTMLElement) {
+			await fireEvent.dblClick(planRow(container, 0));
+			return screen.findByRole("dialog");
+		}
+
+		function renderStarting() {
+			const sent: StartedItem[][] = [];
+			const { container } = renderEditor({
+				onstart: async (items) => {
+					sent.push(items);
+				},
+			});
+			const newest = () => sent[0]?.find((item) => item.oid === NEWEST);
+			return { container, newest };
+		}
+
+		async function start(): Promise<void> {
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Start Rebase" }),
+			);
+			await settled();
+		}
+
+		it("leaves a pick a pick once its message edit is cancelled", async () => {
+			answerDetails();
+			const { container } = renderEditor();
+			await editTheNewest(container);
+
+			await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+			expect(actions(container)).toEqual(["pick", "pick", "pick"]);
+		});
+
+		it("leaves a pick a pick when its message is updated unchanged", async () => {
+			answerDetails();
+			const { container, newest } = renderStarting();
+			await editTheNewest(container);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Update Message" }),
+			);
+
+			await start();
+
+			expect(newest()).toMatchObject({ action: "pick", newMessage: null });
+		});
+
+		it("keeps the message git has for a reword whose editor changed nothing", async () => {
+			answerDetails();
+			const { container, newest } = renderStarting();
+			await fireEvent.change(
+				planRow(container, 0).querySelector("select") as HTMLSelectElement,
+				{
+					target: { value: "reword" },
+				},
+			);
+			await editTheNewest(container);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Update Message" }),
+			);
+
+			await start();
+
+			expect(newest()).toMatchObject({ action: "reword", newMessage: null });
+		});
+
+		it("keeps the message git combines for a squash whose editor changed nothing", async () => {
+			answerDetails();
+			const { container, newest } = renderStarting();
+			await fireEvent.change(
+				planRow(container, 0).querySelector("select") as HTMLSelectElement,
+				{
+					target: { value: "squash" },
+				},
+			);
+			await editTheNewest(container);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Update Message" }),
+			);
+
+			await start();
+
+			expect(newest()).toMatchObject({ action: "squash", newMessage: null });
+		});
+
+		it("leaves a pick a pick when its only edit is trailing whitespace", async () => {
+			answerDetails();
+			const { container, newest } = renderStarting();
+			const editor = await editTheNewest(container);
+			await fireEvent.input(
+				within(editor).getByPlaceholderText("Summary (required)"),
+				{
+					target: { value: `${TEST_ITEMS[2].summary}  ` },
+				},
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Update Message" }),
+			);
+
+			await start();
+
+			expect(newest()).toMatchObject({ action: "pick", newMessage: null });
+		});
+
+		it("rewords a pick whose summary was edited", async () => {
+			answerDetails();
+			const { container, newest } = renderStarting();
+			const editor = await editTheNewest(container);
+			await fireEvent.input(
+				within(editor).getByPlaceholderText("Summary (required)"),
+				{
+					target: { value: "docs: the readme" },
+				},
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Update Message" }),
+			);
+
+			await start();
+
+			expect(newest()).toMatchObject({
+				action: "reword",
+				newMessage: "docs: the readme\n\nWrapped\nbody",
+			});
 		});
 	});
 

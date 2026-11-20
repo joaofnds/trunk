@@ -101,6 +101,10 @@ let listEl: HTMLDivElement | undefined = $state();
 let editingIdx = $state<number | null>(null);
 let editingSummary = $state("");
 let editingBody = $state("");
+// What the editor opened with, and whether opening it turned a pick into a
+// reword, so an edit that changed nothing changes nothing in the plan either.
+let editingSeed = { summary: "", body: "" };
+let editingTurnedPick = false;
 let columnWidths = $state<RebaseColumnWidths>({
 	sha: 80,
 	author: 120,
@@ -379,100 +383,90 @@ function selectAll(node: HTMLInputElement) {
 
 // --- Inline message editor ---
 
+function splitMessage(message: string): { summary: string; body: string } {
+	const lines = message.split("\n");
+	return {
+		summary: lines[0] ?? "",
+		body: lines.slice(1).join("\n").replace(/^\n/, ""),
+	};
+}
+
+function joinMessage(summary: string, body: string): string {
+	return body.trim() ? `${summary.trim()}\n\n${body.trim()}` : summary.trim();
+}
+
+async function fullMessage(oid: string): Promise<string> {
+	const detail = await safeInvoke<{ summary: string; body: string | null }>(
+		"get_commit_detail",
+		{ path: repoPath, oid },
+	);
+	return joinMessage(detail.summary, detail.body ?? "");
+}
+
+/** The message the editor opens with: the one written here before, or the
+ *  commit's own, with a squash's predecessor's message above it as git would
+ *  combine them. */
+async function messageToEdit(idx: number): Promise<{
+	summary: string;
+	body: string;
+}> {
+	const item = items[idx];
+	if (item.newMessage != null) return splitMessage(item.newMessage);
+
+	if (item.action === "squash") {
+		const pred = items[idx + 1];
+		try {
+			const [predMessage, squashMessage] = await Promise.all([
+				fullMessage(pred.oid),
+				fullMessage(item.oid),
+			]);
+			return splitMessage(`${predMessage}\n\n${squashMessage}`);
+		} catch {
+			return { summary: `${pred.summary}\n\n${item.summary}`, body: "" };
+		}
+	}
+
+	try {
+		return splitMessage(await fullMessage(item.oid));
+	} catch {
+		return { summary: item.summary, body: "" };
+	}
+}
+
 async function openMessageEditor(idx: number) {
 	const item = items[idx];
 	if (starting || item.action === "drop") return;
+	// A squash's predecessor sits below it in display order, and validation
+	// keeps a squash off the oldest row.
+	if (item.action === "squash" && idx + 1 >= items.length) return;
 	focusedIndex = idx;
 
-	if (item.action === "squash") {
-		// Find predecessor: in display order (newest-first), predecessor is at idx + 1
-		const predIdx = idx + 1;
-		if (predIdx >= items.length) return; // shouldn't happen (validation prevents)
-		const pred = items[predIdx];
-
-		if (item.newMessage != null) {
-			// Already edited — reuse stored combined message
-			const lines = item.newMessage.split("\n");
-			editingSummary = lines[0] ?? "";
-			editingBody = lines.slice(1).join("\n").replace(/^\n/, "");
-		} else {
-			// Fetch full messages for both predecessor and squash commit
-			try {
-				const [predDetail, squashDetail] = await Promise.all([
-					safeInvoke<{ summary: string; body: string | null }>(
-						"get_commit_detail",
-						{
-							path: repoPath,
-							oid: pred.oid,
-						},
-					),
-					safeInvoke<{ summary: string; body: string | null }>(
-						"get_commit_detail",
-						{
-							path: repoPath,
-							oid: item.oid,
-						},
-					),
-				]);
-				const predMsg = predDetail.body
-					? `${predDetail.summary}\n\n${predDetail.body}`
-					: predDetail.summary;
-				const squashMsg = squashDetail.body
-					? `${squashDetail.summary}\n\n${squashDetail.body}`
-					: squashDetail.summary;
-				const combined = `${predMsg}\n\n${squashMsg}`;
-				const lines = combined.split("\n");
-				editingSummary = lines[0] ?? "";
-				editingBody = lines.slice(1).join("\n").replace(/^\n/, "");
-			} catch {
-				editingSummary = `${pred.summary}\n\n${item.summary}`;
-				editingBody = "";
-			}
-		}
-		editingIdx = idx;
-		return;
-	}
-
-	if (item.newMessage != null) {
-		// Already edited — split summary/body from stored message
-		const lines = item.newMessage.split("\n");
-		editingSummary = lines[0] ?? "";
-		editingBody = lines.slice(1).join("\n").replace(/^\n/, "");
-	} else {
-		// Fetch full commit message
-		editingSummary = item.summary;
-		try {
-			const detail = await safeInvoke<{ summary: string; body: string | null }>(
-				"get_commit_detail",
-				{
-					path: repoPath,
-					oid: item.oid,
-				},
-			);
-			editingSummary = detail.summary;
-			editingBody = detail.body ?? "";
-		} catch {
-			editingBody = "";
-		}
-	}
-
+	const seed = await messageToEdit(idx);
+	editingSummary = seed.summary;
+	editingBody = seed.body;
+	editingSeed = seed;
+	editingTurnedPick = item.action === "pick";
+	if (editingTurnedPick) item.action = "reword";
 	editingIdx = idx;
-	// Auto-set to reword if currently pick
-	if (item.action === "pick") item.action = "reword";
 }
 
 function handleMessageUpdate() {
 	if (editingIdx === null) return;
-	const fullMsg = editingBody.trim()
-		? `${editingSummary.trim()}\n\n${editingBody.trim()}`
-		: editingSummary.trim();
-	items[editingIdx].newMessage = fullMsg;
-	// Update displayed summary to match
-	items[editingIdx].summary = editingSummary.trim();
+	const item = items[editingIdx];
+	const message = joinMessage(editingSummary, editingBody);
+	if (message === joinMessage(editingSeed.summary, editingSeed.body)) {
+		handleMessageCancel();
+		return;
+	}
+
+	item.newMessage = message;
+	item.summary = editingSummary.trim();
 	editingIdx = null;
 }
 
 function handleMessageCancel() {
+	if (editingIdx !== null && editingTurnedPick)
+		items[editingIdx].action = "pick";
 	editingIdx = null;
 }
 
