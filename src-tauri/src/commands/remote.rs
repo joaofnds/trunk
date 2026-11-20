@@ -707,7 +707,7 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
     Ok(PushTarget { remote, branch })
 }
 
-/// The remote and branch the user confirmed in the force-push dialog.
+/// The remote and branch the user confirmed in the force-push dialog or the publish banner.
 ///
 /// The pair travels together because the check below is about the pair: a force push runs
 /// only while the repository is still on the branch the dialog named.
@@ -754,6 +754,28 @@ pub async fn git_push_force<R: Runtime>(
     .map_err(|e| e.to_json())
 }
 
+/// The banner snapshots the push that failed and the repository can move under it. Without
+/// this the refspec would still name the confirmed ref, but Trunk would push onto it from a
+/// working tree that has since left it.
+fn ensure_still_confirmed(
+    remote: &str,
+    branch: &str,
+    confirmed: &ConfirmedPush<'_>,
+    push: &str,
+) -> Result<(), TrunkError> {
+    if remote == confirmed.remote && branch == confirmed.branch {
+        return Ok(());
+    }
+
+    let confirmed_branch = confirmed.branch;
+    Err(TrunkError::new(
+        "push_target_changed",
+        format!(
+            "You confirmed {push} of {confirmed_branch}, but the repository is now on {branch}. Nothing was pushed."
+        ),
+    ))
+}
+
 /// Force-push HEAD with a lease, refusing if the remote moved unexpectedly.
 ///
 /// # Errors
@@ -798,18 +820,7 @@ pub async fn git_push_force_inner<R: Runtime>(
             "Trunk cannot tell which branch and remote this push would rewrite, so it will not force push.",
         ));
     };
-
-    // The banner snapshots the push that failed and the repository can move under it.
-    // Without this the refspec would still name the confirmed ref, but Trunk would push
-    // onto it from a working tree that has since left it.
-    if remote != confirmed_remote || branch != confirmed_branch {
-        return Err(TrunkError::new(
-            "push_target_changed",
-            format!(
-                "You confirmed a force push of {confirmed_branch}, but the repository is now on {branch}. Nothing was pushed."
-            ),
-        ));
-    }
+    ensure_still_confirmed(&remote, &branch, &confirmed, "a force push")?;
 
     // Naming the ref explicitly is what keeps the push to the branch the user
     // confirmed; a bare argv lets `push.default` / `remote.<name>.push` widen it.
@@ -819,6 +830,97 @@ pub async fn git_push_force_inner<R: Runtime>(
     args.push(confirmed_remote);
     args.push(&refspec);
 
+    let completion = run_git_remote(activity, &args, &path_buf, app, path, running).await?;
+
+    refresh_graph(
+        activity,
+        path,
+        repository,
+        cache,
+        ref_visibility,
+        app,
+        completion.session,
+    )
+    .await
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn git_push_publish<R: Runtime>(
+    activity: crate::activity::Activity,
+    path: String,
+    remote: String,
+    branch: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let state_map = state.snapshot();
+    git_push_publish_inner(
+        &activity,
+        &path,
+        ConfirmedPush {
+            remote: &remote,
+            branch: &branch,
+        },
+        &state_map,
+        &cache,
+        &running.0,
+        &ref_visibility,
+        &app,
+    )
+    .await
+    .map_err(|e| e.to_json())
+}
+
+/// Push HEAD's branch to the confirmed remote under its own name and track it there.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `no_push_target` when HEAD names
+/// no branch or no remote, `push_target_changed` when HEAD left the confirmed branch,
+/// `push_declined` when the remote rejects it, `auth_failure` when the remote refuses the
+/// credentials, and `remote_error` otherwise.
+pub async fn git_push_publish_inner<R: Runtime>(
+    activity: &crate::activity::Activity,
+    path: &str,
+    confirmed: ConfirmedPush<'_>,
+    state_map: &OpenRepos,
+    cache: &CommitCache,
+    running: &Mutex<RemoteOps>,
+    ref_visibility: &crate::state::RefVisibilityState,
+    app: &AppHandle<R>,
+) -> Result<(), TrunkError> {
+    let repository = state_map.repository(path)?.clone();
+    let path_buf = repository.location().to_path_buf();
+
+    let target_path = path_buf.clone();
+    let target = activity
+        .spawn_blocking(move || {
+            let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
+            resolve_push_target(&repo)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+    let (Some(remote), Some(branch)) = (target.remote, target.branch) else {
+        return Err(TrunkError::new(
+            "no_push_target",
+            "Trunk cannot tell which branch and remote to push to, so nothing was pushed.",
+        ));
+    };
+    ensure_still_confirmed(&remote, &branch, &confirmed, "a push")?;
+
+    let refspec = format!("HEAD:refs/heads/{}", confirmed.branch);
+    let args = ["push", "--set-upstream", "--", confirmed.remote, &refspec];
     let completion = run_git_remote(activity, &args, &path_buf, app, path, running).await?;
 
     refresh_graph(

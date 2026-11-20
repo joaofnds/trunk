@@ -416,6 +416,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::remote::git_pull,
         commands::remote::git_push,
         commands::remote::git_push_force,
+        commands::remote::git_push_publish,
         commands::remote::get_push_target,
         commands::remote::delete_remote_branch,
         commands::remote::cancel_remote_op,

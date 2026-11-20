@@ -6,6 +6,7 @@ import { showToast } from "./toast.svelte.js";
 const OP_KINDS = {
 	git_push: "push",
 	git_push_force: "push",
+	git_push_publish: "push",
 	git_pull: "pull",
 	git_fetch: "fetch",
 } as const satisfies Record<string, RemoteOpKind>;

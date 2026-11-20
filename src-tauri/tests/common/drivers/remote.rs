@@ -146,6 +146,21 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    pub fn push_publish(&self, remote: &str, branch: &str) -> Result<(), TrunkError> {
+        tauri::async_runtime::block_on(remote::git_push_publish_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            self.ctx.path(),
+            remote::ConfirmedPush { remote, branch },
+            self.ctx.state_map(),
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
+            &trunk_lib::state::RefVisibilityState::default(),
+            self.app.handle(),
+        ))
+    }
+
     /// Mark `path` as having a remote op in flight, as a live `git` child would. Lets a
     /// test observe the mutual-exclusion guard without a real process to signal.
     pub fn seed_running_op(&self, path: &str) {

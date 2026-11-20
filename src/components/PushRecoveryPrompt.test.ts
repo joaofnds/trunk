@@ -253,8 +253,59 @@ describe("PushRecoveryPrompt force push", () => {
 	});
 });
 
+describe("PushRecoveryPrompt publishing a branch the remote lacks", () => {
+	it("says the branch is not on the remote yet and offers to push and track it", async () => {
+		render(PushRecoveryPrompt, {
+			props: propsFor(stateWith(err("no_upstream"))),
+		});
+
+		await screen.findByRole("button", { name: "Push and Track" });
+
+		expect(screen.getByRole("alert")).toHaveTextContent(
+			"feature is not on origin yet.",
+		);
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
+	});
+
+	it("pushes the branch to the remote under its own name and reports where", async () => {
+		const rs = stateWith(err("no_upstream"));
+		render(PushRecoveryPrompt, { props: propsFor(rs) });
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Push and Track" }),
+		);
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith(
+				"Pushed feature to origin/feature",
+				"success",
+			),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("git_push_publish", {
+			path: "/repo",
+			remote: "origin",
+			branch: "feature",
+		});
+		expect(rs.error).toBeNull();
+	});
+
+	it("offers nothing to push when the backend cannot name a remote", async () => {
+		respondWith({
+			get_push_target: () =>
+				Promise.resolve({ remote: null, branch: "feature" }),
+		});
+
+		render(PushRecoveryPrompt, {
+			props: propsFor(stateWith(err("no_upstream"))),
+		});
+
+		await screen.findByRole("button", { name: "Dismiss" });
+		expect(screen.queryByRole("button", { name: "Push and Track" })).toBeNull();
+	});
+});
+
 describe("PushRecoveryPrompt actionless failures", () => {
-	it.each(["auth_failure", "remote_error", "no_upstream"])(
+	it.each(["auth_failure", "remote_error"])(
 		"shows a persistent message with only a dismiss control for %s",
 		async (code) => {
 			const rs = stateWith(err(code, "raw failure text"));

@@ -682,6 +682,54 @@ fn remote_tip(bare: &Path, branch: &str) -> git2::Oid {
         .unwrap()
 }
 
+fn on_a_branch_the_remote_lacks() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("topic")
+        .checkout("topic")
+        .with_file("topic.txt", "topic work")
+        .with_commit("Topic commit")
+        .with_remote("origin")
+        .build()
+}
+
+#[test]
+fn publishing_a_branch_puts_it_on_the_remote_and_tracks_it() {
+    let ctx = on_a_branch_the_remote_lacks();
+    let remote = ctx.remote();
+
+    remote.push_publish("origin", "topic").unwrap();
+
+    assert_eq!(
+        remote_tip(&bare_remote(&ctx, "origin"), "topic"),
+        ctx.repo().head().unwrap().target().unwrap()
+    );
+    let config = ctx.repo().config().unwrap();
+    assert_eq!(config.get_string("branch.topic.remote").unwrap(), "origin");
+    assert_eq!(
+        config.get_string("branch.topic.merge").unwrap(),
+        "refs/heads/topic"
+    );
+}
+
+#[test]
+fn publishing_refuses_when_the_repo_left_the_confirmed_branch() {
+    let ctx = on_a_branch_the_remote_lacks();
+    checkout_branch(&ctx, "main");
+
+    let result = ctx.remote().push_publish("origin", "topic");
+
+    assert_eq!(result.unwrap_err().code, "push_target_changed");
+    assert!(
+        git2::Repository::open(bare_remote(&ctx, "origin"))
+            .unwrap()
+            .find_reference("refs/heads/topic")
+            .is_err(),
+        "a publish confirmed for topic must not push from another branch"
+    );
+}
+
 #[test]
 fn force_push_targets_only_the_current_branch() {
     let ctx = TestContext::builder()
