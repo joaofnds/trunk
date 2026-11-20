@@ -1,5 +1,4 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import { message } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -357,7 +356,7 @@ describe("Toolbar", () => {
 	/** Render a Toolbar holding one redo entry whose `redo_commit` fails with
 	 *  `error`, click Redo, and hand back the store. */
 	async function redoFailingWith(error: { code: string; message: string }) {
-		vi.mocked(message).mockClear();
+		vi.mocked(showToast).mockClear();
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) => {
 			if (cmd === "redo_commit") throw error;
 			return cmd === "head_oid" ? "abc123" : false;
@@ -384,10 +383,7 @@ describe("Toolbar", () => {
 		});
 		await fireEvent.click(redoBtn);
 		await waitFor(() =>
-			expect(message).toHaveBeenCalledWith(error.message, {
-				title: "Redo Error",
-				kind: "error",
-			}),
+			expect(showToast).toHaveBeenCalledWith(error.message, "error"),
 		);
 		return undoRedo;
 	}

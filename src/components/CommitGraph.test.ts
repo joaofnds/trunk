@@ -1,5 +1,5 @@
 import { CheckMenuItem, MenuItem } from "@tauri-apps/api/menu";
-import { ask, message } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
 	fireEvent,
 	render,
@@ -608,7 +608,7 @@ describe("CommitGraph", () => {
 			expect(menuItemOptions("Fast-forward main to here").enabled).toBe(false);
 		});
 
-		it("opens no error dialog for a cherry-pick stopped on conflicts", async () => {
+		it("reports no error for a cherry-pick stopped on conflicts", async () => {
 			installReads({
 				commits: MERGE_FIXTURE,
 				override: (cmd) =>
@@ -627,7 +627,10 @@ describe("CommitGraph", () => {
 			await getMenuAction("Cherry-pick")();
 			await flush();
 
-			expect(vi.mocked(message)).not.toHaveBeenCalled();
+			expect(vi.mocked(showToast)).not.toHaveBeenCalledWith(
+				expect.anything(),
+				"error",
+			);
 		});
 
 		it("reports a cherry-pick that fails for another reason", async () => {
@@ -649,10 +652,7 @@ describe("CommitGraph", () => {
 			await getMenuAction("Cherry-pick")();
 			await flush();
 
-			expect(vi.mocked(message)).toHaveBeenCalledWith(
-				"bad object",
-				expect.objectContaining({ title: "Cherry-pick Error" }),
-			);
+			expect(vi.mocked(showToast)).toHaveBeenCalledWith("bad object", "error");
 		});
 
 		it("says why nothing was picked when HEAD already has the commit's changes", async () => {
@@ -675,9 +675,9 @@ describe("CommitGraph", () => {
 			await flush();
 
 			const picked = MERGE_FIXTURE[1];
-			expect(vi.mocked(message)).toHaveBeenCalledWith(
+			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
 				`HEAD already has the changes in ${picked.short_oid} "${picked.summary}", so there was nothing to cherry-pick.`,
-				{ title: "Nothing to Cherry-pick", kind: "info" },
+				"success",
 			);
 		});
 
@@ -719,7 +719,7 @@ describe("CommitGraph", () => {
 			});
 		});
 
-		it("opens no error dialog for a revert stopped on conflicts", async () => {
+		it("reports no error for a revert stopped on conflicts", async () => {
 			installReads({
 				commits: MERGE_FIXTURE,
 				override: (cmd) =>
@@ -738,7 +738,10 @@ describe("CommitGraph", () => {
 			await getMenuAction("Revert")();
 			await flush();
 
-			expect(vi.mocked(message)).not.toHaveBeenCalled();
+			expect(vi.mocked(showToast)).not.toHaveBeenCalledWith(
+				expect.anything(),
+				"error",
+			);
 		});
 
 		it("revert: cancel (null) does not invoke revert_continue", async () => {

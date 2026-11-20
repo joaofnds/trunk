@@ -1,4 +1,3 @@
-import { message } from "./dialog.js";
 import { isTrunkError } from "./invoke.js";
 import { showToast } from "./toast.svelte.js";
 
@@ -11,12 +10,4 @@ export function errorMessage(e: unknown, fallback: string): string {
 
 export function reportErrorToast(e: unknown, fallback: string): void {
 	showToast(errorMessage(e, fallback), "error");
-}
-
-export async function reportErrorDialog(
-	e: unknown,
-	title: string,
-	fallback: string,
-): Promise<void> {
-	await message(errorMessage(e, fallback), { title, kind: "error" });
 }

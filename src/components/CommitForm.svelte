@@ -1,6 +1,6 @@
 <script lang="ts">
 import { onDestroy, tick, untrack } from "svelte";
-import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
+import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -235,7 +235,7 @@ async function handleSubmit() {
 			await retargetAmend(e);
 		} else {
 			const action = mode === "commit" ? "Commit" : "Amend";
-			await reportErrorDialog(e, `${action} Error`, `${action} failed`);
+			reportErrorToast(e, `${action} failed`);
 		}
 	} finally {
 		committing = false;
@@ -265,9 +265,8 @@ async function retargetAmend(refusal: TrunkError) {
 		head === null
 			? ""
 			: `. HEAD is now "${head.subject}". ${edited ? "Amend again to amend it with this message." : "The form now shows its message."}`;
-	await reportErrorDialog(
+	reportErrorToast(
 		{ ...refusal, message: refusal.message + next },
-		"Amend Error",
 		"Amend failed",
 	);
 }

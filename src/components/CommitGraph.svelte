@@ -48,12 +48,8 @@ import {
 	tableMinWidth,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
-import { ask, message } from "../lib/dialog.js";
-import {
-	errorMessage,
-	reportErrorDialog,
-	reportErrorToast,
-} from "../lib/error-report.js";
+import { ask } from "../lib/dialog.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { canFastForward } from "../lib/fast-forward.js";
 import {
 	BADGE_FONT_SIZE,
@@ -81,6 +77,11 @@ import {
 } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
+import {
+	deleteRemoteBranch,
+	deleteTag,
+	renameBranch,
+} from "../lib/ref-actions.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -882,7 +883,7 @@ async function handleCheckoutCommit(commit: GraphCommit) {
 	try {
 		await safeInvoke("checkout_commit", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		await reportErrorDialog(e, "Checkout Error", "Failed to checkout commit");
+		reportCheckoutFailure(e);
 	}
 }
 
@@ -903,11 +904,7 @@ function handleCreateBranch(commit: GraphCommit) {
 				if (isCheckoutConflict(e)) {
 					showToast(CHECKOUT_CONFLICT_MESSAGE, "error");
 				} else {
-					await reportErrorDialog(
-						e,
-						"Create Branch Error",
-						"Failed to create branch",
-					);
+					reportErrorToast(e, "Failed to create branch");
 				}
 			}
 		},
@@ -931,7 +928,7 @@ function handleCreateTag(commit: GraphCommit) {
 					message: values.message || "",
 				});
 			} catch (e) {
-				await reportErrorDialog(e, "Create Tag Error", "Failed to create tag");
+				reportErrorToast(e, "Failed to create tag");
 			}
 		},
 	};
@@ -945,13 +942,13 @@ async function handleCherryPick(commit: GraphCommit) {
 		// banner and the conflicted files carry it from there, so it is no error.
 		if (isTrunkError(e) && e.code === "conflict_state") return;
 		if (isTrunkError(e) && e.code === "cherry_pick_empty") {
-			await message(
+			showToast(
 				`HEAD already has the changes in ${commit.short_oid} "${commit.summary}", so there was nothing to cherry-pick.`,
-				{ title: "Nothing to Cherry-pick", kind: "info" },
+				"success",
 			);
 			return;
 		}
-		await reportErrorDialog(e, "Cherry-pick Error", "Cherry-pick failed.");
+		reportErrorToast(e, "Cherry-pick failed.");
 	}
 }
 
@@ -973,7 +970,7 @@ async function handleRevert(commit: GraphCommit) {
 	} catch (e) {
 		// A conflicted revert stops in progress, as a conflicted pick does.
 		if (isTrunkError(e) && e.code === "conflict_state") return;
-		await reportErrorDialog(e, "Revert Error", "Revert failed.");
+		reportErrorToast(e, "Revert failed.");
 	}
 }
 
@@ -1004,7 +1001,7 @@ async function handleReset(
 			mode,
 		});
 	} catch (e) {
-		await reportErrorDialog(e, "Reset Error", "Reset failed.");
+		reportErrorToast(e, "Reset failed.");
 	}
 }
 
@@ -1286,7 +1283,7 @@ async function handleStashPop(oid: string) {
 	try {
 		await safeInvoke("stash_pop", { path: repoPath, oid });
 	} catch (e) {
-		await reportErrorDialog(e, "Stash Error", "Failed to pop stash");
+		reportErrorToast(e, "Failed to pop stash");
 	}
 }
 
@@ -1294,7 +1291,7 @@ async function handleStashApply(oid: string) {
 	try {
 		await safeInvoke("stash_apply", { path: repoPath, oid });
 	} catch (e) {
-		await reportErrorDialog(e, "Stash Error", "Failed to apply stash");
+		reportErrorToast(e, "Failed to apply stash");
 	}
 }
 
@@ -1307,7 +1304,7 @@ async function handleStashDrop(commit: GraphCommit) {
 	try {
 		await safeInvoke("stash_drop", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		await reportErrorDialog(e, "Stash Error", "Failed to drop stash");
+		reportErrorToast(e, "Failed to drop stash");
 	}
 }
 
@@ -1350,34 +1347,12 @@ function handleRowContextMenu(e: MouseEvent, commit: GraphCommit) {
 
 // Pill context menu actions (branch delete/rename, tag delete, remote branch delete)
 
-async function handleDeleteRemoteBranch(branchName: string) {
-	const confirmed = await ask(
-		`Delete remote branch '${branchName}'? This will remove it from the remote.`,
-		{ title: "Delete Remote Branch", kind: "warning" },
-	);
-	if (!confirmed) return;
-	try {
-		await safeInvoke("delete_remote_branch", { path: repoPath, branchName });
-		showToast(`Deleted remote branch ${branchName}`, "success");
-	} catch (e) {
-		await reportErrorDialog(
-			e,
-			"Delete Remote Branch Error",
-			"Failed to delete remote branch",
-		);
-	}
-}
-
 async function handleDeleteBranch(branchName: string) {
 	try {
 		if (!(await deleteBranch(repoPath, branchName))) return;
 		showToast(`Deleted branch ${branchName}`, "success");
 	} catch (e) {
-		await reportErrorDialog(
-			e,
-			"Delete Branch Error",
-			"Failed to delete branch",
-		);
+		reportErrorToast(e, "Failed to delete branch");
 	}
 }
 
@@ -1394,37 +1369,9 @@ function handleRenameBranch(branchName: string) {
 		],
 		onsubmit: async (values) => {
 			closeDialog();
-			const newName = values.name.trim();
-			if (!newName || newName === branchName) return;
-			try {
-				await safeInvoke("rename_branch", {
-					path: repoPath,
-					oldName: branchName,
-					newName,
-				});
-				showToast(`Renamed branch to ${newName}`, "success");
-			} catch (e) {
-				await reportErrorDialog(e, "Rename Error", "Failed to rename branch");
-			}
+			await renameBranch(repoPath, branchName, values.name);
 		},
 	};
-}
-
-async function handleDeleteTag(tagName: string) {
-	const confirmed = await ask(
-		`Delete tag '${tagName}'? This cannot be undone.`,
-		{
-			title: "Delete Tag",
-			kind: "warning",
-		},
-	);
-	if (!confirmed) return;
-	try {
-		await safeInvoke("delete_tag", { path: repoPath, tagName });
-		showToast(`Deleted tag ${tagName}`, "success");
-	} catch (e) {
-		await reportErrorDialog(e, "Delete Tag Error", "Failed to delete tag");
-	}
 }
 
 // --- Unified ref handlers (used by both pill and overflow ref) ---
@@ -1595,7 +1542,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						handleDeleteRemoteBranch(ref.shortName).catch(() => {});
+						deleteRemoteBranch(repoPath, ref.shortName).catch(() => {});
 					},
 				}),
 			],
@@ -1607,7 +1554,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						handleDeleteTag(ref.shortName).catch(() => {});
+						deleteTag(repoPath, ref.shortName).catch(() => {});
 					},
 				}),
 			],

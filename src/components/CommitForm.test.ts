@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../__tests__/helpers/tauri-mock";
 import { safeInvoke } from "../lib/invoke.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import CommitForm from "./CommitForm.svelte";
 
@@ -16,6 +17,12 @@ vi.mock("../lib/invoke.js", async () => {
 		safeInvoke: vi.fn(),
 	};
 });
+
+function errorsShown(): string[] {
+	return toasts.items
+		.filter((toast) => toast.kind === "error")
+		.map((toast) => toast.message);
+}
 
 describe("CommitForm", () => {
 	const defaultProps = {
@@ -690,14 +697,12 @@ describe("CommitForm", () => {
 			message:
 				"HEAD is no longer the commit this amend was opened on, so nothing was amended",
 		};
-		let message: typeof import("@tauri-apps/plugin-dialog").message;
 		let head: { oid: string; subject: string };
 		let refuseNextAmend: boolean;
 		let amends: unknown[];
 
-		beforeEach(async () => {
-			({ message } = await import("@tauri-apps/plugin-dialog"));
-			vi.mocked(message).mockClear();
+		beforeEach(() => {
+			_resetToasts();
 			vi.mocked(safeInvoke).mockReset();
 			head = { oid: "head-1", subject: "Prev subject" };
 			refuseNextAmend = false;
@@ -806,15 +811,14 @@ describe("CommitForm", () => {
 				await submit();
 
 				await waitFor(() =>
-					expect(message).toHaveBeenCalledWith(
+					expect(errorsShown()).toEqual([
 						`${stale.message}. HEAD is now "Pulled subject". Amend again to amend it with this message.`,
-						{ title: "Amend Error", kind: "error" },
-					),
+					]),
 				);
 				expect(subjectInput().value).toBe("fixed subject");
 			});
 
-			it("aims the next amend of an edited buffer at the commit the dialog named", async () => {
+			it("aims the next amend of an edited buffer at the commit the error named", async () => {
 				render(CommitForm, { props: defaultProps });
 				await openAmend();
 				await fireEvent.input(subjectInput(), {
@@ -823,7 +827,7 @@ describe("CommitForm", () => {
 				pullLands();
 				refuseNextAmend = true;
 				await submit();
-				await waitFor(() => expect(message).toHaveBeenCalled());
+				await waitFor(() => expect(errorsShown()).toHaveLength(1));
 				head = { oid: "head-3", subject: "Pulled again" };
 
 				await submit();
@@ -850,10 +854,9 @@ describe("CommitForm", () => {
 				await waitFor(() =>
 					expect(subjectInput().value).toBe("Pulled subject"),
 				);
-				expect(message).toHaveBeenCalledWith(
+				expect(errorsShown()).toEqual([
 					`${stale.message}. HEAD is now "Pulled subject". The form now shows its message.`,
-					{ title: "Amend Error", kind: "error" },
-				);
+				]);
 			});
 		});
 	});
@@ -861,13 +864,8 @@ describe("CommitForm", () => {
 	describe("when git refuses the commit", () => {
 		const hookOutput = "lint-staged failed:\n  src/a.ts: missing semicolon";
 
-		// The dialog module the form sees is the one the shared tauri-mock
-		// helper registers, which a static import here would resolve before.
-		let message: typeof import("@tauri-apps/plugin-dialog").message;
-
-		beforeEach(async () => {
-			({ message } = await import("@tauri-apps/plugin-dialog"));
-			vi.mocked(message).mockClear();
+		beforeEach(() => {
+			_resetToasts();
 			vi.mocked(safeInvoke).mockReset();
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
@@ -888,18 +886,13 @@ describe("CommitForm", () => {
 			return screen.getByTestId("commit-form-subject") as HTMLInputElement;
 		}
 
-		it("shows git's whole output in a dialog the user dismisses", async () => {
+		it("shows git's whole output in an error that stays until dismissed", async () => {
 			render(CommitForm, { props: defaultProps });
 			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
 
 			await fireEvent.click(screen.getByTestId("commit-form-submit"));
 
-			await waitFor(() =>
-				expect(message).toHaveBeenCalledWith(hookOutput, {
-					title: "Commit Error",
-					kind: "error",
-				}),
-			);
+			await waitFor(() => expect(errorsShown()).toEqual([hookOutput]));
 			expect(subjectInput().value).toBe("wip draft");
 		});
 
@@ -913,12 +906,7 @@ describe("CommitForm", () => {
 
 			await fireEvent.click(screen.getByTestId("commit-form-submit"));
 
-			await waitFor(() =>
-				expect(message).toHaveBeenCalledWith(hookOutput, {
-					title: "Amend Error",
-					kind: "error",
-				}),
-			);
+			await waitFor(() => expect(errorsShown()).toEqual([hookOutput]));
 			expect(subjectInput().value).toBe("fixed subject");
 		});
 	});

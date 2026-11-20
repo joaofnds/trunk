@@ -1,15 +1,6 @@
-import { message } from "@tauri-apps/plugin-dialog";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	errorMessage,
-	reportErrorDialog,
-	reportErrorToast,
-} from "./error-report.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { errorMessage, reportErrorToast } from "./error-report.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
-
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-	message: vi.fn().mockResolvedValue(undefined),
-}));
 
 describe("errorMessage", () => {
 	it("returns a native Error's message", () => {
@@ -57,37 +48,5 @@ describe("reportErrorToast", () => {
 		reportErrorToast({ code: "git_conflict" }, "Merge failed");
 
 		expect(toasts.items.map((t) => t.message)).toEqual(["Merge failed"]);
-	});
-});
-
-describe("reportErrorDialog", () => {
-	beforeEach(() => {
-		vi.mocked(message).mockClear();
-	});
-
-	it("opens an error dialog carrying the message under the given title", async () => {
-		await reportErrorDialog(
-			{ code: "git_conflict", message: "merge conflict" },
-			"Merge Error",
-			"Merge failed",
-		);
-
-		expect(vi.mocked(message)).toHaveBeenCalledWith("merge conflict", {
-			title: "Merge Error",
-			kind: "error",
-		});
-	});
-
-	it("opens the dialog with the fallback when the value carries no message", async () => {
-		await reportErrorDialog(
-			{ code: "git_conflict" },
-			"Merge Error",
-			"Merge failed",
-		);
-
-		expect(vi.mocked(message)).toHaveBeenCalledWith("Merge failed", {
-			title: "Merge Error",
-			kind: "error",
-		});
 	});
 });

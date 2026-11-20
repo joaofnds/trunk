@@ -19,6 +19,11 @@ import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
+	deleteRemoteBranch,
+	deleteTag,
+	renameBranch,
+} from "../lib/ref-actions.js";
+import {
 	EVERYTHING_VISIBLE,
 	groupState,
 	hidesNothing,
@@ -545,46 +550,26 @@ function handleRenameBranch(branchName: string) {
 		],
 		onsubmit: async (values) => {
 			closeDialog();
-			const newName = values.name.trim();
-			if (!newName || newName === branchName) return;
-			try {
-				await safeInvoke("rename_branch", {
-					path: repoPath,
-					oldName: branchName,
-					newName,
-				});
-				await loadRefs(repoPath);
-				onrefreshed?.();
-				showToast(`Renamed branch to ${newName}`, "success");
-			} catch (e) {
-				reportErrorToast(e, "Failed to rename branch");
+			if (await renameBranch(repoPath, branchName, values.name)) {
+				await refreshAfterAction();
 			}
 		},
 	};
 }
 
-async function handleDeleteTag(tagName: string) {
-	const confirmed = await ask(
-		`Delete tag '${tagName}'? This cannot be undone.`,
-		{
-			title: "Delete Tag",
-			kind: "warning",
-		},
-	);
-	if (!confirmed) return;
-	try {
-		await safeInvoke("delete_tag", { path: repoPath, tagName });
-		await loadRefs(repoPath);
-		onrefreshed?.();
-		showToast(`Deleted tag ${tagName}`, "success");
-	} catch (e) {
-		reportErrorToast(e, "Failed to delete tag");
-	}
-}
-
 async function refreshAfterAction() {
 	await loadRefs(repoPath);
 	onrefreshed?.();
+}
+
+async function handleDeleteTag(tagName: string) {
+	if (await deleteTag(repoPath, tagName)) await refreshAfterAction();
+}
+
+async function handleDeleteRemoteBranch(fullRefName: string) {
+	if (await deleteRemoteBranch(repoPath, fullRefName)) {
+		await refreshAfterAction();
+	}
 }
 
 function handleMergeBranch(branch: string) {
@@ -603,25 +588,6 @@ function handleRebaseBranch(ontoBranch: string) {
 async function handleInteractiveRebase(branchName: string) {
 	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
 	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
-}
-
-async function handleDeleteRemoteBranch(fullRefName: string) {
-	const confirmed = await ask(
-		`Delete remote branch '${fullRefName}'? This will remove it from the remote.`,
-		{ title: "Delete Remote Branch", kind: "warning" },
-	);
-	if (!confirmed) return;
-	try {
-		await safeInvoke("delete_remote_branch", {
-			path: repoPath,
-			branchName: fullRefName,
-		});
-		await loadRefs(repoPath);
-		onrefreshed?.();
-		showToast(`Deleted remote branch ${fullRefName}`, "success");
-	} catch (e) {
-		reportErrorToast(e, "Failed to delete remote branch");
-	}
 }
 
 async function showBranchContextMenu(

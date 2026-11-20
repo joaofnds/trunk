@@ -15,7 +15,7 @@ import {
 	isCheckoutConflict,
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
-import { reportErrorDialog, reportErrorToast } from "../lib/error-report.js";
+import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "../lib/keyboard.js";
 import { runRemoteOp } from "../lib/remote-op.js";
@@ -198,7 +198,7 @@ async function handleRedo() {
 		// A commit the repository no longer has can never be restored, so the
 		// entry goes rather than leaving Redo on offer to fail the same way.
 		if (!(isTrunkError(e) && e.code === "redo_missing")) undoRedo.push(entry);
-		await reportErrorDialog(e, "Redo Error", "Redo failed");
+		reportErrorToast(e, "Redo failed");
 	} finally {
 		movingHeadIn.delete(path);
 	}
