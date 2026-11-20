@@ -23,7 +23,7 @@ import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { popStash } from "../lib/stash-actions.js";
-import { showToast } from "../lib/toast.svelte.js";
+import { clearErrorToasts, showToast } from "../lib/toast.svelte.js";
 import type { ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
@@ -176,6 +176,7 @@ async function handleUndo() {
 			repoPath: path,
 		});
 		if (path === repoPath) headOid = result.head_oid;
+		clearErrorToasts();
 	} catch (e) {
 		reportErrorToast(e, "Undo failed");
 	} finally {
@@ -197,6 +198,7 @@ async function handleRedo() {
 			expectedHeadOid: entry.headOid,
 			expectedRepoPath: entry.repoPath,
 		});
+		clearErrorToasts();
 	} catch (e) {
 		// A commit the repository no longer has can never be restored, so the
 		// entry goes rather than leaving Redo on offer to fail the same way.

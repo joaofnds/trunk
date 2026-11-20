@@ -44,11 +44,15 @@ export function showToast(
 
 function showSuccess(message: string, ms: number): void {
 	const id = _nextId++;
-	_toasts = [
-		..._toasts.filter((t) => t.kind !== "error"),
-		{ id, message, kind: "success" },
-	];
+	clearErrorToasts();
+	_toasts = [..._toasts, { id, message, kind: "success" }];
 	setTimeout(() => dismissToast(id), ms);
+}
+
+/** Clears the errors on screen, as a success toast does, for an action whose
+ *  success shows nothing but the repository changing. */
+export function clearErrorToasts(): void {
+	_toasts = _toasts.filter((t) => t.kind !== "error");
 }
 
 function showError(message: string): void {

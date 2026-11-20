@@ -173,6 +173,7 @@ describe("CommitForm", () => {
 
 	describe("mode-switch field handling", () => {
 		beforeEach(() => {
+			_resetToasts();
 			vi.mocked(safeInvoke).mockReset();
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 				if (cmd === "get_head_commit_message") {
@@ -556,6 +557,26 @@ describe("CommitForm", () => {
 			);
 			expect(subjectInput().value).toBe("fix: two");
 			expect(bodyTextarea().value).toBe("");
+		});
+
+		it("clears the failure once a retried commit succeeds", async () => {
+			let attempts = 0;
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd !== "create_commit") return Promise.resolve(undefined);
+				attempts += 1;
+				return attempts === 1
+					? Promise.reject(new Error("hook refused"))
+					: Promise.resolve(undefined);
+			});
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.input(subjectInput(), { target: { value: "fix: one" } });
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+			await waitFor(() => expect(errorsShown()).toHaveLength(1));
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() => expect(subjectInput().value).toBe(""));
+			expect(errorsShown()).toEqual([]);
 		});
 
 		it("preserves the draft when a commit submit fails", async () => {

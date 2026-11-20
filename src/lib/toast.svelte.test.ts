@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { _resetToasts, showToast, toasts } from "./toast.svelte.js";
+import {
+	_resetToasts,
+	clearErrorToasts,
+	showToast,
+	toasts,
+} from "./toast.svelte.js";
 
 describe("toast store", () => {
 	beforeEach(() => {
@@ -93,6 +98,15 @@ describe("toast store", () => {
 		showToast("Checked out feature", "success");
 
 		expect(toasts.items.map((t) => t.message)).toEqual(["Checked out feature"]);
+	});
+
+	it("clears the errors on screen for an action that succeeds without a toast", () => {
+		showToast("Stash created", "success");
+		showToast("Commit failed: hook refused", "error");
+
+		clearErrorToasts();
+
+		expect(toasts.items.map((t) => t.message)).toEqual(["Stash created"]);
 	});
 
 	it("drops the oldest error when a fourth arrives", () => {

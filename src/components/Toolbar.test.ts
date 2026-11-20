@@ -987,6 +987,32 @@ describe("Toolbar undo", () => {
 		);
 	});
 
+	it("clears the failure once a retried undo succeeds", async () => {
+		let attempts = 0;
+		const undo = renderUndoable(() => {
+			attempts += 1;
+			return attempts === 1
+				? Promise.reject(new Error("refused"))
+				: Promise.resolve({ head_oid: "parent", undone_oid: "head-commit" });
+		});
+		await waitFor(() => expect(undo).toBeEnabled());
+		await fireEvent.click(undo);
+		await waitFor(() =>
+			expect(toasted()).toContainEqual(
+				expect.objectContaining({ kind: "error" }),
+			),
+		);
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(attempts).toBe(2));
+		await waitFor(() =>
+			expect(toasted()).not.toContainEqual(
+				expect.objectContaining({ kind: "error" }),
+			),
+		);
+	});
+
 	it("offers no Undo before the graph shows a HEAD", async () => {
 		const undo = renderUndoable(() => deferred<never>().promise);
 		await waitFor(() => expect(undo).toBeEnabled());

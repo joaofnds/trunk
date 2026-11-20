@@ -3,7 +3,7 @@ import { onDestroy, tick, untrack } from "svelte";
 import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
-import { showToast } from "../lib/toast.svelte.js";
+import { clearErrorToasts, showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Tab from "../lib/ui/Tab.svelte";
@@ -235,6 +235,7 @@ async function handleSubmit() {
 			clearCommittedSubject(subject);
 			clearCommittedBody(body);
 		}
+		clearErrorToasts();
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
 		if (mode === "stash") {
