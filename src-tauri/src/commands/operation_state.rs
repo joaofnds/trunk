@@ -49,16 +49,19 @@ impl MergeBeginOutcome {
     }
 }
 
+/// The name git's own merge message records for what it merges, in the forms
+/// `git fmt-merge-msg` writes for a single branch, remote-tracking branch or tag.
 fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
     let msg = merge_msg?;
-    // Patterns: "Merge branch 'feature'" or "Merge remote-tracking branch 'origin/feature'"
-    if let Some(rest) = msg.strip_prefix("Merge branch '") {
-        return rest.split('\'').next().map(String::from);
-    }
-    if let Some(rest) = msg.strip_prefix("Merge remote-tracking branch '") {
-        return rest.split('\'').next().map(String::from);
-    }
-    None // Unparseable -- caller shows generic "Merge in progress"
+    [
+        "Merge branch '",
+        "Merge remote-tracking branch '",
+        "Merge tag '",
+    ]
+    .iter()
+    .find_map(|prefix| msg.strip_prefix(prefix))
+    .and_then(|rest| rest.split('\'').next())
+    .map(String::from)
 }
 
 fn merge_head_branch(repo: &git2::Repository) -> Option<String> {
@@ -71,17 +74,20 @@ fn merge_head_branch(repo: &git2::Repository) -> Option<String> {
     resolve_oid_to_branch(repo, oid)
 }
 
+/// The one local branch at `oid_str`. Two branches there leave which one the user merged
+/// unknowable, so neither is named.
 fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<String> {
     let oid = git2::Oid::from_str(oid_str).ok()?;
-    for reference in repo.references().ok()?.flatten() {
-        if reference.is_branch()
-            && let Some(target) = reference.target()
-            && target == oid
-        {
-            return reference.shorthand().ok().map(String::from);
-        }
+    let mut at_tip = repo
+        .branches(Some(git2::BranchType::Local))
+        .ok()?
+        .flatten()
+        .filter(|(branch, _)| branch.get().target() == Some(oid));
+    let (branch, _) = at_tip.next()?;
+    if at_tip.next().is_some() {
+        return None;
     }
-    None
+    branch.name().ok().flatten().map(String::from)
 }
 
 /// The commit `head_file` names, as a cherry-pick or a revert in progress records it.

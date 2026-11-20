@@ -94,6 +94,39 @@ fn a_merge_of_a_commit_no_branch_points_at_names_no_source() {
 }
 
 #[test]
+fn a_tag_merge_names_the_tag() {
+    let ctx = merging_feature_with_a_conflict();
+    std::fs::write(ctx.repo().path().join("MERGE_MSG"), "Merge tag 'v1'\n").unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+
+    assert_eq!(info.source_branch.as_deref(), Some("v1"));
+}
+
+#[test]
+fn a_merge_of_a_tip_two_branches_share_names_no_source() {
+    let ctx = merging_feature_with_a_conflict();
+    let repo = ctx.repo();
+    std::fs::write(repo.path().join("MERGE_MSG"), "Merge commit 'abc1234'\n").unwrap();
+    let feature_tip = repo
+        .find_branch("feature", git2::BranchType::Local)
+        .unwrap()
+        .get()
+        .peel_to_commit()
+        .unwrap();
+    for name in ["release", "zz-release"] {
+        repo.branch(name, &feature_tip, false).unwrap();
+    }
+
+    let info = ctx.get_operation_state().unwrap();
+
+    assert_eq!(
+        info.source_branch, None,
+        "a banner must not guess which of the branches at the merged tip the user merged"
+    );
+}
+
+#[test]
 fn merge_branch_begin_non_conflicting_then_continue_creates_merge_commit() {
     // Divergent changes on DIFFERENT files -> non-ff clean merge. The two-step
     // flow stages on begin (Ready), then merge_continue finalizes the commit.
@@ -472,6 +505,25 @@ fn a_paused_rebase_onto_a_commit_no_branch_points_at_names_the_commit_not_a_bran
     let info = ctx.get_operation_state().unwrap();
 
     assert!(matches!(info.op_type, OperationType::Rebase));
+    assert_eq!(info.target_branch, None);
+    assert_eq!(info.onto_oid, Some(onto.to_string()));
+}
+
+#[test]
+fn a_paused_rebase_onto_a_tip_two_branches_share_names_the_commit_not_a_guess() {
+    let ctx = diverged_on_one_file();
+    let repo = ctx.repo();
+    let onto = repo
+        .revparse_single("main")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    repo.branch("hotfix", &onto, false).unwrap();
+    let onto = onto.id();
+
+    let _ = ctx.rebase_branch("main");
+    let info = ctx.get_operation_state().unwrap();
+
     assert_eq!(info.target_branch, None);
     assert_eq!(info.onto_oid, Some(onto.to_string()));
 }
