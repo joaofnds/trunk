@@ -41,10 +41,10 @@ describe("a push to a remote that has moved", () => {
 		);
 		expect(refusal).toEqual({
 			text: "Push to origin rejected — main has diverged from the remote.",
-			actions: ["Force Push", "Cancel"],
+			actions: ["Pull", "Force Push", "Cancel"],
 		});
 
-		await app.remote.pullRebase();
+		await app.remote.pullFromRecovery();
 		await app.remote.push();
 
 		const pills = await app.elapseUntil(

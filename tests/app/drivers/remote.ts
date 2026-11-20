@@ -28,9 +28,8 @@ export class RemoteDriver {
 		button.click();
 	}
 
-	/** Opens the pull dropdown and chooses the rebase strategy. The plain Pull
-	 *  button is not the same gesture: on a diverged branch under a scrubbed git
-	 *  config, a strategy-less pull is a fatal error rather than a default. */
+	/** Opens the pull dropdown and chooses the rebase strategy, which a diverged
+	 *  branch replays onto its upstream where the plain Pull would merge it. */
 	async pullRebase(): Promise<void> {
 		const chevron = await waitFor("an enabled pull-options button", () =>
 			enabled(PULL_OPTIONS),
@@ -43,6 +42,22 @@ export class RemoteDriver {
 		);
 
 		option.click();
+	}
+
+	/** Presses Pull on the prompt a refused push raised. */
+	async pullFromRecovery(): Promise<void> {
+		const button = await waitFor(
+			"the prompt's enabled Pull",
+			() =>
+				[
+					...document.querySelectorAll<HTMLButtonElement>(
+						`${RECOVERY_SURFACE} button`,
+					),
+				].find((action) => collapse(action) === "Pull" && !action.disabled) ??
+				null,
+		);
+
+		button.click();
 	}
 
 	/**

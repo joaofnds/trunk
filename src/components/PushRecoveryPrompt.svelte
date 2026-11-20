@@ -159,6 +159,15 @@ function handlePublish(target: Target) {
 	);
 }
 
+function handlePull() {
+	return runRemoteOp(
+		remoteState,
+		repoPath,
+		"git_pull",
+		"Pulled. Push again to send your commits.",
+	);
+}
+
 async function handleForcePush(target: Target) {
 	const confirmed = await ask(
 		`Force push? This overwrites the remote branch.\n\nBranch: ${forDisplay(target.branch)}\nRemote: ${forDisplay(target.remote)}`,
@@ -213,6 +222,13 @@ async function handleForcePush(target: Target) {
 				<div class="flex shrink-0 gap-1">
 					<Button
 						size="sm"
+						variant="primary"
+						onclick={handlePull}
+						disabled={remoteState.isRunning}
+						>Pull</Button
+					>
+					<Button
+						size="sm"
 						variant="danger"
 						onclick={() => handleForcePush(target)}
 						disabled={remoteState.isRunning}
@@ -244,10 +260,17 @@ async function handleForcePush(target: Target) {
 				<span class="recovery-text">
 					Force push to <strong>{display.remote}</strong> refused &mdash;
 					<strong>{display.branch}</strong>
-					has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to
-					include them, then push.
+					has remote commits you haven&rsquo;t integrated. Pull to include them,
+					then push.
 				</span>
 				<div class="flex shrink-0 gap-1">
+					<Button
+						size="sm"
+						variant="primary"
+						onclick={handlePull}
+						disabled={remoteState.isRunning}
+						>Pull</Button
+					>
 					<Button size="sm" onclick={dismiss} disabled={remoteState.isRunning}
 						>Cancel</Button
 					>

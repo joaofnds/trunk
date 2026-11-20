@@ -103,7 +103,7 @@ describe("PushRecoveryPrompt", () => {
 		expect(container.textContent?.trim()).toBe("");
 	});
 
-	it("offers Force Push and Cancel for a diverged push, naming branch and remote", async () => {
+	it("offers Pull, Force Push and Cancel for a diverged push, naming branch and remote", async () => {
 		render(PushRecoveryPrompt, {
 			props: propsFor(stateWith(err("non_fast_forward"))),
 		});
@@ -111,11 +111,9 @@ describe("PushRecoveryPrompt", () => {
 		await waitFor(() => {
 			expect(screen.getByText("Force Push")).toBeInTheDocument();
 		});
-		expect(screen.getByText("Cancel")).toBeInTheDocument();
-		expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
-
-		const buttons = screen.getAllByRole("button");
-		expect(buttons).toHaveLength(2);
+		expect(
+			screen.getAllByRole("button").map((button) => button.textContent?.trim()),
+		).toEqual(["Pull", "Force Push", "Cancel"]);
 
 		const surface = screen.getByRole("alert");
 		expect(surface.textContent).toContain("feature");
@@ -133,7 +131,7 @@ describe("PushRecoveryPrompt", () => {
 		expect(screen.getByText("Cancel")).toHaveClass("border-border");
 	});
 
-	it("offers Cancel only on a lease/if-includes refusal", async () => {
+	it("offers Pull and Cancel only on a lease/if-includes refusal", async () => {
 		render(PushRecoveryPrompt, {
 			props: propsFor(stateWith(err("push_lease_refused"))),
 		});
@@ -142,11 +140,34 @@ describe("PushRecoveryPrompt", () => {
 			expect(screen.getByText("Cancel")).toBeInTheDocument();
 		});
 		// Force Push would be a guaranteed no-op here, so it must not be offered (D7).
-		expect(screen.queryByText("Force Push")).toBeNull();
-		expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
-		expect(screen.getAllByRole("button")).toHaveLength(1);
+		expect(
+			screen.getAllByRole("button").map((button) => button.textContent?.trim()),
+		).toEqual(["Pull", "Cancel"]);
 		expect(screen.getByRole("alert").textContent).toContain("refused");
 	});
+
+	it.each(["non_fast_forward", "push_lease_refused"])(
+		"pulls once from the banner of a push refused with %s, and pushes nothing",
+		async (code) => {
+			render(PushRecoveryPrompt, {
+				props: propsFor(stateWith(err(code))),
+			});
+
+			await fireEvent.click(await screen.findByText("Pull"));
+
+			await waitFor(() =>
+				expect(mockToast).toHaveBeenCalledWith(
+					"Pulled. Push again to send your commits.",
+					"success",
+				),
+			);
+			const remoteCalls = mockInvoke.mock.calls
+				.map(([cmd]) => cmd)
+				.filter((cmd) => cmd.startsWith("git_"));
+			expect(remoteCalls).toEqual(["git_pull"]);
+			expect(mockInvoke).toHaveBeenCalledWith("git_pull", { path: "/repo" });
+		},
+	);
 });
 
 describe("PushRecoveryPrompt force push", () => {
@@ -219,7 +240,9 @@ describe("PushRecoveryPrompt force push", () => {
 
 		await waitFor(() => expect(rs.error?.message).toBe("the force push"));
 		expect(await screen.findByText("Force Push")).toBeInTheDocument();
-		expect(screen.getAllByRole("button")).toHaveLength(2);
+		expect(
+			screen.getAllByRole("button").map((button) => button.textContent?.trim()),
+		).toEqual(["Pull", "Force Push", "Cancel"]);
 	});
 
 	describe("when the repository left the confirmed branch", () => {
