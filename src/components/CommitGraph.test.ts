@@ -725,6 +725,67 @@ describe("CommitGraph", () => {
 			});
 		});
 
+		it("says why nothing was reverted when HEAD already undoes the commit", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) =>
+					cmd === "revert_commit_begin"
+						? Promise.reject({
+								code: "revert_empty",
+								message:
+									"HEAD already undoes this commit's changes, so there was nothing to revert.",
+							})
+						: undefined,
+			});
+			render(CommitGraph, {
+				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			});
+			await openContextMenu(1);
+
+			await getMenuAction("Revert")();
+			await flush();
+
+			const reverted = MERGE_FIXTURE[1];
+			expect(toasted()).toEqual([
+				{
+					message: `HEAD already undoes the changes in ${reverted.short_oid} "${reverted.summary}", so there was nothing to revert.`,
+					kind: "success",
+				},
+			]);
+		});
+
+		it("says the revert ended without a commit when nothing was left to commit", async () => {
+			installReads({
+				commits: MERGE_FIXTURE,
+				override: (cmd) => {
+					if (cmd === "revert_commit_begin")
+						return Promise.resolve({ message: "Revert default" });
+					if (cmd === "revert_continue") return Promise.resolve("skipped");
+					return undefined;
+				},
+			});
+			render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					tabActive: true,
+					onopenmessageeditor: vi.fn().mockResolvedValue("edited revert"),
+				},
+			});
+			await openContextMenu(0);
+
+			await getMenuAction("Revert")();
+			await flush();
+
+			expect(toasted()).toEqual([
+				{
+					message:
+						"Nothing was left to commit, so the revert ended without a commit.",
+					kind: "success",
+				},
+			]);
+		});
+
 		it("reports no error for a revert stopped on conflicts", async () => {
 			installReads({
 				commits: MERGE_FIXTURE,

@@ -193,6 +193,10 @@ export interface PushTarget {
 	branch: string | null;
 }
 
+/** How continuing a cherry-pick or revert ended: committed, ended without a commit
+ *  because the resolution left nothing to commit, or waiting for a message. */
+export type Conclusion = "committed" | "skipped" | "needs_message";
+
 export interface OperationInfo {
 	op_type: OperationType;
 	source_branch: string | null;

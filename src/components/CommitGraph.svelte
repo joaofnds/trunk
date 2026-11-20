@@ -107,6 +107,7 @@ import { measureTextWidth } from "../lib/text-measure.js";
 import { textOverrun } from "../lib/text-overrun.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
+	Conclusion,
 	DiffStat,
 	GraphCommit,
 	GraphResponse,
@@ -978,10 +979,25 @@ async function handleRevert(commit: GraphCommit) {
 			"Revert commit message",
 		);
 		if (msg == null) return;
-		await safeInvoke("revert_continue", { path: repoPath, message: msg });
+		const conclusion = await safeInvoke<Conclusion>("revert_continue", {
+			path: repoPath,
+			message: msg,
+		});
+		if (conclusion === "skipped")
+			showToast(
+				"Nothing was left to commit, so the revert ended without a commit.",
+				"success",
+			);
 	} catch (e) {
 		// A conflicted revert stops in progress, as a conflicted pick does.
 		if (isTrunkError(e) && e.code === "conflict_state") return;
+		if (isTrunkError(e) && e.code === "revert_empty") {
+			showToast(
+				`HEAD already undoes the changes in ${commit.short_oid} "${commit.summary}", so there was nothing to revert.`,
+				"success",
+			);
+			return;
+		}
 		reportErrorToast(e, "Revert failed.");
 	}
 }

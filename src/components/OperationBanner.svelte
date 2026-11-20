@@ -5,7 +5,7 @@ import { ask } from "../lib/dialog.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { OperationInfo } from "../lib/types.js";
+import type { Conclusion, OperationInfo } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import BranchChip from "./BranchChip.svelte";
 
@@ -37,21 +37,43 @@ let label = $derived.by(() => {
 	return "";
 });
 
-// Revert recovery (MSG-06). A Revert state previously rendered no buttons,
-// trapping a cancelled revert in REVERT_HEAD. Continue routes the commit message
-// through the host-owned MessageEditor (default verbatim from MERGE_MSG); cancel
-// (null) makes no commit and leaves the revert recoverable (D-02). Abort runs
-// `git revert --abort`.
-async function handleRevertContinue() {
+interface Continuation {
+	command: "cherry_pick_continue" | "revert_continue";
+	/** The operation as a sentence names it. */
+	noun: string;
+	completed: string;
+	editorTitle: string;
+}
+
+// Continue asks the backend first, which ends an operation whose resolution left
+// nothing to commit. Only a resolution that changes something opens the host-owned
+// MessageEditor (default verbatim from MERGE_MSG), and cancelling it (null) makes no
+// commit and leaves the operation recoverable (D-02).
+async function continueOperation(continuation: Continuation) {
+	const { command, noun, completed, editorTitle } = continuation;
 	loading = true;
 	try {
-		const def = await safeInvoke<string | null>("get_merge_message", {
+		let conclusion = await safeInvoke<Conclusion>(command, {
 			path: repoPath,
+			message: null,
 		});
-		const msg = await onopenmessageeditor?.(def ?? "", "Revert commit message");
-		if (msg == null) return;
-		await safeInvoke("revert_continue", { path: repoPath, message: msg });
-		showToast("Revert completed", "success");
+		if (conclusion === "needs_message") {
+			const def = await safeInvoke<string | null>("get_merge_message", {
+				path: repoPath,
+			});
+			const msg = await onopenmessageeditor?.(def ?? "", editorTitle);
+			if (msg == null) return;
+			conclusion = await safeInvoke<Conclusion>(command, {
+				path: repoPath,
+				message: msg,
+			});
+		}
+		showToast(
+			conclusion === "skipped"
+				? `Nothing was left to commit, so the ${noun} ended without a commit.`
+				: completed,
+			"success",
+		);
 	} catch (e) {
 		reportErrorToast(e, "Continue failed");
 	} finally {
@@ -60,25 +82,22 @@ async function handleRevertContinue() {
 	}
 }
 
-async function handleCherryPickContinue() {
-	loading = true;
-	try {
-		const def = await safeInvoke<string | null>("get_merge_message", {
-			path: repoPath,
-		});
-		const msg = await onopenmessageeditor?.(
-			def ?? "",
-			"Cherry-pick commit message",
-		);
-		if (msg == null) return;
-		await safeInvoke("cherry_pick_continue", { path: repoPath, message: msg });
-		showToast("Cherry-pick completed", "success");
-	} catch (e) {
-		reportErrorToast(e, "Continue failed");
-	} finally {
-		loading = false;
-		onaction?.();
-	}
+function handleRevertContinue() {
+	return continueOperation({
+		command: "revert_continue",
+		noun: "revert",
+		completed: "Revert completed",
+		editorTitle: "Revert commit message",
+	});
+}
+
+function handleCherryPickContinue() {
+	return continueOperation({
+		command: "cherry_pick_continue",
+		noun: "cherry-pick",
+		completed: "Cherry-pick completed",
+		editorTitle: "Cherry-pick commit message",
+	});
 }
 
 async function handleCherryPickAbort() {

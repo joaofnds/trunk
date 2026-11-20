@@ -71,7 +71,7 @@ not_open_contract! {
     revert_commit_begin_reports_not_open_for_an_unregistered_repo =>
         |path, state| revert_commit_begin_inner(path, "HEAD", state);
     revert_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_continue_inner(path, "a message", state);
+        |path, state| revert_continue_inner(path, Some("a message"), state);
     revert_abort_reports_not_open_for_an_unregistered_repo =>
         revert_abort_inner;
     reset_to_commit_reports_not_open_for_an_unregistered_repo =>

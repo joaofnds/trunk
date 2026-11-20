@@ -1,6 +1,7 @@
 mod common;
 
 use common::context::TestContext;
+use trunk_lib::commands::commit_actions::Conclusion;
 
 /// Build a context with two commits for checkout/cherry-pick/revert/reset tests.
 /// Returns (ctx, `first_oid`, `second_oid`).
@@ -515,6 +516,42 @@ fn revert_continue_commits_and_clears_revert_head() {
 }
 
 #[test]
+fn revert_commit_begin_ends_a_revert_head_already_undoes() {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "a\n")
+        .with_commit("Initial commit")
+        .with_file("f.txt", "b\n")
+        .with_commit("Change")
+        .with_file("f.txt", "a\n")
+        .with_commit("Undo the change by hand")
+        .build();
+    let change = ctx.resolve_ref("HEAD~1").unwrap();
+    let head_before = ctx.resolve_ref("HEAD").unwrap();
+
+    let err = ctx
+        .revert_commit_begin(&change)
+        .expect_err("a revert HEAD already undoes has nothing to commit");
+
+    assert_eq!(err.code, "revert_empty");
+    assert!(!ctx.repo_path().join(".git").join("REVERT_HEAD").exists());
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), head_before);
+}
+
+#[test]
+fn revert_continue_ends_a_revert_whose_changes_were_unstaged_without_a_commit() {
+    let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
+    ctx.revert_commit_begin(&second_oid).unwrap();
+    let head_before = ctx.resolve_ref("HEAD").unwrap();
+    ctx.unstage_file("second.txt").unwrap();
+
+    let conclusion = ctx.revert_continue_unasked().unwrap();
+
+    assert_eq!(conclusion, Conclusion::Skipped);
+    assert!(!ctx.repo_path().join(".git").join("REVERT_HEAD").exists());
+    assert_eq!(ctx.resolve_ref("HEAD").unwrap(), head_before);
+}
+
+#[test]
 fn revert_abort_restores_the_reverted_file() {
     let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
     ctx.revert_commit_begin(&second_oid)
@@ -608,6 +645,41 @@ mod cherry_pick_lifecycle {
         assert!(!cherry_pick_head_exists(&ctx));
         let head = ctx.get_head_commit_message().unwrap();
         assert_eq!(head.subject, "Pick the side change");
+    }
+
+    #[test]
+    fn cherry_pick_continue_ends_a_pick_resolved_back_to_head_without_a_commit() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+        let head_before = ctx.resolve_ref("HEAD").unwrap();
+        std::fs::write(ctx.repo_path().join("f.txt"), "main\n").unwrap();
+        ctx.stage_file("f.txt").unwrap();
+        std::fs::write(ctx.repo_path().join("notes.txt"), "kept\n").unwrap();
+
+        let conclusion = ctx.cherry_pick_continue_unasked().unwrap();
+
+        assert_eq!(conclusion, Conclusion::Skipped);
+        assert!(!cherry_pick_head_exists(&ctx));
+        assert_eq!(ctx.resolve_ref("HEAD").unwrap(), head_before);
+        assert_eq!(
+            std::fs::read_to_string(ctx.repo_path().join("notes.txt")).unwrap(),
+            "kept\n"
+        );
+    }
+
+    #[test]
+    fn cherry_pick_continue_asks_for_a_message_before_committing_a_resolution() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+        resolve_conflict(&ctx);
+
+        let conclusion = ctx.cherry_pick_continue_unasked().unwrap();
+
+        assert_eq!(conclusion, Conclusion::NeedsMessage);
+        assert!(
+            cherry_pick_head_exists(&ctx),
+            "the pick waits for its message"
+        );
     }
 
     #[cfg(unix)]

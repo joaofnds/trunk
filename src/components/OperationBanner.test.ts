@@ -3,7 +3,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OperationInfo } from "../lib/types";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
+import type { Conclusion, OperationInfo } from "../lib/types";
 import OperationBanner from "./OperationBanner.svelte";
 
 // Tauri mocks declared locally (not the shared side-effect helper) so vi.mock
@@ -20,6 +21,16 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
 	ask: vi.fn().mockResolvedValue(false),
 }));
+
+/** What continuing answers when the resolution changes something: a message is
+ *  asked for first, and the commit is made once one arrives. */
+function concluded(args: unknown): Conclusion {
+	const message =
+		typeof args === "object" && args !== null && "message" in args
+			? args.message
+			: null;
+	return message == null ? "needs_message" : "committed";
+}
 
 function makeInfo(overrides: Partial<OperationInfo> = {}): OperationInfo {
 	return {
@@ -168,9 +179,10 @@ describe("OperationBanner revert recovery", () => {
 
 	beforeEach(() => {
 		mockInvoke.mockReset();
-		mockInvoke.mockImplementation((cmd: string) => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			if (cmd === "get_merge_message")
 				return Promise.resolve('Revert "x"\n\nThis reverts commit abc.');
+			if (cmd === "revert_continue") return Promise.resolve(concluded(args));
 			return Promise.resolve(undefined);
 		});
 		mockAsk.mockReset();
@@ -268,10 +280,10 @@ describe("OperationBanner revert recovery", () => {
 		await waitFor(() => {
 			expect(onopenmessageeditor).toHaveBeenCalled();
 		});
-		expect(mockInvoke).not.toHaveBeenCalledWith(
-			"revert_continue",
-			expect.anything(),
-		);
+		expect(mockInvoke).not.toHaveBeenCalledWith("revert_continue", {
+			path: "/repo",
+			message: expect.any(String),
+		});
 	});
 
 	it("does not wire a merge-continue editor button for a merge state", () => {
@@ -298,8 +310,10 @@ describe("OperationBanner cherry-pick recovery", () => {
 
 	beforeEach(() => {
 		mockInvoke.mockReset();
-		mockInvoke.mockImplementation((cmd: string) => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			if (cmd === "get_merge_message") return Promise.resolve("Side change\n");
+			if (cmd === "cherry_pick_continue")
+				return Promise.resolve(concluded(args));
 			return Promise.resolve(undefined);
 		});
 		mockAsk.mockReset();
@@ -378,9 +392,34 @@ describe("OperationBanner cherry-pick recovery", () => {
 		await waitFor(() => {
 			expect(onopenmessageeditor).toHaveBeenCalled();
 		});
-		expect(mockInvoke).not.toHaveBeenCalledWith(
-			"cherry_pick_continue",
-			expect.anything(),
+		expect(mockInvoke).not.toHaveBeenCalledWith("cherry_pick_continue", {
+			path: "/repo",
+			message: expect.any(String),
+		});
+	});
+
+	it("ends a cherry-pick resolved back to HEAD without asking for a message", async () => {
+		_resetToasts();
+		mockInvoke.mockImplementation((cmd: string) =>
+			Promise.resolve(cmd === "cherry_pick_continue" ? "skipped" : undefined),
 		);
+		const onopenmessageeditor = vi.fn();
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				resolved: true,
+				onopenmessageeditor,
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Continue"));
+
+		await waitFor(() => {
+			expect(toasts.items.map(({ message }) => message)).toEqual([
+				"Nothing was left to commit, so the cherry-pick ended without a commit.",
+			]);
+		});
+		expect(onopenmessageeditor).not.toHaveBeenCalled();
 	});
 });

@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
 use trunk_git::graph_input::{GraphSnapshot, RefVisibility};
-use trunk_lib::commands::commit_actions::{self, RevertBeginResult};
+use trunk_lib::commands::commit_actions::{self, Conclusion, RevertBeginResult};
 use trunk_lib::types::UndoResult;
 
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
@@ -59,12 +59,15 @@ impl TestContext {
     }
 
     /// Finish a conflicted cherry-pick with the given message.
-    pub fn cherry_pick_continue(&self, message: &str) -> Result<GraphSnapshot, TrunkError> {
-        snapshot(commit_actions::cherry_pick_continue_inner(
-            self.path(),
-            message,
-            self.state_map(),
-        ))
+    pub fn cherry_pick_continue(&self, message: &str) -> Result<Conclusion, TrunkError> {
+        commit_actions::cherry_pick_continue_inner(self.path(), Some(message), self.state_map())
+            .map(|(_, conclusion)| conclusion)
+    }
+
+    /// Continue a conflicted cherry-pick before any message is asked for.
+    pub fn cherry_pick_continue_unasked(&self) -> Result<Conclusion, TrunkError> {
+        commit_actions::cherry_pick_continue_inner(self.path(), None, self.state_map())
+            .map(|(_, conclusion)| conclusion)
     }
 
     /// Abort an in-progress cherry-pick, restoring a clean tree.
@@ -87,12 +90,15 @@ impl TestContext {
     }
 
     /// Finish a staged revert with the edited message (git commit -m --cleanup=strip).
-    pub fn revert_continue(&self, message: &str) -> Result<GraphSnapshot, TrunkError> {
-        snapshot(commit_actions::revert_continue_inner(
-            self.path(),
-            message,
-            self.state_map(),
-        ))
+    pub fn revert_continue(&self, message: &str) -> Result<Conclusion, TrunkError> {
+        commit_actions::revert_continue_inner(self.path(), Some(message), self.state_map())
+            .map(|(_, conclusion)| conclusion)
+    }
+
+    /// Continue a staged revert before any message is asked for.
+    pub fn revert_continue_unasked(&self) -> Result<Conclusion, TrunkError> {
+        commit_actions::revert_continue_inner(self.path(), None, self.state_map())
+            .map(|(_, conclusion)| conclusion)
     }
 
     /// Abort a staged revert (git revert --abort), restoring a clean tree.

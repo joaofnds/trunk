@@ -109,11 +109,26 @@ fn stopped_error(path: &std::path::Path, output: &Output, other: &str) -> TrunkE
     TrunkError::new(code, refusal(output))
 }
 
-/// Whether git stopped the pick because HEAD already has its changes: the pick
-/// is still in progress, nothing conflicts, and the index holds HEAD's own tree.
-fn pick_is_empty(path: &std::path::Path) -> Result<bool, TrunkError> {
+/// How continuing a cherry-pick or revert ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Conclusion {
+    /// The resolved changes were committed.
+    Committed,
+    /// The resolution left nothing to commit, so the operation ended without a commit.
+    Skipped,
+    /// The resolution changes something, and committing it needs a message.
+    NeedsMessage,
+}
+
+/// Whether the operation `state` names is still in progress with nothing left to
+/// commit: nothing conflicts and the index holds HEAD's own tree.
+fn nothing_to_commit(
+    path: &std::path::Path,
+    state: git2::RepositoryState,
+) -> Result<bool, TrunkError> {
     let repo = git2::Repository::open(path)?;
-    if repo.state() != git2::RepositoryState::CherryPick {
+    if repo.state() != state {
         return Ok(false);
     }
 
@@ -127,10 +142,28 @@ fn pick_is_empty(path: &std::path::Path) -> Result<bool, TrunkError> {
     Ok(staged.deltas().len() == 0)
 }
 
-fn cherry_pick_skip(path: &std::path::Path) -> Result<(), TrunkError> {
-    UserGit::in_dir(path)
-        .args(["cherry-pick", "--skip"])
-        .run("cherry_pick_error")
+fn skip(path: &std::path::Path, operation: &str, code: &str) -> Result<(), TrunkError> {
+    UserGit::in_dir(path).args([operation, "--skip"]).run(code)
+}
+
+/// Ends a cherry-pick or revert with nothing left to commit by skipping it, and
+/// otherwise commits it with `message`, or reports that it needs one.
+fn conclude(
+    path: &std::path::Path,
+    message: Option<&str>,
+    state: git2::RepositoryState,
+    operation: &str,
+    code: &str,
+) -> Result<Conclusion, TrunkError> {
+    if nothing_to_commit(path, state)? {
+        skip(path, operation, code)?;
+        return Ok(Conclusion::Skipped);
+    }
+    let Some(message) = message else {
+        return Ok(Conclusion::NeedsMessage);
+    };
+    conclude_with_message(path, message, code)?;
+    Ok(Conclusion::Committed)
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -157,8 +190,8 @@ pub fn cherry_pick_inner(
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
 
         if !output.status.success() {
-            if pick_is_empty(path_buf)? {
-                cherry_pick_skip(path_buf)?;
+            if nothing_to_commit(path_buf, git2::RepositoryState::CherryPick)? {
+                skip(path_buf, "cherry-pick", "cherry_pick_error")?;
                 return Err(TrunkError::new("cherry_pick_empty", refusal(&output)));
             }
             return Err(stopped_error(path_buf, &output, "cherry_pick_error"));
@@ -170,7 +203,10 @@ pub fn cherry_pick_inner(
     state_map.read_graph(path)
 }
 
-/// Conclude a conflicted cherry-pick by committing the resolved tree.
+/// Conclude a conflicted cherry-pick, skipping it when nothing is left to commit.
+///
+/// A resolution that changes something is committed with `message`, or left in
+/// progress as `NeedsMessage` when no message is given.
 ///
 /// # Errors
 ///
@@ -178,15 +214,21 @@ pub fn cherry_pick_inner(
 /// git's own message when `git` will not run or the commit fails.
 pub fn cherry_pick_continue_inner(
     path: &str,
-    message: &str,
+    message: Option<&str>,
     state_map: &OpenRepos,
-) -> Result<crate::state::GraphRead, TrunkError> {
+) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    state_map.hold_for_git(path, |_| {
-        conclude_with_message(path_buf, message, "cherry_pick_error")
+    let conclusion = state_map.hold_for_git(path, |_| {
+        conclude(
+            path_buf,
+            message,
+            git2::RepositoryState::CherryPick,
+            "cherry-pick",
+            "cherry_pick_error",
+        )
     })?;
 
-    state_map.read_graph(path)
+    Ok((state_map.read_graph(path)?, conclusion))
 }
 
 /// Abandon an in-progress cherry-pick and restore the previous tree.
@@ -217,9 +259,10 @@ pub fn cherry_pick_abort_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, `conflict_in_progress` when
 /// files are already conflicted, `staged_changes` when the index
-/// differs from HEAD, `conflict_state` when the revert conflicts, and `revert_error`
-/// carrying git's own message when `git` will not run or the revert fails for any other
-/// reason.
+/// differs from HEAD, `conflict_state` when the revert conflicts, `revert_empty` when HEAD
+/// already undoes the commit's changes (the revert is then ended, since there is nothing
+/// left to commit), and `revert_error` carrying git's own message when `git` will not run
+/// or the revert fails for any other reason.
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
@@ -240,6 +283,13 @@ pub fn revert_commit_begin_inner(
 
         if !output.status.success() {
             return Err(stopped_error(path_buf, &output, "revert_error"));
+        }
+        if nothing_to_commit(path_buf, git2::RepositoryState::Revert)? {
+            skip(path_buf, "revert", "revert_error")?;
+            return Err(TrunkError::new(
+                "revert_empty",
+                "HEAD already undoes this commit's changes, so there was nothing to revert.",
+            ));
         }
 
         // Read before the next writer can abort this revert or start another. The
@@ -282,7 +332,10 @@ fn refuse_staged_changes(repo: &git2::Repository) -> Result<(), TrunkError> {
     ))
 }
 
-/// Conclude a staged revert by committing it.
+/// Conclude a staged revert, skipping it when nothing is left to commit.
+///
+/// A revert that changes something is committed with `message`, or left in progress
+/// as `NeedsMessage` when no message is given.
 ///
 /// # Errors
 ///
@@ -290,15 +343,21 @@ fn refuse_staged_changes(repo: &git2::Repository) -> Result<(), TrunkError> {
 /// own message when `git` will not run or the commit fails.
 pub fn revert_continue_inner(
     path: &str,
-    message: &str,
+    message: Option<&str>,
     state_map: &OpenRepos,
-) -> Result<crate::state::GraphRead, TrunkError> {
+) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    state_map.hold_for_git(path, |_| {
-        conclude_with_message(path_buf, message, "revert_error")
+    let conclusion = state_map.hold_for_git(path, |_| {
+        conclude(
+            path_buf,
+            message,
+            git2::RepositoryState::Revert,
+            "revert",
+            "revert_error",
+        )
     })?;
 
-    state_map.read_graph(path)
+    Ok((state_map.read_graph(path)?, conclusion))
 }
 
 /// Abandon an in-progress revert and restore a clean tree.
@@ -566,24 +625,26 @@ pub async fn revert_commit_begin<R: Runtime>(
 pub async fn cherry_pick_continue<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
-    message: String,
+    message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<Conclusion, String> {
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    rebuild
-        .rebuild(path.clone(), move || {
-            cherry_pick_continue_inner(&path_clone, &message, &state_map)
+    let (_, conclusion) = rebuild
+        .rebuild_carrying(path.clone(), move || {
+            cherry_pick_continue_inner(&path_clone, message.as_deref(), &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
-    Ok(())
+    if conclusion != Conclusion::NeedsMessage {
+        let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
+    }
+    Ok(conclusion)
 }
 
 /// # Errors
@@ -629,24 +690,26 @@ pub async fn cherry_pick_abort<R: Runtime>(
 pub async fn revert_continue<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
-    message: String,
+    message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<Conclusion, String> {
     let rebuild = crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    rebuild
-        .rebuild(path.clone(), move || {
-            revert_continue_inner(&path_clone, &message, &state_map)
+    let (_, conclusion) = rebuild
+        .rebuild_carrying(path.clone(), move || {
+            revert_continue_inner(&path_clone, message.as_deref(), &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
-    Ok(())
+    if conclusion != Conclusion::NeedsMessage {
+        let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
+    }
+    Ok(conclusion)
 }
 
 /// # Errors
@@ -1173,7 +1236,7 @@ mod tests {
         revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
 
         let edited = "Revert \"change to v2\"\n\nedited body";
-        revert_continue_inner(&path_str(&dir), edited, &map).unwrap();
+        revert_continue_inner(&path_str(&dir), Some(edited), &map).unwrap();
 
         assert!(
             !revert_head_path(&dir).exists(),
@@ -1254,7 +1317,7 @@ mod tests {
 
         // Finish with a message that carries a trailing `# Conflicts:` block.
         let msg = "Revert \"mid change to v2\"\n\n# Conflicts:\n#\tf.txt";
-        revert_continue_inner(&path_str(&dir), msg, &map).unwrap();
+        revert_continue_inner(&path_str(&dir), Some(msg), &map).unwrap();
 
         let body = head_body(&repo);
         assert!(
