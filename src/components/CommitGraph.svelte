@@ -78,6 +78,7 @@ import {
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
 import {
+	branchRemoteMenuItems,
 	deleteRemoteBranch,
 	listRemotes,
 	renameBranch,
@@ -1473,6 +1474,13 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 							await PredefinedMenuItem.new({ item: "Separator" }),
 						]
 					: []),
+				...(await branchRemoteMenuItems(
+					repoPath,
+					ref.shortName,
+					ref.isHead,
+					remoteState,
+				)),
+				await PredefinedMenuItem.new({ item: "Separator" }),
 				await MenuItem.new({
 					text: "Rename…",
 					action: () => {

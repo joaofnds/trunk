@@ -1590,3 +1590,91 @@ describe("BranchSidebar stash and tag actions", () => {
 		expect(screen.getByText("Tags (1)")).toBeInTheDocument();
 	});
 });
+
+describe("BranchSidebar branch remote actions", () => {
+	const branch = (name: string, is_head: boolean) => ({
+		name,
+		is_head,
+		upstream: null,
+		ahead: 0,
+		behind: 0,
+		last_commit_timestamp: 1700000000,
+	});
+	let refused: string | null;
+
+	function shown() {
+		return toasts.items.map(({ message, kind }) => ({ message, kind }));
+	}
+
+	async function choose(item: string, onBranch: string) {
+		menuActions.clear();
+		await fireEvent.contextMenu(await screen.findByText(onBranch));
+		await waitFor(() => expect(menuActions.has(item)).toBe(true));
+		await getMenuAction(item)();
+	}
+
+	beforeEach(() => {
+		_resetToasts();
+		refused = null;
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === refused)
+				return Promise.reject(
+					JSON.stringify({ code: "non_fast_forward", message: "rejected" }),
+				);
+			if (cmd === "list_refs")
+				return Promise.resolve(
+					mockListRefs({
+						local: [branch("main", true), branch("feature", false)],
+					}),
+				);
+			return Promise.resolve(undefined);
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+	});
+
+	it("pulls and pushes the checked-out branch as the toolbar does", async () => {
+		await choose("Pull", "main");
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("git_pull", {
+				path: "/test/repo",
+			}),
+		);
+
+		await choose("Push", "main");
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("git_push", {
+				path: "/test/repo",
+			}),
+		);
+	});
+
+	it("pushes a branch that is not checked out", async () => {
+		await choose("Push feature", "feature");
+
+		await waitFor(() =>
+			expect(shown()).toEqual([{ message: "Pushed feature", kind: "success" }]),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("push_branch", {
+			path: "/test/repo",
+			branch: "feature",
+		});
+	});
+
+	it("says why the remote refused a branch push", async () => {
+		refused = "push_branch";
+
+		await choose("Push feature", "feature");
+
+		await waitFor(() =>
+			expect(shown()).toEqual([
+				{
+					message: expect.stringContaining(
+						"the remote has commits you don’t have locally",
+					),
+					kind: "error",
+				},
+			]),
+		);
+	});
+});

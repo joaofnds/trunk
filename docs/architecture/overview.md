@@ -76,7 +76,7 @@
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
 | `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit_file`, `list_commit_files`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail`, `list_tracked_files`, `open_current_file`. The compare pair diffs any two commit trees (Base → Target, no ancestry required; null Base = empty tree); highlighting parses a bounded window above each cluster of displayed lines, with no cache and no warming | `src-tauri/src/commands/diff.rs` |
 | `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `checkout_remote_branch`, `branch_hold`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
-| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `git_push_force`, `git_push_publish`, `get_push_target`, `delete_remote_branch`, `list_remotes`, `push_tag`, `delete_remote_tag`, `cancel_remote_op`: foreground subprocess, background git2 worker | `src-tauri/src/commands/remote.rs` |
+| `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `git_push_force`, `git_push_publish`, `get_push_target`, `push_branch`, `delete_remote_branch`, `list_remotes`, `push_tag`, `delete_remote_tag`, `cancel_remote_op`: foreground subprocess, background git2 worker | `src-tauri/src/commands/remote.rs` |
 | `commands/commit.rs` | `create_commit`, `amend_commit`, `get_head_commit_message` | `src-tauri/src/commands/commit.rs` |
 | `commands/commit_actions.rs` | `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available` | `src-tauri/src/commands/commit_actions.rs` |
 | `commands/stash.rs` | `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop` | `src-tauri/src/commands/stash.rs` |
@@ -395,7 +395,7 @@ store revision.
 - `diff`: `diff_unstaged`, `diff_staged`, `diff_commit`, `list_commit_files`, `diff_commit_file`, `list_compare_files`, `diff_compare_file`, `compare_stat`, `get_commit_detail`
 - `stash`: `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop`
 - `commit_actions`: `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available`
-- `remote`: `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `git_push_force`, `git_push_publish`, `get_push_target`, `delete_remote_branch`, `list_remotes`, `push_tag`, `delete_remote_tag`, `cancel_remote_op`
+- `remote`: `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `git_push_force`, `git_push_publish`, `get_push_target`, `push_branch`, `delete_remote_branch`, `list_remotes`, `push_tag`, `delete_remote_tag`, `cancel_remote_op`
 - `operation_state`: `get_operation_state`, `merge_continue`, `merge_abort`, `rebase_continue`, `rebase_skip`, `rebase_abort`, `merge_branch`, `rebase_branch`
 - `merge_editor`: `get_merge_sides`, `save_merge_result`
 - `interactive_rebase`: `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase`

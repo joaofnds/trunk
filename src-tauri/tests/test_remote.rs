@@ -456,6 +456,82 @@ fn refs_in_graph(remote: &common::drivers::remote::RemoteDriver<'_>) -> Vec<Stri
         .collect()
 }
 
+fn repo_with_release_branch() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("release")
+        .checkout("release")
+        .with_file("release.txt", "release work")
+        .with_commit("Release commit")
+        .checkout("main")
+        .with_remote("origin")
+        .build()
+}
+
+fn local_tip(ctx: &TestContext, branch: &str) -> git2::Oid {
+    ctx.repo()
+        .find_branch(branch, git2::BranchType::Local)
+        .unwrap()
+        .get()
+        .target()
+        .unwrap()
+}
+
+#[test]
+fn push_branch_publishes_a_branch_that_is_not_checked_out_and_tracks_it() {
+    let ctx = repo_with_release_branch();
+
+    ctx.remote().push_branch("release").unwrap();
+
+    let bare = bare_remote(&ctx, "origin");
+    assert_eq!(remote_tip(&bare, "release"), local_tip(&ctx, "release"));
+    let config = ctx.repo().config().unwrap().snapshot().unwrap();
+    assert_eq!(config.get_str("branch.release.remote").unwrap(), "origin");
+    assert_eq!(
+        config.get_str("branch.release.merge").unwrap(),
+        "refs/heads/release"
+    );
+}
+
+#[test]
+fn push_branch_sends_new_commits_to_the_upstream_it_tracks() {
+    let ctx = repo_with_release_branch();
+    let remote = ctx.remote();
+    remote.push_branch("release").unwrap();
+    checkout_branch(&ctx, "release");
+    write(&ctx, "release.txt", "more release work");
+    git(&ctx, &["commit", "-qam", "More release work"]);
+    checkout_branch(&ctx, "main");
+
+    remote.push_branch("release").unwrap();
+
+    let bare = bare_remote(&ctx, "origin");
+    assert_eq!(remote_tip(&bare, "release"), local_tip(&ctx, "release"));
+}
+
+#[test]
+fn push_branch_refuses_a_branch_the_repository_does_not_have() {
+    let ctx = repo_with_release_branch();
+
+    let err = ctx.remote().push_branch("nope").unwrap_err();
+
+    assert_eq!(err.code, "invalid_ref", "{}", err.message);
+}
+
+#[test]
+fn push_branch_reports_a_remote_that_moved_on() {
+    let ctx = repo_with_release_branch();
+    let remote = ctx.remote();
+    remote.push_branch("release").unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    commit_on_remote(&bare, "release", "theirs.txt", "theirs", "Their commit");
+
+    let err = remote.push_branch("release").unwrap_err();
+
+    assert_eq!(err.code, "non_fast_forward", "{}", err.message);
+}
+
 fn tag_on(bare: &Path, tag: &str) -> Option<git2::Oid> {
     git2::Repository::open(bare)
         .unwrap()

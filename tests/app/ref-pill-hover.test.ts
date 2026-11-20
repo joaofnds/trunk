@@ -93,6 +93,8 @@ describe("ref pills", () => {
 		await app.repo.openRefPillMenu("main");
 
 		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
+			"Pull",
+			"Push",
 			"Rename…",
 			"Delete",
 		]);

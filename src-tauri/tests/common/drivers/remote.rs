@@ -131,6 +131,21 @@ impl RemoteDriver<'_> {
         ))
     }
 
+    pub fn push_branch(&self, branch: &str) -> Result<(), TrunkError> {
+        tauri::async_runtime::block_on(remote::push_branch_inner(
+            &trunk_lib::activity::ActivityState::default()
+                .acquire()
+                .unwrap(),
+            self.ctx.path(),
+            branch,
+            self.ctx.state_map(),
+            &self.app.state::<CommitCache>(),
+            &self.app.state::<RunningOp>().0,
+            &trunk_lib::state::RefVisibilityState::default(),
+            self.app.handle(),
+        ))
+    }
+
     pub fn push_tag(&self, remote: &str, tag: &str) -> Result<(), TrunkError> {
         self.change_tag(remote::TagChange::Push, remote, tag)
     }

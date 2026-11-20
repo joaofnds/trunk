@@ -1,9 +1,10 @@
+import type { MenuItem } from "@tauri-apps/api/menu";
 import { ask } from "./dialog.js";
 import { forDisplay } from "./display-text.js";
 import { errorMessage, reportErrorToast } from "./error-report.js";
 import { isTrunkError, safeInvoke } from "./invoke.js";
 import { remoteErrorMessage } from "./remote-error.js";
-import { whileRemoteRuns } from "./remote-op.js";
+import { runRemoteOp, whileRemoteRuns } from "./remote-op.js";
 import type { RemoteState } from "./remote-state.svelte.js";
 import type { TagAction } from "./tag-menu.js";
 import { showToast } from "./toast.svelte.js";
@@ -75,7 +76,7 @@ export async function runTagAction(
 
 	const tag = { path: repoPath, remote: action.remote, tagName };
 	if (action.kind === "push") {
-		await changeTagOnRemote(
+		await changeOnRemote(
 			remoteState,
 			"push_tag",
 			tag,
@@ -94,7 +95,7 @@ export async function runTagAction(
 		reportErrorToast(e, "Failed to delete tag");
 		return false;
 	}
-	await changeTagOnRemote(
+	await changeOnRemote(
 		remoteState,
 		"delete_remote_tag",
 		tag,
@@ -103,14 +104,79 @@ export async function runTagAction(
 	return false;
 }
 
-async function changeTagOnRemote(
+/**
+ * The entries of a local branch's context menu that talk to a remote. The checked-out
+ * branch pulls and pushes as the toolbar does, recovery prompt included. Any other
+ * branch pushes on its own. While a remote operation runs, they are off.
+ */
+export async function branchRemoteMenuItems(
+	repoPath: string,
+	branch: string,
+	isHead: boolean,
 	remoteState: RemoteState,
-	command: "push_tag" | "delete_remote_tag",
-	tag: { path: string; remote: string; tagName: string },
+): Promise<MenuItem[]> {
+	const { MenuItem } = await import("@tauri-apps/api/menu");
+	const enabled = !remoteState.isRunning;
+	if (!isHead)
+		return [
+			await MenuItem.new({
+				text: `Push ${branch}`,
+				enabled,
+				action: () => {
+					void pushBranch(repoPath, branch, remoteState);
+				},
+			}),
+		];
+	return Promise.all([
+		MenuItem.new({
+			text: "Pull",
+			enabled,
+			action: () => {
+				void runRemoteOp(
+					remoteState,
+					repoPath,
+					"git_pull",
+					"Pulled successfully",
+				);
+			},
+		}),
+		MenuItem.new({
+			text: "Push",
+			enabled,
+			action: () => {
+				void runRemoteOp(
+					remoteState,
+					repoPath,
+					"git_push",
+					"Pushed successfully",
+				);
+			},
+		}),
+	]);
+}
+
+/** Pushes a branch, checked out or not, without the checked-out branch's recovery prompt. */
+export async function pushBranch(
+	repoPath: string,
+	branch: string,
+	remoteState: RemoteState,
+): Promise<void> {
+	await changeOnRemote(
+		remoteState,
+		"push_branch",
+		{ path: repoPath, branch },
+		`Pushed ${branch}`,
+	);
+}
+
+async function changeOnRemote(
+	remoteState: RemoteState,
+	command: "push_tag" | "delete_remote_tag" | "push_branch",
+	args: Record<string, string>,
 	done: string,
 ): Promise<void> {
 	try {
-		await whileRemoteRuns(remoteState, "push", () => safeInvoke(command, tag));
+		await whileRemoteRuns(remoteState, "push", () => safeInvoke(command, args));
 	} catch (e) {
 		showToast(
 			isTrunkError(e)

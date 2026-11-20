@@ -4283,6 +4283,26 @@ describe("CommitGraph ref and stash actions", () => {
 		expect(errorsShown()).toEqual(["it failed"]);
 	});
 
+	it("reports a failed push of a branch that is not checked out", async () => {
+		const feature = makeRef({
+			short_name: "feature",
+			name: "refs/heads/feature",
+			ref_type: "LocalBranch",
+		});
+		await mountFailing(
+			"push_branch",
+			makeCommit({ oid: OID, is_head: true, refs: [feature] }),
+		);
+
+		await chooseOnPill("Push feature", "feature");
+
+		expect(errorsShown()).toEqual(["it failed"]);
+		expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("push_branch", {
+			path: "/test/repo",
+			branch: "feature",
+		});
+	});
+
 	it("reports a failed stash pop in a toast", async () => {
 		await mountFailing(
 			"stash_pop",

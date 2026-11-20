@@ -420,6 +420,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::remote::get_push_target,
         commands::remote::delete_remote_branch,
         commands::remote::list_remotes,
+        commands::remote::push_branch,
         commands::remote::push_tag,
         commands::remote::delete_remote_tag,
         commands::remote::cancel_remote_op,
