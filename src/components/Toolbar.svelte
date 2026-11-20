@@ -23,7 +23,7 @@ import { pullCheckedOut, pushCheckedOut } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { getScheduler } from "../lib/scheduler.js";
-import { popStash } from "../lib/stash-actions.js";
+import { isStashing, popStash, saveStash } from "../lib/stash-actions.js";
 import { clearErrorToasts, showToast } from "../lib/toast.svelte.js";
 import type { ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -105,12 +105,10 @@ let headOid = $state<string | null>(null);
 // An undo or redo moves HEAD, and the next one is decided against where it
 // lands. A second Undo pressed meanwhile would undo a second commit, and a Redo
 // would meet the old position, be refused, and bury the commit just undone. A
-// second Pop would pop the next stash, and a second Stash would find nothing
-// left to stash and report a failure. None is what the user asked for. Each
+// second Pop would pop the next stash. Neither is what the user asked for. Each
 // repository is held on its own, since the toolbar follows the active tab.
 const movingHeadIn = new SvelteSet<string>();
 const poppingIn = new SvelteSet<string>();
-const stashingIn = new SvelteSet<string>();
 
 let pendingRedo = $derived(
 	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
@@ -248,20 +246,8 @@ function handlePush() {
 	void pushCheckedOut(remoteState, repoPath);
 }
 
-async function handleStash() {
-	const path = repoPath;
-	if (stashingIn.has(path)) return;
-
-	stashingIn.add(path);
-	try {
-		await safeInvoke("stash_save", { path, message: "" });
-		showToast("Stash created", "success");
-	} catch (e) {
-		console.error("stash_save failed:", e);
-		reportErrorToast(e, "Failed to create stash");
-	} finally {
-		stashingIn.delete(path);
-	}
+function handleStash() {
+	void saveStash(repoPath, "");
 }
 
 async function handlePop() {
@@ -422,7 +408,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 		</Button>
 		<Button
 			icon
-			disabled={stashingIn.has(repoPath)}
+			disabled={isStashing(repoPath)}
 			onclick={handleStash}
 			aria-label="Stash"
 			tooltip="Stash"

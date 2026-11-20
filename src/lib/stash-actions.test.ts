@@ -1,7 +1,13 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "./invoke.js";
-import { applyStash, dropStash, popStash } from "./stash-actions.js";
+import {
+	applyStash,
+	dropStash,
+	isStashing,
+	popStash,
+	saveStash,
+} from "./stash-actions.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn() }));
@@ -26,6 +32,81 @@ beforeEach(() => {
 	mockInvoke.mockReset();
 	mockInvoke.mockResolvedValue(undefined);
 	_resetToasts();
+});
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
+}
+
+describe("saveStash", () => {
+	it("saves the stash under its message and says so", async () => {
+		const changed = await saveStash("/repo", "wip");
+
+		expect(changed).toBe(true);
+		expect(mockInvoke).toHaveBeenCalledWith("stash_save", {
+			path: "/repo",
+			message: "wip",
+		});
+		expect(shown()).toEqual([{ kind: "success", message: "Stash created" }]);
+	});
+
+	it("reports why the stash was not saved in an error toast", async () => {
+		mockInvoke.mockRejectedValue({
+			code: "nothing_to_stash",
+			message: "Nothing to stash, stage changes first.",
+		});
+
+		const changed = await saveStash("/repo", "");
+
+		expect(changed).toBe(false);
+		expect(shown()).toEqual([
+			{ kind: "error", message: "Nothing to stash, stage changes first." },
+		]);
+	});
+
+	it("is stashing the repository until its stash settles", async () => {
+		const reply = deferred<undefined>();
+		mockInvoke.mockReturnValue(reply.promise);
+
+		const saving = saveStash("/repo", "");
+		const during = isStashing("/repo");
+		reply.resolve(undefined);
+		await saving;
+
+		expect(during).toBe(true);
+		expect(isStashing("/repo")).toBe(false);
+	});
+
+	it("leaves a second save to the stash already being made", async () => {
+		const reply = deferred<undefined>();
+		mockInvoke.mockReturnValue(reply.promise);
+		const first = saveStash("/repo", "");
+
+		const second = await saveStash("/repo", "other");
+		reply.resolve(undefined);
+		await first;
+
+		expect(second).toBe(false);
+		expect(mockInvoke).toHaveBeenCalledTimes(1);
+		expect(shown()).toEqual([{ kind: "success", message: "Stash created" }]);
+	});
+
+	it("saves a stash of another repository meanwhile", async () => {
+		const reply = deferred<undefined>();
+		mockInvoke.mockReturnValueOnce(reply.promise);
+		const first = saveStash("/repo", "");
+
+		const second = await saveStash("/other", "");
+		reply.resolve(undefined);
+		await first;
+
+		expect(second).toBe(true);
+		expect(mockInvoke).toHaveBeenCalledTimes(2);
+	});
 });
 
 describe("popStash", () => {

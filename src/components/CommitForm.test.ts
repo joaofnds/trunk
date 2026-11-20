@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../__tests__/helpers/tauri-mock";
 import { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { saveStash } from "../lib/stash-actions.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
 import CommitForm from "./CommitForm.svelte";
@@ -18,6 +20,10 @@ vi.mock("../lib/invoke.js", async () => {
 		safeInvoke: vi.fn(),
 	};
 });
+
+function submitButton(): HTMLElement {
+	return screen.getByTestId("commit-form-submit");
+}
 
 function drafted(subject: string, body = ""): CommitFormSession {
 	const session = new CommitFormSession();
@@ -536,6 +542,29 @@ describe("CommitForm", () => {
 			await waitFor(() => expect(subjectInput().value).toBe(""));
 			expect(bodyTextarea().value).toBe("wip body");
 			expect(session.draftBody).toBe("wip body");
+		});
+
+		it("holds the stash while the repository is being stashed from elsewhere", async () => {
+			let finishStash: () => void = () => {};
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === "stash_save"
+					? new Promise<void>((resolve) => {
+							finishStash = resolve;
+						})
+					: Promise.resolve(undefined),
+			);
+			render(CommitForm, { props: defaultProps });
+			await fireEvent.click(tab("Stash"));
+
+			const elsewhere = saveStash("/repo", "");
+			await tick();
+			const held = submitButton().hasAttribute("disabled");
+			finishStash();
+			await elsewhere;
+			await tick();
+
+			expect(held).toBe(true);
+			expect(submitButton()).not.toBeDisabled();
 		});
 
 		it("keeps body text typed during an in-flight HEAD fetch over the stale prefill", async () => {

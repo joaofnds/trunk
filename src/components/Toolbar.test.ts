@@ -10,6 +10,7 @@ import {
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
+import { saveStash } from "../lib/stash-actions.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import {
@@ -877,10 +878,12 @@ describe("Toolbar stash", () => {
 
 	it("stashes once when Stash is pressed twice", async () => {
 		let saves = 0;
+		const reply = deferred<null>();
+		onTestFinished(() => reply.resolve(null));
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "stash_save") {
 				saves += 1;
-				return deferred<never>().promise;
+				return reply.promise;
 			}
 			return Promise.resolve(false);
 		});
@@ -900,6 +903,33 @@ describe("Toolbar stash", () => {
 		await fireEvent.click(stash);
 
 		expect(saves).toBe(1);
+	});
+
+	it("holds Stash while the repository is being stashed from elsewhere", async () => {
+		const reply = deferred<null>();
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "stash_save" ? reply.promise : Promise.resolve(false),
+		);
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				shownHeadOid: null,
+				reviewActive: false,
+			},
+		});
+		const stash = screen.getByRole("button", { name: "Stash" });
+
+		const elsewhere = saveStash("/test/repo", "named");
+		await tick();
+		const held = stash.hasAttribute("disabled");
+		reply.resolve(null);
+		await elsewhere;
+		await tick();
+
+		expect(held).toBe(true);
+		expect(stash).not.toBeDisabled();
 	});
 
 	it("stashes again once the first stash settles", async () => {

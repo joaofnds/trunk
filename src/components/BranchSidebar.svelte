@@ -40,7 +40,13 @@ import {
 } from "../lib/ref-visibility.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
-import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
+import {
+	applyStash,
+	dropStash,
+	isStashing,
+	popStash,
+	saveStash,
+} from "../lib/stash-actions.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import {
 	popupTagMenu,
@@ -133,7 +139,6 @@ let tagsExpanded = $state(false);
 let stashesExpanded = $state(false);
 let showStashForm = $state(false);
 let stashName = $state("");
-let stashSaving = $state(false);
 let showCreateInput = $state(false);
 let newBranchName = $state("");
 let visibility = $state<RefVisibility>(EVERYTHING_VISIBLE);
@@ -422,20 +427,11 @@ function autoFocus(node: HTMLElement) {
 }
 
 async function handleStashSave() {
-	stashSaving = true;
-	try {
-		await safeInvoke("stash_save", {
-			path: repoPath,
-			message: stashName.trim(),
-		});
-		showStashForm = false;
-		stashName = "";
-		await loadRefs(repoPath);
-	} catch (e) {
-		reportErrorToast(e, "Failed to create stash");
-	} finally {
-		stashSaving = false;
-	}
+	if (!(await saveStash(repoPath, stashName.trim()))) return;
+
+	showStashForm = false;
+	stashName = "";
+	await loadRefs(repoPath);
 }
 
 async function showStashEntryMenu(e: MouseEvent, stash: StashEntry) {
@@ -925,16 +921,16 @@ registerUpdateBlocker(() =>
 						placeholder="Stash name (optional)"
 						bind:value={stashName}
 						onkeydown={(e) => e.key === "Enter" && handleStashSave()}
-						disabled={stashSaving}
+						disabled={isStashing(repoPath)}
 						class="stash-name-input"
 					>
 					<Button
 						size="sm"
 						variant="primary"
 						onclick={handleStashSave}
-						disabled={stashSaving}
+						disabled={isStashing(repoPath)}
 					>
-						{stashSaving ? "Stashing…" : "Stash"}
+						{isStashing(repoPath) ? "Stashing…" : "Stash"}
 					</Button>
 				</div>
 			{/if}
