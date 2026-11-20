@@ -40,6 +40,7 @@ import type {
 	DiffStatus,
 	FileDiff,
 	LayoutMode,
+	LineActionOutcome,
 	Review,
 	ReviewFilter,
 	ShownHunk,
@@ -852,11 +853,6 @@ $effect(() => {
 	collapsedFiles = new Set();
 });
 
-function isLastHunk(filePath: string): boolean {
-	const fd = fileDiffs.find((f) => f.path === filePath);
-	return !fd || fd.hunks.length <= 1;
-}
-
 async function handleStageFile() {
 	if (!selectedPath || hunkOperationInFlight) return;
 	const path = selectedPath;
@@ -917,6 +913,17 @@ async function handleDiscardFile() {
 	}
 }
 
+// The file goes from this side's list only when the repository says it has no
+// change left there, since the diff can hide a whitespace or mode change.
+async function afterLineAction(
+	filePath: string,
+	outcome: LineActionOutcome,
+	action: "stage" | "unstage" | "discard",
+) {
+	if (outcome.file_still_changed) await onhunkaction?.(filePath);
+	else onfileemptied?.(filePath, action);
+}
+
 // What a hunk or line action names: the hunk as this render shows it, taken at the
 // click, because the diff can reload before the action runs.
 function shownHunk(filePath: string, hunkIndex: number): ShownHunk {
@@ -952,17 +959,13 @@ async function handleStageHunk(filePath: string, hunkIndex: number) {
 	const hunk = shownHunk(filePath, hunkIndex);
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("stage_hunk", {
+		const outcome = await safeInvoke<LineActionOutcome>("stage_hunk", {
 			path: repoPath,
 			filePath,
 			hunk,
 			options: currentDiffOptions(),
 		});
-		if (isLastHunk(filePath)) {
-			onfileemptied?.(filePath, "stage");
-		} else {
-			await onhunkaction?.(filePath);
-		}
+		await afterLineAction(filePath, outcome, "stage");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Stage hunk failed");
 	} finally {
@@ -975,17 +978,13 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 	const hunk = shownHunk(filePath, hunkIndex);
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("unstage_hunk", {
+		const outcome = await safeInvoke<LineActionOutcome>("unstage_hunk", {
 			path: repoPath,
 			filePath,
 			hunk,
 			options: currentDiffOptions(),
 		});
-		if (isLastHunk(filePath)) {
-			onfileemptied?.(filePath, "unstage");
-		} else {
-			await onhunkaction?.(filePath);
-		}
+		await afterLineAction(filePath, outcome, "unstage");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Unstage hunk failed");
 	} finally {
@@ -1005,18 +1004,14 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("discard_hunk", {
+		const outcome = await safeInvoke<LineActionOutcome>("discard_hunk", {
 			path: repoPath,
 			filePath,
 			hunk,
 			options: currentDiffOptions(),
 		});
 		showToast("Discarded hunk", "success");
-		if (isLastHunk(filePath)) {
-			onfileemptied?.(filePath, "discard");
-		} else {
-			await onhunkaction?.(filePath);
-		}
+		await afterLineAction(filePath, outcome, "discard");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Discard hunk failed");
 	} finally {
@@ -1293,14 +1288,14 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 	const lineIndices = selectedChanges;
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("stage_lines", {
+		const outcome = await safeInvoke<LineActionOutcome>("stage_lines", {
 			path: repoPath,
 			filePath,
 			hunk,
 			lineIndices,
 			options: currentDiffOptions(),
 		});
-		await onhunkaction?.(filePath);
+		await afterLineAction(filePath, outcome, "stage");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Stage lines failed");
 	} finally {
@@ -1315,14 +1310,14 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 	const lineIndices = selectedChanges;
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("unstage_lines", {
+		const outcome = await safeInvoke<LineActionOutcome>("unstage_lines", {
 			path: repoPath,
 			filePath,
 			hunk,
 			lineIndices,
 			options: currentDiffOptions(),
 		});
-		await onhunkaction?.(filePath);
+		await afterLineAction(filePath, outcome, "unstage");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Unstage lines failed");
 	} finally {
@@ -1348,7 +1343,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("discard_lines", {
+		const outcome = await safeInvoke<LineActionOutcome>("discard_lines", {
 			path: repoPath,
 			filePath,
 			hunk,
@@ -1359,7 +1354,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			`Discarded ${count} ${count === 1 ? "line" : "lines"}`,
 			"success",
 		);
-		await onhunkaction?.(filePath);
+		await afterLineAction(filePath, outcome, "discard");
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Discard lines failed");
 	} finally {

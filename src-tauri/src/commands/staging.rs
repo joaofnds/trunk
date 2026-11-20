@@ -591,7 +591,7 @@ pub fn stage_hunk_inner(
     shown: &ShownHunk,
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     stage_lines_inner(
         path,
         file_path,
@@ -613,7 +613,7 @@ pub fn unstage_hunk_inner(
     shown: &ShownHunk,
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     unstage_lines_inner(
         path,
         file_path,
@@ -635,7 +635,7 @@ pub fn discard_hunk_inner(
     shown: &ShownHunk,
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     discard_lines_inner(
         path,
         file_path,
@@ -1029,7 +1029,7 @@ pub async fn stage_hunk(
     hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1055,7 +1055,7 @@ pub async fn unstage_hunk(
     hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1081,7 +1081,7 @@ pub async fn discard_hunk(
     hunk: ShownHunk,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1108,7 +1108,7 @@ pub async fn stage_lines(
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1144,7 +1144,7 @@ pub async fn unstage_lines(
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1180,7 +1180,7 @@ pub async fn discard_lines(
     line_indices: Vec<u32>,
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
-) -> Result<(), String> {
+) -> Result<LineActionOutcome, String> {
     let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     activity
@@ -1593,7 +1593,7 @@ pub fn stage_lines_inner(
     line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let current = unstaged_patch(repo, file_path, options)?;
         let hunk_index = shown_hunk_index(&current, file_path, shown)?;
@@ -1601,7 +1601,9 @@ pub fn stage_lines_inner(
             build_partial_patch_text(file_path, &current, hunk_index, line_indices, false)?;
         drop(current);
 
-        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)?;
+
+        unstaged_outcome(repo, file_path)
     })
 }
 
@@ -1619,7 +1621,7 @@ pub fn unstage_lines_inner(
     line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let current = staged_patch(repo, file_path, options)?;
         let hunk_index = shown_hunk_index(&current, file_path, shown)?;
@@ -1627,7 +1629,9 @@ pub fn unstage_lines_inner(
             build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
         drop(current);
 
-        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::Index)?;
+
+        staged_outcome(repo, file_path)
     })
 }
 
@@ -1645,7 +1649,7 @@ pub fn discard_lines_inner(
     line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
-) -> Result<(), TrunkError> {
+) -> Result<LineActionOutcome, TrunkError> {
     state_map.hold_for_writing(path, |repo| {
         let current = unstaged_patch(repo, file_path, options)?;
         let hunk_index = shown_hunk_index(&current, file_path, shown)?;
@@ -1653,6 +1657,38 @@ pub fn discard_lines_inner(
             build_partial_patch_text(file_path, &current, hunk_index, line_indices, true)?;
         drop(current);
 
-        apply_patch_text(repo, &patch_text, git2::ApplyLocation::WorkDir)
+        apply_patch_text(repo, &patch_text, git2::ApplyLocation::WorkDir)?;
+
+        unstaged_outcome(repo, file_path)
+    })
+}
+
+/// What a hunk or line action leaves of the file on the side it acted on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct LineActionOutcome {
+    /// Whether the file still differs on that side, counting the whitespace and mode
+    /// changes the view can hide, so the view moves on only from a file that is done.
+    pub file_still_changed: bool,
+}
+
+fn unstaged_outcome(
+    repo: &git2::Repository,
+    file_path: &str,
+) -> Result<LineActionOutcome, TrunkError> {
+    let diff = unstaged_view_diff(repo, file_path, &DiffRequestOptions::default())?;
+
+    Ok(LineActionOutcome {
+        file_still_changed: diff.deltas().len() > 0,
+    })
+}
+
+fn staged_outcome(
+    repo: &git2::Repository,
+    file_path: &str,
+) -> Result<LineActionOutcome, TrunkError> {
+    let diff = staged_view_diff(repo, &DiffRequestOptions::default())?;
+
+    Ok(LineActionOutcome {
+        file_still_changed: delta_index_of(&diff, file_path).is_some(),
     })
 }

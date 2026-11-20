@@ -2922,3 +2922,121 @@ mod when_another_writer_edits_the_file_meanwhile {
         ctx.assert_file_content("f.txt", &COMMITTED.replace("12\n", "twelve\n"));
     }
 }
+
+#[test]
+fn stage_hunk_reports_the_file_done_once_its_only_change_is_staged() {
+    let ctx = TestContext::builder()
+        .with_file("one.txt", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("one.txt"), joined(&edited)).unwrap();
+
+    let outcome = ctx.stage_hunk("one.txt", 0).unwrap();
+
+    assert!(!outcome.file_still_changed);
+}
+
+#[test]
+fn stage_hunk_reports_the_whitespace_change_the_view_hides() {
+    let ctx = TestContext::builder()
+        .with_file("ws.txt", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    edited[24] = "line 25   ".to_string();
+    std::fs::write(ctx.repo_path().join("ws.txt"), joined(&edited)).unwrap();
+    let ignoring = DiffRequestOptions {
+        ignore_whitespace: true,
+        ..DiffRequestOptions::default()
+    };
+
+    let outcome = ctx.stage_hunk_with_options("ws.txt", 0, &ignoring).unwrap();
+
+    assert!(outcome.file_still_changed);
+}
+
+#[test]
+fn stage_hunk_reports_the_mode_change_its_hunk_leaves() {
+    let ctx = TestContext::builder()
+        .with_file("run.sh", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("run.sh"), joined(&edited)).unwrap();
+    make_executable(&ctx.repo_path().join("run.sh"));
+
+    let outcome = ctx.stage_hunk("run.sh", 0).unwrap();
+
+    assert!(outcome.file_still_changed);
+}
+
+#[test]
+fn unstage_hunk_reports_the_file_done_once_its_only_change_is_unstaged() {
+    let ctx = TestContext::builder()
+        .with_file("one.txt", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("one.txt"), joined(&edited)).unwrap();
+    ctx.stage_file("one.txt").unwrap();
+
+    let outcome = ctx.unstage_hunk("one.txt", 0).unwrap();
+
+    assert!(!outcome.file_still_changed);
+}
+
+#[test]
+fn unstage_hunk_reports_the_staged_mode_change_its_hunk_leaves() {
+    let ctx = TestContext::builder()
+        .with_file("run.sh", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    std::fs::write(ctx.repo_path().join("run.sh"), joined(&edited)).unwrap();
+    make_executable(&ctx.repo_path().join("run.sh"));
+    ctx.stage_file("run.sh").unwrap();
+
+    let outcome = ctx.unstage_hunk("run.sh", 0).unwrap();
+
+    assert!(outcome.file_still_changed);
+}
+
+#[test]
+fn discard_hunk_reports_the_whitespace_change_the_view_hides() {
+    let ctx = TestContext::builder()
+        .with_file("ws.txt", &joined(&numbered_lines()))
+        .with_commit("Initial commit")
+        .build();
+    let mut edited = numbered_lines();
+    edited[9] = "line 10 rewritten".to_string();
+    edited[24] = "line 25   ".to_string();
+    std::fs::write(ctx.repo_path().join("ws.txt"), joined(&edited)).unwrap();
+    let ignoring = DiffRequestOptions {
+        ignore_whitespace: true,
+        ..DiffRequestOptions::default()
+    };
+
+    let outcome = ctx
+        .discard_hunk_with_options("ws.txt", 0, &ignoring)
+        .unwrap();
+
+    assert!(outcome.file_still_changed);
+}
+
+#[test]
+fn stage_lines_reports_the_lines_left_unstaged() {
+    let (ctx, _) = two_rewrites();
+    let diff = ctx.diff_unstaged("two.txt").unwrap();
+
+    let outcome = ctx
+        .stage_lines("two.txt", 0, &changed_lines(&diff, 0))
+        .unwrap();
+
+    assert!(outcome.file_still_changed);
+}

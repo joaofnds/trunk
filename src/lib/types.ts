@@ -284,6 +284,11 @@ export interface FileDiff {
 	hunks: DiffHunk[];
 }
 
+/** What a hunk or line action leaves of the file on the side it acted on. */
+export interface LineActionOutcome {
+	file_still_changed: boolean;
+}
+
 export interface DiffRequestOptions {
 	contextLines: number;
 	ignoreWhitespace: boolean;

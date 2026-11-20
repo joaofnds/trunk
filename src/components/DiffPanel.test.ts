@@ -77,6 +77,23 @@ function fullFileGutterOf(text: string): HTMLElement {
 
 // Mock invoke and toast for hunk staging operations. Every command resolves to
 // undefined; tests that need a return value override safeInvoke per case.
+const { backendReply } = vi.hoisted(() => {
+	const lineActions = new Set([
+		"stage_hunk",
+		"unstage_hunk",
+		"discard_hunk",
+		"stage_lines",
+		"unstage_lines",
+		"discard_lines",
+	]);
+	return {
+		backendReply: (command: string) =>
+			Promise.resolve(
+				lineActions.has(command) ? { file_still_changed: true } : undefined,
+			),
+	};
+});
+
 vi.mock("../lib/invoke.js", async () => {
 	const actual =
 		await vi.importActual<typeof import("../lib/invoke.js")>(
@@ -84,7 +101,7 @@ vi.mock("../lib/invoke.js", async () => {
 		);
 	return {
 		...actual,
-		safeInvoke: vi.fn(() => Promise.resolve(undefined)),
+		safeInvoke: vi.fn(backendReply),
 	};
 });
 
@@ -3529,7 +3546,7 @@ describe("Discard File button", () => {
 	// test's safeInvoke override and flakes it under load.
 	afterEach(() => {
 		vi.mocked(safeInvoke).mockReset();
-		vi.mocked(safeInvoke).mockImplementation(() => Promise.resolve(undefined));
+		vi.mocked(safeInvoke).mockImplementation(backendReply);
 	});
 
 	it("shows the Discard File button for unstaged diffs", async () => {
@@ -3935,7 +3952,7 @@ describe("Discard File button", () => {
 describe("DiffPanel hunk actions on a changed file", () => {
 	afterEach(() => {
 		vi.mocked(safeInvoke).mockReset();
-		vi.mocked(safeInvoke).mockImplementation(() => Promise.resolve(undefined));
+		vi.mocked(safeInvoke).mockImplementation(backendReply);
 	});
 
 	const rewrite = {
@@ -4014,9 +4031,14 @@ describe("DiffPanel hunk actions on a changed file", () => {
 	async function renderShown({
 		diffKind = "unstaged",
 		onhunkaction = async () => {},
+		onfileemptied = () => {},
 	}: {
 		diffKind?: "unstaged" | "staged";
 		onhunkaction?: (filePath: string) => Promise<void>;
+		onfileemptied?: (
+			filePath: string,
+			action: "stage" | "unstage" | "discard",
+		) => void;
 	} = {}) {
 		const props = {
 			...commentingDiff,
@@ -4027,6 +4049,7 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			repoPath: "/test/repo",
 			selectedPath: "src/main.ts",
 			onhunkaction,
+			onfileemptied,
 		};
 		const view = render(DiffPanel, { props });
 		await flushPrefs();
@@ -4081,6 +4104,115 @@ describe("DiffPanel hunk actions on a changed file", () => {
 				hunk: shownHunk,
 				lineIndices: [1],
 			}),
+		);
+	});
+
+	describe("after an action on the only hunk shown", () => {
+		beforeEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+		});
+
+		afterEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(false);
+		});
+
+		function reply(command: string, fileStillChanged: boolean) {
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === command
+					? Promise.resolve({ file_still_changed: fileStillChanged })
+					: Promise.resolve(undefined),
+			);
+		}
+
+		async function pressHunkAction(name: string) {
+			await fireEvent.click(screen.getByText(name));
+		}
+
+		async function pressLinesAction(name: string) {
+			await fireEvent.mouseDown(gutterOf("new twenty"));
+			await fireEvent.mouseUp(window);
+			await fireEvent.click(screen.getByRole("button", { name }));
+		}
+
+		const actions = [
+			{
+				action: "Stage Hunk",
+				press: pressHunkAction,
+				command: "stage_hunk",
+				diffKind: "unstaged",
+				emptied: "stage",
+			},
+			{
+				action: "Unstage Hunk",
+				press: pressHunkAction,
+				command: "unstage_hunk",
+				diffKind: "staged",
+				emptied: "unstage",
+			},
+			{
+				action: "Discard Hunk",
+				press: pressHunkAction,
+				command: "discard_hunk",
+				diffKind: "unstaged",
+				emptied: "discard",
+			},
+			{
+				action: "Stage Lines (1)",
+				press: pressLinesAction,
+				command: "stage_lines",
+				diffKind: "unstaged",
+				emptied: "stage",
+			},
+			{
+				action: "Unstage Lines (1)",
+				press: pressLinesAction,
+				command: "unstage_lines",
+				diffKind: "staged",
+				emptied: "unstage",
+			},
+			{
+				action: "Discard Lines (1)",
+				press: pressLinesAction,
+				command: "discard_lines",
+				diffKind: "unstaged",
+				emptied: "discard",
+			},
+		] as const;
+
+		it.each(actions)(
+			"stays on a file $action leaves a change in",
+			async ({ action, press, command, diffKind }) => {
+				reply(command, true);
+				const onhunkaction = vi.fn(async () => {});
+				const onfileemptied = vi.fn();
+				await renderShown({ diffKind, onhunkaction, onfileemptied });
+
+				await press(action);
+
+				await waitFor(() =>
+					expect(onhunkaction).toHaveBeenCalledWith("src/main.ts"),
+				);
+				expect(onfileemptied).not.toHaveBeenCalled();
+			},
+		);
+
+		it.each(actions)(
+			"moves on from a file $action leaves no change in",
+			async ({ action, press, command, diffKind, emptied }) => {
+				reply(command, false);
+				const onhunkaction = vi.fn(async () => {});
+				const onfileemptied = vi.fn();
+				await renderShown({ diffKind, onhunkaction, onfileemptied });
+
+				await press(action);
+
+				await waitFor(() =>
+					expect(onfileemptied).toHaveBeenCalledWith("src/main.ts", emptied),
+				);
+				expect(onhunkaction).not.toHaveBeenCalled();
+			},
 		);
 	});
 

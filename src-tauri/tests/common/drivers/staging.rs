@@ -1,6 +1,6 @@
 use crate::common::context::TestContext;
 use trunk_git::error::TrunkError;
-use trunk_lib::commands::staging;
+use trunk_lib::commands::staging::{self, LineActionOutcome};
 use trunk_lib::types::{DiffRequestOptions, FileDiff, ShownHunk, ShownLine, WorkingTreeStatus};
 
 impl TestContext {
@@ -70,7 +70,11 @@ impl TestContext {
         shown(&diff, hunk_index)
     }
 
-    pub fn stage_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
+    pub fn stage_hunk(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.stage_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
     }
 
@@ -79,12 +83,16 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::stage_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
     }
 
-    pub fn stage_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
+    pub fn stage_shown_hunk(
+        &self,
+        file_path: &str,
+        shown: &ShownHunk,
+    ) -> Result<LineActionOutcome, TrunkError> {
         staging::stage_hunk_inner(
             self.path(),
             file_path,
@@ -94,7 +102,11 @@ impl TestContext {
         )
     }
 
-    pub fn unstage_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
+    pub fn unstage_hunk(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.unstage_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
     }
 
@@ -103,12 +115,16 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_staged_hunk_with_options(file_path, hunk_index, options);
         staging::unstage_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
     }
 
-    pub fn unstage_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
+    pub fn unstage_shown_hunk(
+        &self,
+        file_path: &str,
+        shown: &ShownHunk,
+    ) -> Result<LineActionOutcome, TrunkError> {
         staging::unstage_hunk_inner(
             self.path(),
             file_path,
@@ -118,7 +134,11 @@ impl TestContext {
         )
     }
 
-    pub fn discard_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
+    pub fn discard_hunk(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.discard_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
     }
 
@@ -127,12 +147,16 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::discard_hunk_inner(self.path(), file_path, &shown, self.state_map(), options)
     }
 
-    pub fn discard_shown_hunk(&self, file_path: &str, shown: &ShownHunk) -> Result<(), TrunkError> {
+    pub fn discard_shown_hunk(
+        &self,
+        file_path: &str,
+        shown: &ShownHunk,
+    ) -> Result<LineActionOutcome, TrunkError> {
         staging::discard_hunk_inner(
             self.path(),
             file_path,
@@ -151,7 +175,7 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         line_indices: &[u32],
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.stage_lines_with_options(
             file_path,
             hunk_index,
@@ -166,7 +190,7 @@ impl TestContext {
         hunk_index: u32,
         line_indices: &[u32],
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::stage_lines_inner(
             self.path(),
@@ -183,7 +207,7 @@ impl TestContext {
         file_path: &str,
         shown: &ShownHunk,
         line_indices: &[u32],
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         staging::stage_lines_inner(
             self.path(),
             file_path,
@@ -199,7 +223,7 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         line_indices: &[u32],
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.unstage_lines_with_options(
             file_path,
             hunk_index,
@@ -214,7 +238,7 @@ impl TestContext {
         hunk_index: u32,
         line_indices: &[u32],
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_staged_hunk_with_options(file_path, hunk_index, options);
         staging::unstage_lines_inner(
             self.path(),
@@ -231,7 +255,7 @@ impl TestContext {
         file_path: &str,
         shown: &ShownHunk,
         line_indices: &[u32],
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         staging::unstage_lines_inner(
             self.path(),
             file_path,
@@ -247,7 +271,7 @@ impl TestContext {
         file_path: &str,
         hunk_index: u32,
         line_indices: &[u32],
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         self.discard_lines_with_options(
             file_path,
             hunk_index,
@@ -262,7 +286,7 @@ impl TestContext {
         hunk_index: u32,
         line_indices: &[u32],
         options: &DiffRequestOptions,
-    ) -> Result<(), TrunkError> {
+    ) -> Result<LineActionOutcome, TrunkError> {
         let shown = self.shown_unstaged_hunk_with_options(file_path, hunk_index, options);
         staging::discard_lines_inner(
             self.path(),

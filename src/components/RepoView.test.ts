@@ -2517,6 +2517,63 @@ describe("RepoView", () => {
 			expect(screen.queryByText("UNSTAGED CONTENT")).toBeFalsy();
 		});
 
+		it("keeps a file open when staging its only shown hunk leaves a hidden change", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const readme = {
+				path: "README.md",
+				status: "Modified",
+				is_binary: false,
+			};
+			const next = { path: "next.txt", status: "Modified", is_binary: false };
+			let staged = false;
+			let statusAfterStaging: () => void = () => {};
+			const statusReloaded = new Promise<void>((resolve) => {
+				statusAfterStaging = resolve;
+			});
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "stage_hunk") {
+					staged = true;
+					return Promise.resolve({ file_still_changed: true });
+				}
+				if (cmd === "get_status") {
+					if (staged) statusAfterStaging();
+					return Promise.resolve({
+						unstaged: [readme, next],
+						staged: staged ? [readme] : [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					const { filePath } = args as { filePath: string };
+					if (filePath === "next.txt")
+						return Promise.resolve([stagingDiff("NEXT CONTENT", "next.txt")]);
+					return Promise.resolve([
+						staged
+							? { ...stagingDiff("hidden"), hunks: [] }
+							: stagingDiff("UNSTAGED CONTENT"),
+					]);
+				}
+				return base(cmd, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("UNSTAGED CONTENT")).toBeTruthy();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Stage Hunk" }));
+			await statusReloaded;
+			await tick();
+
+			expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull();
+			expect(
+				mockInvoke.mock.calls.filter(
+					([cmd, args]) =>
+						cmd === "diff_unstaged" &&
+						(args as { filePath: string }).filePath === "next.txt",
+				),
+			).toEqual([]);
+		});
+
 		describe("when Escape lands on a line selection", () => {
 			async function openReadmeWithALineSelected() {
 				const base = mockInvoke.getMockImplementation();

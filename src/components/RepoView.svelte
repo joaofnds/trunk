@@ -439,7 +439,6 @@ let stagingDiffLoading = $state(false);
 let stagingDiffError = $state<string | null>(null);
 let stagingDiffMode = $state<ContentMode | null>(null);
 let selectGeneration = 0;
-let selectedDiffEmptyGeneration = -1;
 
 interface SelectedDiffLoad {
 	path: string;
@@ -1944,12 +1943,6 @@ async function readSelectedFileDiff(): Promise<void> {
 		if (!sameData(stagingDiffFiles, result)) stagingDiffFiles = result;
 		stagingDiffMode = load.mode;
 		stagingDiffError = null;
-		if (
-			result.length === 0 ||
-			result.every((file) => file.hunks.length === 0)
-		) {
-			selectedDiffEmptyGeneration = load.generation;
-		}
 	} catch (error) {
 		if (
 			!repoViewActive ||
@@ -1974,22 +1967,19 @@ function prepareSelectedFileDiff(
 	options: DiffRequestOptions | undefined,
 	reportError: boolean,
 	advanceGeneration = true,
-): number {
+): void {
 	if (advanceGeneration) selectGeneration += 1;
-	const generation = selectGeneration;
 	const requestOptions = options ?? buildDiffOptions();
-	selectedDiffEmptyGeneration = -1;
 	pendingSelectedDiff = {
 		path,
 		kind,
 		options: requestOptions,
-		generation,
+		generation: selectGeneration,
 		reportError,
 		mode: modeFor(requestOptions),
 	};
 	stagingDiffLoading = true;
 	stagingDiffError = null;
-	return generation;
 }
 
 async function loadSelectedFileDiff(
@@ -1997,19 +1987,18 @@ async function loadSelectedFileDiff(
 	kind: "unstaged" | "staged",
 	options: DiffRequestOptions | undefined,
 	reportError: boolean,
-): Promise<boolean> {
-	const generation = prepareSelectedFileDiff(path, kind, options, reportError);
+): Promise<void> {
+	prepareSelectedFileDiff(path, kind, options, reportError);
 	await selectedDiffRefresh.run();
-	return selectedDiffEmptyGeneration === generation;
 }
 
 async function refetchFileDiff(
 	path: string,
 	kind: "unstaged" | "staged" | "conflicted",
 	options?: DiffRequestOptions,
-): Promise<boolean> {
-	if (!repoPath || kind === "conflicted") return false;
-	return loadSelectedFileDiff(path, kind, options, false);
+): Promise<void> {
+	if (!repoPath || kind === "conflicted") return;
+	await loadSelectedFileDiff(path, kind, options, false);
 }
 
 function handleTreeViewToggle() {
@@ -2775,15 +2764,7 @@ async function handleRebaseStart(
 									}}
 									onhunkaction={async (filePath) => {
 										if (selectedFile) {
-											const { path, kind } = selectedFile;
-											const isEmpty = await refetchFileDiff(filePath, kind);
-											if (
-												isEmpty &&
-												selectedFile?.path === path &&
-												selectedFile?.kind === kind
-											) {
-												advanceToNextFile(path, kind);
-											}
+											await refetchFileDiff(filePath, selectedFile.kind);
 										}
 										await stagingPanelRef?.loadStatus();
 									}}
