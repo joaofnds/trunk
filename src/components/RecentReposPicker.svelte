@@ -1,7 +1,6 @@
 <script lang="ts">
 import { tick } from "svelte";
 import { open } from "../lib/dialog.js";
-import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";
 import { filterRecents } from "../lib/recent-filter.js";
 import {
@@ -9,11 +8,7 @@ import {
 	nextHighlightedIdx,
 	pickerKeyAction,
 } from "../lib/recent-picker-keys.js";
-import {
-	getRecentRepos,
-	type RecentRepo,
-	removeRecentRepo,
-} from "../lib/store.js";
+import { getRecentRepos, type RecentRepo } from "../lib/store.js";
 import Button from "../lib/ui/Button.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
 
@@ -36,7 +31,6 @@ let dialogEl: HTMLDialogElement | undefined = $state();
 
 const filtered = $derived(filterRecents(recents, query));
 
-// Prune + load each time the picker transitions to visible.
 $effect(() => {
 	if (!visible) return;
 	(async () => {
@@ -44,24 +38,7 @@ $effect(() => {
 		query = "";
 		highlightedIdx = 0;
 
-		const all = await getRecentRepos();
-		const validations = await Promise.all(
-			all.map((r) =>
-				safeInvoke<boolean>("validate_recent_path", { path: r.path }).catch(
-					() => false,
-				),
-			),
-		);
-		const kept: RecentRepo[] = [];
-		const dropped: RecentRepo[] = [];
-		all.forEach((repo, i) => {
-			if (validations[i]) kept.push(repo);
-			else dropped.push(repo);
-		});
-		if (dropped.length > 0) {
-			await Promise.all(dropped.map((r) => removeRecentRepo(r.path)));
-		}
-		recents = kept;
+		recents = await getRecentRepos();
 		loading = false;
 		await tick();
 		inputEl?.focus();

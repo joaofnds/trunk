@@ -306,7 +306,6 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::repo::open_repo,
         commands::repo::close_repo,
         commands::repo::force_close_repo,
-        commands::fs::validate_recent_path,
         commands::markdown::read_file_at,
         commands::markdown::render_markdown_diff,
         commands::markdown::render_comment_preview,

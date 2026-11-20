@@ -142,8 +142,6 @@ describe("App", () => {
 				prefs[key] = value;
 				return Promise.resolve(undefined);
 			}
-			case "validate_recent_path":
-				return Promise.resolve(true);
 			case "get_commit_graph":
 				return Promise.resolve({
 					commits: [

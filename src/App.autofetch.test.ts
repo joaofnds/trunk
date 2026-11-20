@@ -135,7 +135,6 @@ describe("App automatic fetch coordination", () => {
 
 	it("keeps the current repository open when picked again", async () => {
 		host.preferences.set("recent_repos", [{ path: "/repo", name: "repo" }]);
-		host.seedResponse("validate_recent_path", true);
 		await restoreApp();
 		const opens = host.count("open_repo");
 
@@ -157,7 +156,6 @@ describe("App automatic fetch coordination", () => {
 			{ id: "tab-2", repoPath: "/other", repoName: "other" },
 		]);
 		host.preferences.set("recent_repos", [{ path: "/other", name: "other" }]);
-		host.seedResponse("validate_recent_path", true);
 		await restoreApp();
 
 		await pickRecentRepository("other");
@@ -174,7 +172,6 @@ describe("App automatic fetch coordination", () => {
 
 	it("closes a replaced repository once and fences its pending automatic outcome", async () => {
 		host.preferences.set("recent_repos", [{ path: "/other", name: "other" }]);
-		host.seedResponse("validate_recent_path", true);
 		await restoreApp();
 		await setFetchIntervalMs(60_000);
 		const oldCheck = host.holdNextReply("git_fetch_background");

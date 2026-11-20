@@ -247,8 +247,6 @@ class StatefulAppHost implements HostChannel {
 				return null;
 			case "resolve_threads":
 				return [];
-			case "validate_recent_path":
-				return true;
 			case "get_commit_graph":
 				return {
 					commits: commitDiff

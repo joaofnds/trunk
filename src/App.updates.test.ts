@@ -395,7 +395,6 @@ describe("App update controls", () => {
 			app.host.preferences.set("recent_repos", [
 				{ path: "/other", name: "other" },
 			]);
-			app.host.seedResponse("validate_recent_path", true);
 			const install = app.host.holdNextReply("updates_install");
 			app.start();
 			await screen.findByText("restored history");

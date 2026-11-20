@@ -279,12 +279,38 @@ describe("App startup", () => {
 		]);
 	});
 
+	it("says why a recent repository would not open and keeps it in the list", async () => {
+		const unplugged = { path: "/Volumes/usb/unplugged", name: "unplugged" };
+		app = new StartupHarness([savedTabs[1]], "active");
+		app.host.preferences.set("recent_repos", [unplugged]);
+		app.start();
+		await screen.findByText("restored history");
+		await app.settle();
+		const opening = app.host.holdNextReply("open_repo");
+
+		await app.pickRecent("unplugged");
+		await opening.entered;
+		opening.reject({
+			code: "not_a_git_repo",
+			message: "failed to resolve path '/Volumes/usb/unplugged'",
+		});
+		await app.settle();
+
+		expect(toasts.items).toContainEqual(
+			expect.objectContaining({
+				message:
+					"Could not open unplugged: failed to resolve path '/Volumes/usb/unplugged'",
+				kind: "error",
+			}),
+		);
+		expect(app.host.preferences.get("recent_repos")).toEqual([unplugged]);
+	});
+
 	it("keeps a replacement when the previous repository finishes opening", async () => {
 		app = new StartupHarness(savedTabs, "active");
 		app.host.preferences.set("recent_repos", [
 			{ path: "/replacement", name: "replacement" },
 		]);
-		app.host.seedResponse("validate_recent_path", true);
 		const opening = app.host.holdNextReply("open_repo");
 		app.start();
 		await opening.entered;

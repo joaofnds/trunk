@@ -56,7 +56,6 @@ import {
 	getRightPaneWidth,
 	getZoomLevel,
 	preferenceGeneration,
-	removeRecentRepo,
 	setActiveTabId,
 	setDiffContentMode,
 	setLeftPaneCollapsed,
@@ -709,10 +708,11 @@ async function handlePickerPick(path: string, name: string) {
 	}
 	try {
 		await safeInvoke("open_repo", { path });
-	} catch {
-		// Path slipped past the prune step (race or transient). Drop it
-		// silently — picker stays quiet by design.
-		await removeRecentRepo(path);
+	} catch (e) {
+		showToast(
+			`Could not open ${name}: ${errorMessage(e, "unknown error")}`,
+			"error",
+		);
 		pickerOpen = false;
 		return;
 	}

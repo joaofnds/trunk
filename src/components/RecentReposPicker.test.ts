@@ -56,6 +56,19 @@ describe("RecentReposPicker", () => {
 		]);
 	});
 
+	it("lists a recent repository it could not open, as an unplugged drive leaves it", async () => {
+		vi.mocked(getRecentRepos).mockResolvedValue(twoRepos);
+		vi.mocked(invoke).mockResolvedValue(false);
+		mount();
+
+		const options = await screen.findAllByRole("option");
+
+		expect(options.map((o) => o.textContent?.trim().split(/\s+/)[0])).toEqual([
+			"trunk",
+			"dotfiles",
+		]);
+	});
+
 	it("picks the option that is clicked", async () => {
 		vi.mocked(getRecentRepos).mockResolvedValue(twoRepos);
 		vi.mocked(invoke).mockResolvedValue(true);
