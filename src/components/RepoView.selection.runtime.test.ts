@@ -708,6 +708,34 @@ describe("RepoView commit selection", () => {
 			expect(screen.getByTestId("wip-edit-mark")).toHaveClass("text-accent");
 		});
 
+		it("keeps an amend being written across a look at a commit", async () => {
+			host.seedResponse("get_head_commit_message", {
+				oid: "head-oid",
+				subject: "feat: as committed",
+				body: null,
+			});
+			await openRepository();
+			const uncommittedChanges = (await screen.findByText("// WIP")).closest(
+				'[data-testid="commit-row"]',
+			) as HTMLElement;
+			await fireEvent.click(await screen.findByRole("tab", { name: "Amend" }));
+			await drainReplies();
+			await fireEvent.input(draftSummary(), {
+				target: { value: "feat: as amended" },
+			});
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+
+			await fireEvent.click(uncommittedChanges);
+			await drainReplies();
+
+			expect(screen.getByRole("tab", { name: "Amend" })).toHaveAttribute(
+				"aria-selected",
+				"true",
+			);
+			expect(draftSummary().value).toBe("feat: as amended");
+		});
+
 		it("saves the draft typed just before the view closes", async () => {
 			const view = await openRepository();
 			await typeDraftSummary("feat: last words");

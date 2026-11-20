@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../__tests__/helpers/tauri-mock";
+import { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
@@ -811,6 +812,88 @@ describe("CommitForm", () => {
 					expect.objectContaining({ expectedHeadOid: "head-1" }),
 				]),
 			);
+		});
+
+		describe("when the form closes and returns", () => {
+			it("shows HEAD's message for an amend left unedited", async () => {
+				const session = new CommitFormSession();
+				const first = render(CommitForm, {
+					props: { ...defaultProps, session },
+				});
+				await openAmend();
+				first.unmount();
+				pullLands();
+
+				render(CommitForm, { props: { ...defaultProps, session } });
+				await waitFor(() =>
+					expect(subjectInput().value).toBe("Pulled subject"),
+				);
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([
+						expect.objectContaining({ expectedHeadOid: "head-2" }),
+					]),
+				);
+			});
+
+			it("keeps an edited amend aimed at the commit it was written for", async () => {
+				const session = new CommitFormSession();
+				const first = render(CommitForm, {
+					props: { ...defaultProps, session },
+				});
+				await openAmend();
+				await fireEvent.input(subjectInput(), {
+					target: { value: "Edited subject" },
+				});
+				first.unmount();
+				pullLands();
+
+				render(CommitForm, { props: { ...defaultProps, session } });
+				await submit();
+
+				await waitFor(() =>
+					expect(amends).toEqual([
+						expect.objectContaining({
+							subject: "Edited subject",
+							expectedHeadOid: "head-1",
+						}),
+					]),
+				);
+			});
+
+			it("shows the amend still running", async () => {
+				let finishAmend: () => void = () => {};
+				vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+					if (cmd === "get_head_commit_message")
+						return Promise.resolve({ ...head, body: null });
+					if (cmd === "amend_commit")
+						return new Promise<undefined>((resolve) => {
+							finishAmend = () => resolve(undefined);
+						});
+					return Promise.resolve(undefined);
+				});
+				const session = new CommitFormSession();
+				const first = render(CommitForm, {
+					props: { ...defaultProps, session },
+				});
+				await openAmend();
+				await submit();
+				first.unmount();
+
+				render(CommitForm, { props: { ...defaultProps, session } });
+
+				expect(screen.getByTestId("commit-form-submit")).toHaveTextContent(
+					"Amending...",
+				);
+				expect(screen.getByTestId("commit-form-submit")).toBeDisabled();
+				finishAmend();
+				await waitFor(() =>
+					expect(screen.getByTestId("commit-form-submit")).toHaveTextContent(
+						"Commit",
+					),
+				);
+			});
 		});
 
 		it("shows HEAD's message on re-entry when the buffer was not edited", async () => {

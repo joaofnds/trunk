@@ -12,6 +12,7 @@ import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
+import type { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
@@ -53,6 +54,7 @@ interface Props {
 	) => void;
 	initialSubject?: string;
 	initialBody?: string;
+	commitFormSession?: CommitFormSession;
 	onsubjectchange?: (value: string) => void;
 	onbodychange?: (value: string) => void;
 	ondraftsummaryfocuschange?: (focused: boolean) => void;
@@ -83,6 +85,7 @@ let {
 	currentBranch,
 	initialSubject,
 	initialBody,
+	commitFormSession,
 	onfileselect,
 	onsubjectchange,
 	onbodychange,
@@ -1269,6 +1272,7 @@ registerUpdateBlocker(() => {
 			stagedCount={status?.staged.length ?? 0}
 			{initialSubject}
 			{initialBody}
+			session={commitFormSession}
 			{onsubjectchange}
 			{onbodychange}
 			{ondraftsummaryfocuschange}

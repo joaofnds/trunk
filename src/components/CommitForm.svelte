@@ -1,5 +1,9 @@
 <script lang="ts">
-import { onDestroy, tick, untrack } from "svelte";
+import { onDestroy, onMount, tick, untrack } from "svelte";
+import {
+	type CommitFormMode,
+	CommitFormSession,
+} from "../lib/commit-form-session.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { shortcutModifier } from "../lib/keyboard.js";
@@ -12,6 +16,7 @@ import TabStrip from "../lib/ui/TabStrip.svelte";
 interface Props {
 	repoPath: string;
 	stagedCount: number;
+	session?: CommitFormSession;
 	initialSubject?: string;
 	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
@@ -23,6 +28,7 @@ interface Props {
 let {
 	repoPath,
 	stagedCount,
+	session = new CommitFormSession(),
 	initialSubject,
 	initialBody,
 	onsubjectchange,
@@ -32,32 +38,24 @@ let {
 
 let draftSubject = $state(untrack(() => initialSubject) ?? "");
 let draftBody = $state(untrack(() => initialBody) ?? "");
-let amendSubject = $state("");
-let amendBody = $state("");
-// The commit the amend buffer is aimed at, and the message it was filled with.
-// The amend names that commit, and the backend refuses once HEAD is another, so
-// a pull or a commit landing meanwhile is never replaced under this message.
-let amendHeadOid = $state<string | null>(null);
-let amendSeed = { subject: "", body: "" };
-let amendSeeding = 0;
-let mode = $state<"commit" | "amend" | "stash">("commit");
-let committing = $state(false);
 let subjectError = $state("");
 let stagedError = $state("");
 let subjectInput = $state<HTMLInputElement>();
 let subjectFocused = $state(false);
 // Commit and Stash both edit the draft, as getSubject says; Amend edits HEAD's message.
-const draftSummaryFocused = $derived(subjectFocused && mode !== "amend");
+const draftSummaryFocused = $derived(
+	subjectFocused && session.mode !== "amend",
+);
 let reportedDraftSummaryFocus = false;
 
 function getSubject() {
-	return mode === "amend" ? amendSubject : draftSubject;
+	return session.mode === "amend" ? session.amendSubject : draftSubject;
 }
 
 function setSubject(value: string) {
 	if (subjectError) subjectError = "";
-	if (mode === "amend") {
-		amendSubject = value;
+	if (session.mode === "amend") {
+		session.amendSubject = value;
 	} else {
 		draftSubject = value;
 		onsubjectchange?.(value);
@@ -65,12 +63,12 @@ function setSubject(value: string) {
 }
 
 function getBody() {
-	return mode === "amend" ? amendBody : draftBody;
+	return session.mode === "amend" ? session.amendBody : draftBody;
 }
 
 function setBody(value: string) {
-	if (mode === "amend") {
-		amendBody = value;
+	if (session.mode === "amend") {
+		session.amendBody = value;
 	} else {
 		draftBody = value;
 		onbodychange?.(value);
@@ -95,26 +93,30 @@ let counterVisible = $derived(getSubject().length >= 60);
 let subjectOverLimit = $derived(getSubject().length > 72);
 
 let buttonLabel = $derived.by(() => {
-	if (committing) {
-		return mode === "commit"
+	if (session.committing) {
+		return session.mode === "commit"
 			? "Committing..."
-			: mode === "amend"
+			: session.mode === "amend"
 				? "Amending..."
 				: "Stashing...";
 	}
-	return mode === "commit" ? "Commit" : mode === "amend" ? "Amend" : "Stash";
+	return session.mode === "commit"
+		? "Commit"
+		: session.mode === "amend"
+			? "Amend"
+			: "Stash";
 });
 
 // Clear stagedError when stagedCount changes or mode changes
 $effect(() => {
 	void stagedCount;
-	void mode;
+	void session.mode;
 	stagedError = "";
 });
 
-async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
-	if (newMode === mode) return;
-	mode = newMode;
+async function handleModeSwitch(newMode: CommitFormMode) {
+	if (newMode === session.mode) return;
+	session.mode = newMode;
 	subjectError = "";
 
 	// An amend buffer the user has not edited shows HEAD as it is now, since the
@@ -133,7 +135,7 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
  *  to Commit first, since the draft is what the uncommitted-changes row shows.
  *  A submit in flight keeps its mode, and its success returns the form to Commit. */
 export async function focusDraftSummary() {
-	if (!committing) await handleModeSwitch("commit");
+	if (!session.committing) await handleModeSwitch("commit");
 	await tick();
 	if (!subjectInput) return;
 
@@ -154,39 +156,55 @@ $effect(() => reportDraftSummaryFocus(draftSummaryFocused));
 // WIP row drawing its pencil for a field that is gone.
 onDestroy(() => reportDraftSummaryFocus(false));
 
+// An amend left untouched while the form was closed shows HEAD as it is now.
+onMount(() => {
+	if (session.mode !== "amend" || !amendUntouched()) return;
+
+	seedAmend().catch((e) =>
+		console.error("Failed to get HEAD commit message:", e),
+	);
+});
+
 function amendUntouched() {
-	return amendSubject === amendSeed.subject && amendBody === amendSeed.body;
+	return (
+		session.amendSubject === session.amendSeed.subject &&
+		session.amendBody === session.amendSeed.body
+	);
 }
 
 // Aim the amend at HEAD, and show HEAD's message unless the user has edited the
 // buffer, during this read included. Answers HEAD, or null when a later read or
 // leaving Amend made this one moot.
 async function seedAmend(): Promise<HeadCommitMessage | null> {
-	const seeding = ++amendSeeding;
+	const seeding = ++session.amendSeeding;
 	const head = await safeInvoke<HeadCommitMessage>("get_head_commit_message", {
 		path: repoPath,
 	});
-	if (seeding !== amendSeeding || mode !== "amend") return null;
-	amendHeadOid = head.oid;
+	if (seeding !== session.amendSeeding || session.mode !== "amend") return null;
+	session.amendHeadOid = head.oid;
 	if (amendUntouched()) {
-		amendSubject = head.subject;
-		amendBody = head.body ?? "";
-		amendSeed = { subject: amendSubject, body: amendBody };
+		session.amendSubject = head.subject;
+		session.amendBody = head.body ?? "";
+		session.amendSeed = {
+			subject: session.amendSubject,
+			body: session.amendBody,
+		};
 	}
 	return head;
 }
 
 async function handleSubmit() {
-	if (committing) return;
+	if (session.committing) return;
 
 	subjectError = "";
 	stagedError = "";
 
-	const subject = mode === "amend" ? amendSubject : draftSubject;
-	const body = mode === "amend" ? amendBody : draftBody;
+	const subject =
+		session.mode === "amend" ? session.amendSubject : draftSubject;
+	const body = session.mode === "amend" ? session.amendBody : draftBody;
 
 	// Stash mode: subject is optional (stash name). Commit/amend: subject required.
-	if (mode !== "stash" && !subject.trim()) {
+	if (session.mode !== "stash" && !subject.trim()) {
 		subjectError = "Subject is required";
 		return;
 	}
@@ -194,17 +212,17 @@ async function handleSubmit() {
 	// All modes require staged files (except amend which can amend message-only).
 	// Stash mode repeats the backend's nothing_to_stash wording, so the guard and
 	// stash_save name the same next step wherever the user reaches stashing from.
-	if (mode !== "amend" && stagedCount === 0) {
+	if (session.mode !== "amend" && stagedCount === 0) {
 		stagedError =
-			mode === "stash"
+			session.mode === "stash"
 				? "Nothing to stash — stage changes first."
 				: "No files staged";
 		return;
 	}
 
-	committing = true;
+	session.committing = true;
 	try {
-		if (mode === "amend") {
+		if (session.mode === "amend") {
 			const expectedHeadOid = await amendTarget();
 			await safeInvoke("amend_commit", {
 				path: repoPath,
@@ -215,11 +233,11 @@ async function handleSubmit() {
 			// Amend never touches the WIP draft: clear only the amend buffer so the
 			// next amend re-fetches fresh HEAD, and leave the draft (and its parent
 			// callbacks) alone.
-			amendSubject = "";
-			amendBody = "";
-			amendSeed = { subject: "", body: "" };
-			amendHeadOid = null;
-		} else if (mode === "stash") {
+			session.amendSubject = "";
+			session.amendBody = "";
+			session.amendSeed = { subject: "", body: "" };
+			session.amendHeadOid = null;
+		} else if (session.mode === "stash") {
 			await safeInvoke("stash_save", {
 				path: repoPath,
 				message: subject.trim(),
@@ -236,24 +254,24 @@ async function handleSubmit() {
 			clearCommittedBody(body);
 		}
 		clearErrorToasts();
-		mode = "commit"; // Always reset to commit mode after any successful operation
+		session.mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
-		if (mode === "stash") {
+		if (session.mode === "stash") {
 			reportErrorToast(e, "Stash failed");
 		} else if (isTrunkError(e) && e.code === "amend_stale") {
 			await retargetAmend(e);
 		} else {
-			const action = mode === "commit" ? "Commit" : "Amend";
+			const action = session.mode === "commit" ? "Commit" : "Amend";
 			reportErrorToast(e, `${action} failed`);
 		}
 	} finally {
-		committing = false;
+		session.committing = false;
 	}
 }
 
 // A buffer whose HEAD read failed names no commit, and its amend goes to HEAD.
 async function amendTarget(): Promise<string> {
-	if (amendHeadOid !== null) return amendHeadOid;
+	if (session.amendHeadOid !== null) return session.amendHeadOid;
 	const head = await safeInvoke<HeadCommitMessage>("get_head_commit_message", {
 		path: repoPath,
 	});
@@ -307,9 +325,9 @@ function submitOnClick(e: MouseEvent) {
 			["stash", "Stash"],
 		] as [tab, label]}
 			<Tab
-				selected={mode === tab}
-				disabled={committing}
-				onclick={() => handleModeSwitch(tab as "commit" | "amend" | "stash")}
+				selected={session.mode === tab}
+				disabled={session.committing}
+				onclick={() => handleModeSwitch(tab as CommitFormMode)}
 			>
 				{label}
 			</Tab>
@@ -327,7 +345,7 @@ function submitOnClick(e: MouseEvent) {
 				onfocus={() => (subjectFocused = true)}
 				onblur={() => (subjectFocused = false)}
 				onkeydown={submitOnModEnter}
-				placeholder={mode === "stash"
+				placeholder={session.mode === "stash"
 					? "Stash name (optional)"
 					: "Summary (required)"}
 				class="w-full box-border border border-border bg-bg text-text rounded h-control-lg py-0 pl-3 pr-counter text-callout"
@@ -348,7 +366,7 @@ function submitOnClick(e: MouseEvent) {
 			<span class="error-text text-small leading-normal">{subjectError}</span>
 		{/if}
 
-		{#if mode !== "stash"}
+		{#if session.mode !== "stash"}
 			<textarea
 				bind:value={getBody, setBody}
 				onkeydown={submitOnModEnter}
@@ -369,7 +387,7 @@ function submitOnClick(e: MouseEvent) {
 				variant="primary"
 				data-testid="commit-form-submit"
 				onclick={submitOnClick}
-				disabled={committing}
+				disabled={session.committing}
 			>
 				{buttonLabel}
 			</Button>

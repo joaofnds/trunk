@@ -12,6 +12,7 @@ import {
 	type PanelDiffKind,
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
+import { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { computeCommitNav } from "../lib/commitNav.js";
 import {
 	type ComparePair,
@@ -423,6 +424,7 @@ let dirtyCountsSeq = 0;
 let headBranch = $state<string | undefined>(undefined);
 let wipSubject = $state("");
 let wipBody = $state("");
+const commitFormSession = new CommitFormSession();
 let draftSummaryFocused = $state(false);
 let draftLoaded = $state(false);
 let treeViewEnabled = $state(false);
@@ -2916,6 +2918,7 @@ async function handleRebaseStart(
 						{repoPath}
 						currentBranch={headBranch}
 						initialSubject={wipSubject}
+						{commitFormSession}
 						initialBody={wipBody}
 						onfileselect={handleFileSelect}
 						onsubjectchange={(v) => (wipSubject = v)}
