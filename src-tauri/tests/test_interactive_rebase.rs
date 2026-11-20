@@ -385,6 +385,15 @@ fn get_fork_point_of_a_branch_with_unrelated_history_says_so() {
 }
 
 #[test]
+fn get_fork_point_of_a_branch_that_does_not_resolve_is_a_fork_point_error() {
+    let (ctx, _) = make_three_commit_ctx();
+
+    let err = ctx.get_fork_point("no-such-branch").unwrap_err();
+
+    assert_eq!(err.code, "fork_point_error");
+}
+
+#[test]
 fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
     let (ctx, oids) = make_three_commit_ctx();
 

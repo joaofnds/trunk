@@ -1,3 +1,4 @@
+use crate::commands::commit::conclude_with_message;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::UndoResult;
 use crate::user_git::{UserGit, refusal};
@@ -186,11 +187,7 @@ pub fn cherry_pick_continue_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
-        // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
-        UserGit::in_dir(path_buf)
-            .args(["commit", "-m", message, "--cleanup=strip"])
-            .run("cherry_pick_error")
+        conclude_with_message(path_buf, message, "cherry_pick_error")
     })?;
 
     state_map.read_graph(path)
@@ -267,11 +264,7 @@ pub fn revert_continue_inner(
 ) -> Result<crate::state::GraphRead, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     state_map.hold_for_git(path, |_| {
-        // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
-        // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
-        UserGit::in_dir(path_buf)
-            .args(["commit", "-m", message, "--cleanup=strip"])
-            .run("revert_error")
+        conclude_with_message(path_buf, message, "revert_error")
     })?;
 
     state_map.read_graph(path)

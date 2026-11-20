@@ -79,6 +79,20 @@ pub fn amend_commit_inner(
     })
 }
 
+/// Concludes a merge, cherry-pick or revert by committing the staged result.
+///
+/// `--cleanup=strip` drops git's `# Conflicts:` block from `message`, and `git commit`
+/// clears the operation's `*_HEAD` file.
+///
+/// # Errors
+///
+/// Returns `code` with the reason git would not start, or with its refusal.
+pub fn conclude_with_message(repo_dir: &Path, message: &str, code: &str) -> Result<(), TrunkError> {
+    UserGit::in_dir(repo_dir)
+        .args(["commit", "-m", message, "--cleanup=strip"])
+        .run(code)
+}
+
 fn run_git_commit(repo_dir: &Path, flags: &[&str]) -> Result<(), TrunkError> {
     UserGit::in_dir(repo_dir)
         .arg("commit")

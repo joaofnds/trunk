@@ -110,7 +110,7 @@ impl UserGit {
 pub fn refusal(output: &Output) -> String {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    [stderr.trim_end(), stdout.trim_end()]
+    [stderr.trim(), stdout.trim()]
         .into_iter()
         .find(|text| !text.is_empty())
         .map_or_else(|| silent_refusal(output.status), str::to_owned)
@@ -133,4 +133,49 @@ fn read_from_start(file: &mut File) -> io::Result<Vec<u8>> {
     file.read_to_end(&mut bytes)?;
 
     Ok(bytes)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::process::ExitStatusExt;
+
+    const fn silent(status: ExitStatus) -> Output {
+        Output {
+            status,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_silent_exit_names_its_code_and_the_hook_that_may_have_refused() {
+        let refused = silent(ExitStatus::from_raw(1 << 8));
+
+        assert_eq!(
+            refusal(&refused),
+            "git exited with code 1 and printed no reason. A hook may have refused it."
+        );
+    }
+
+    #[test]
+    fn a_silent_kill_says_a_signal_stopped_git() {
+        let killed = silent(ExitStatus::from_raw(9));
+
+        assert_eq!(
+            refusal(&killed),
+            "git was stopped by a signal and printed no reason."
+        );
+    }
+
+    #[test]
+    fn stderr_wins_over_stdout_and_is_trimmed() {
+        let output = Output {
+            status: ExitStatus::from_raw(1 << 8),
+            stdout: b"nothing to commit\n".to_vec(),
+            stderr: b"\n  error: refused\n".to_vec(),
+        };
+
+        assert_eq!(refusal(&output), "error: refused");
+    }
 }

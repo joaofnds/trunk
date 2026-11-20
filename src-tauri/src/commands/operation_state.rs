@@ -1,3 +1,4 @@
+use crate::commands::commit::conclude_with_message;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::{OperationInfo, OperationType};
 use crate::user_git::{UserGit, refusal};
@@ -196,9 +197,7 @@ pub fn merge_continue_inner(
         let msg = message.ok_or_else(|| {
             TrunkError::new("merge_error", "merge_continue requires a commit message")
         })?;
-        UserGit::in_dir(path_buf)
-            .args(["commit", "-m", msg, "--cleanup=strip"])
-            .run("merge_error")
+        conclude_with_message(path_buf, msg, "merge_error")
     })?;
 
     state_map.read_graph(path)
@@ -224,20 +223,16 @@ pub fn merge_abort_inner(
     state_map.read_graph(path)
 }
 
-/// `git rebase <step>` with the commit-message editor pinned to a no-op.
+/// `git rebase <step>`.
 ///
-/// `--continue` and `--skip` both resume the todo list, so a reword or squash step
-/// opens an editor; this subprocess has no TTY, so an ambient interactive editor
-/// (vi/nvim inherited from the environment) blocks forever and the command never
-/// returns. `true` accepts whatever message git has already staged.
-/// `--abort` reaches no editor at all — the pin is inert there, not load-bearing.
-///
-/// Resuming steps override the pin with `trunk_git::editor::keyed_rebase_editor`, which
-/// is equally TTY-free but also delivers the messages an interactive rebase filed
-/// before it stopped. `true` would drop every one of them silently.
+/// A step that resumes the todo list can open an editor for a reword or squash, and
+/// this subprocess has no TTY, so an inherited interactive editor would block it
+/// forever. Resuming callers set `GIT_EDITOR` to `trunk_git::editor::keyed_rebase_editor`,
+/// which needs no TTY and delivers the messages an interactive rebase filed before it
+/// stopped. `--abort` opens no editor.
 fn rebase_command(dir: &std::path::Path, step: &str) -> UserGit {
     let mut cmd = UserGit::in_dir(dir);
-    cmd.args(["rebase", step]).env("GIT_EDITOR", "true");
+    cmd.args(["rebase", step]);
     cmd
 }
 
