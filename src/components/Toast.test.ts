@@ -33,6 +33,15 @@ describe("Toast", () => {
 		expect(status).toHaveTextContent("Fail");
 	});
 
+	it("shows a message of several lines as exactly those lines", () => {
+		const said = "hook declined\nfatal: The pre-rebase hook refused to rebase.";
+		showToast(said, "error");
+
+		render(Toast);
+
+		expect(screen.getByRole("button").textContent).toBe(said);
+	});
+
 	it("exposes the dismiss action as a focusable control named for the message", () => {
 		showToast("Dismiss me", "success");
 		render(Toast);

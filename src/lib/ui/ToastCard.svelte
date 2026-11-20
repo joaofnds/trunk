@@ -13,7 +13,7 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style"> {
 let { tone = "neutral", type = "button", children, ...rest }: Props = $props();
 
 const BASE =
-	"block w-full text-left px-4 py-2 rounded border text-body font-medium shadow-lg cursor-pointer " +
+	"block w-full text-left whitespace-pre-line wrap-anywhere px-4 py-2 rounded border text-body font-medium shadow-lg cursor-pointer " +
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 const TONES: Record<ToastTone, string> = {

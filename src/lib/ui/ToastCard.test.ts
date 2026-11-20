@@ -33,6 +33,15 @@ describe("ToastCard", () => {
 		);
 	});
 
+	it("keeps each line of its message and wraps a word too long for the card", () => {
+		render(ToastCard, { props: { children: message } });
+
+		expect(screen.getByRole("button")).toHaveClass(
+			"whitespace-pre-line",
+			"wrap-anywhere",
+		);
+	});
+
 	it("paints as news unless a tone is named", () => {
 		render(ToastCard, { props: { children: message } });
 
