@@ -11,9 +11,11 @@ use crate::watcher::RepoChanged;
 use trunk_git::error::TrunkError;
 use trunk_git::pull_safety::PullSafetyCopy;
 
-/// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
-/// markers to these is what keeps a hook printing either phrase from turning every
-/// ordinary divergence into a refusal, which would withhold the force-push remedy.
+/// git's own stderr lines, with the ones the remote wrote dropped. Scoping a phrase to
+/// these keeps a hook that prints it from deciding the classification: "permission
+/// denied" in a hook's reason would hide that reason behind a credentials banner, and a
+/// lease marker would turn an ordinary divergence into a refusal and withhold the
+/// force-push remedy.
 fn git_own_lines(lower: &str) -> impl Iterator<Item = &str> {
     lower
         .lines()
@@ -25,12 +27,11 @@ fn git_own_lines(lower: &str) -> impl Iterator<Item = &str> {
 pub fn classify_git_error(stderr: &str) -> TrunkError {
     let lower = stderr.to_lowercase();
 
-    // Not "could not read from remote": git closes every transport failure with
-    // it, a missing repository and an unreachable host as much as a refused key.
-    if lower.contains("authentication failed")
-        || lower.contains("permission denied")
-        || lower.contains("host key verification failed")
-    {
+    if git_own_lines(&lower).any(|line| {
+        line.contains("authentication failed")
+            || line.contains("permission denied")
+            || line.contains("host key verification failed")
+    }) {
         TrunkError::new("auth_failure", stderr)
     } else if lower.contains("remote rejected") || lower.contains("hook declined") {
         // Its own kind, so the user is not offered a force push, which a decline

@@ -79,7 +79,7 @@ fn classify_auth_failure_ssh() {
 }
 
 #[test]
-fn classify_a_remote_that_is_not_a_repository_as_what_git_said() {
+fn classify_a_remote_that_is_not_a_repository_as_a_remote_error() {
     let err = classify_git_error(
         "fatal: 'nosuch' does not appear to be a git repository\n\
          fatal: Could not read from remote repository.\n\n\
@@ -105,9 +105,17 @@ fn classify_auth_failure_host_key() {
 }
 
 #[test]
-fn classify_a_refused_connection_as_what_git_said() {
+fn classify_a_refused_connection_as_a_remote_error() {
     let err = classify_git_error("ssh: connect to host github.com port 22: Connection refused");
     assert_eq!(err.code, "remote_error");
+}
+
+#[test]
+fn classify_a_push_a_hook_declined_in_words_about_permission_as_declined() {
+    let err = classify_git_error(
+        "remote: Permission denied to update branch main\nTo ../remote.git\n ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to '../remote.git'",
+    );
+    assert_eq!(err.code, "push_declined");
 }
 
 #[test]
