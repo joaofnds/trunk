@@ -13,7 +13,7 @@ export async function deleteRemoteBranch(
 	try {
 		const confirmed = await ask(
 			`Delete remote branch '${forDisplay(branchName)}'? This will remove it from the remote.`,
-			{ title: "Delete Remote Branch", kind: "warning" },
+			{ title: "Delete Remote Branch", kind: "warning", okLabel: "Delete" },
 		);
 		if (!confirmed) return false;
 
@@ -34,7 +34,7 @@ export async function deleteTag(
 	try {
 		const confirmed = await ask(
 			`Delete tag '${forDisplay(tagName)}'? This cannot be undone.`,
-			{ title: "Delete Tag", kind: "warning" },
+			{ title: "Delete Tag", kind: "warning", okLabel: "Delete" },
 		);
 		if (!confirmed) return false;
 

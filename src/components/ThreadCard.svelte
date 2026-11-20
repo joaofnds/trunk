@@ -464,7 +464,7 @@ async function confirmedDeletion(
 	title: string,
 ): Promise<boolean> {
 	if (!confirmDelete) return true;
-	return ask(prompt, { title, kind: "warning" });
+	return ask(prompt, { title, kind: "warning", okLabel: "Delete" });
 }
 
 let confirmingDelete = $state(false);

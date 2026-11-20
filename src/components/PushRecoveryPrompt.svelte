@@ -149,7 +149,7 @@ function dismiss() {
 async function handleForcePush(target: Target) {
 	const confirmed = await ask(
 		`Force push? This overwrites the remote branch.\n\nBranch: ${forDisplay(target.branch)}\nRemote: ${forDisplay(target.remote)}`,
-		{ title: "Force Push", kind: "warning" },
+		{ title: "Force Push", kind: "warning", okLabel: "Force Push" },
 	);
 	if (!confirmed) return;
 	await runRemoteOp(

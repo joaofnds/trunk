@@ -89,7 +89,12 @@ describe("dropStash", () => {
 		expect(changed).toBe(true);
 		expect(mockAsk).toHaveBeenCalledWith(
 			'Drop stash "On main: wip"? This cannot be undone.',
-			{ title: "Drop Stash", kind: "warning" },
+			{
+				title: "Drop Stash",
+				kind: "warning",
+				okLabel: "Drop",
+				cancelLabel: "Cancel",
+			},
 		);
 		expect(mockInvoke).toHaveBeenCalledWith("stash_drop", {
 			path: "/repo",

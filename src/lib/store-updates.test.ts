@@ -96,7 +96,7 @@ describe("update draft persistence", () => {
 			calls.push(command);
 			if (command !== "plugin:dialog|message") return null;
 			await answer.promise;
-			return "Yes";
+			return "Discard All";
 		});
 		const clock = new FakeScheduler();
 		const preparation = new UpdatePreparation({
@@ -110,9 +110,11 @@ describe("update draft persistence", () => {
 			settle: () => invokesSettled(clock),
 			waiting: () => {},
 		});
-		const discarded = ask("Discard all changes?").then(
-			(yes) => yes && safeInvoke("discard_all"),
-		);
+		const discarded = ask("Discard all changes?", {
+			title: "Discard All Changes",
+			kind: "warning",
+			okLabel: "Discard All",
+		}).then((yes) => yes && safeInvoke("discard_all"));
 
 		const restart = preparation.install("2.0.0");
 		await look(clock, 2);

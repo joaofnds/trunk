@@ -135,6 +135,7 @@ export async function askToDiscardComment(): Promise<boolean> {
 	return ask("Discard your unsaved comment?", {
 		title: "Discard Comment",
 		kind: "warning",
+		okLabel: "Discard",
 	});
 }
 

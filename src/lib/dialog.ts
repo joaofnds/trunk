@@ -10,8 +10,20 @@ type Dialog = typeof import("@tauri-apps/plugin-dialog");
 
 const plugin = (): Promise<Dialog> => import("@tauri-apps/plugin-dialog");
 
-export const ask: Dialog["ask"] = (message, options) =>
-	trackPending(plugin().then((dialog) => dialog.ask(message, options)));
+/** A question's confirming button names the action it takes, and the other one is
+ *  Cancel, so the answer never depends on reading the question as a yes or no. */
+type Question = {
+	readonly title: string;
+	readonly kind: "info" | "warning";
+	readonly okLabel: string;
+};
+
+export const ask = (message: string, question: Question): Promise<boolean> =>
+	trackPending(
+		plugin().then((dialog) =>
+			dialog.ask(message, { ...question, cancelLabel: "Cancel" }),
+		),
+	);
 
 export const open: Dialog["open"] = (options) =>
 	trackPending(plugin().then((dialog) => dialog.open(options)));

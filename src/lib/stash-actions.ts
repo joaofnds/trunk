@@ -43,7 +43,7 @@ export async function dropStash(
 	try {
 		const confirmed = await ask(
 			`Drop stash "${forDisplay(stash.message)}"? This cannot be undone.`,
-			{ title: "Drop Stash", kind: "warning" },
+			{ title: "Drop Stash", kind: "warning", okLabel: "Drop" },
 		);
 		if (!confirmed) return false;
 

@@ -878,7 +878,7 @@ function closeDialog() {
 async function handleCheckoutCommit(commit: GraphCommit) {
 	const confirmed = await ask(
 		"Checkout this commit in detached HEAD mode? You won't be on any branch. Create a branch afterward to save your work.",
-		{ title: "Checkout Commit", kind: "warning" },
+		{ title: "Checkout Commit", kind: "warning", okLabel: "Checkout" },
 	);
 	if (!confirmed) return;
 	try {
@@ -992,6 +992,7 @@ async function handleReset(
 		{
 			title: `Reset (${mode})`,
 			kind: mode === "hard" ? "warning" : "info",
+			okLabel: "Reset",
 		},
 	);
 	if (!confirmed) return;

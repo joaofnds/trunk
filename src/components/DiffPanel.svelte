@@ -900,6 +900,7 @@ async function handleDiscardFile() {
 		{
 			title: isUntracked ? "Delete File" : "Discard Changes",
 			kind: "warning",
+			okLabel: isUntracked ? "Delete" : "Discard",
 		},
 	);
 	if (!confirmed) return;
@@ -998,6 +999,7 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 	const confirmed = await ask("Discard this hunk? This cannot be undone.", {
 		title: "Discard Hunk",
 		kind: "warning",
+		okLabel: "Discard Hunk",
 	});
 	if (!confirmed) return;
 
@@ -1339,6 +1341,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{
 			title: "Discard Lines",
 			kind: "warning",
+			okLabel: count === 1 ? "Discard Line" : "Discard Lines",
 		},
 	);
 	if (!confirmed) return;

@@ -59,17 +59,11 @@ async function askThenDelete(
 		throw refusal;
 	}
 
-	const confirmed = await ask(
-		prompt.message,
-		prompt.kind === "remove"
-			? {
-					title: TITLE,
-					kind: "warning",
-					okLabel: prompt.okLabel,
-					cancelLabel: "Cancel",
-				}
-			: { title: TITLE, kind: "warning" },
-	);
+	const confirmed = await ask(prompt.message, {
+		title: TITLE,
+		kind: "warning",
+		okLabel: prompt.kind === "remove" ? prompt.okLabel : "Delete",
+	});
 	if (!confirmed) return false;
 
 	try {

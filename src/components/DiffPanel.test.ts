@@ -3692,13 +3692,13 @@ describe("Discard File button", () => {
 		await waitFor(() =>
 			expect(vi.mocked(ask)).toHaveBeenCalledWith(
 				expect.stringContaining("untracked and will be permanently removed"),
-				{ title: "Delete File", kind: "warning" },
+				{
+					title: "Delete File",
+					kind: "warning",
+					okLabel: "Delete",
+					cancelLabel: "Cancel",
+				},
 			),
-		);
-
-		expect(vi.mocked(ask)).toHaveBeenCalledWith(
-			expect.stringContaining("untracked and will be permanently removed"),
-			{ title: "Delete File", kind: "warning" },
 		);
 	});
 
@@ -3723,13 +3723,13 @@ describe("Discard File button", () => {
 		await waitFor(() =>
 			expect(vi.mocked(ask)).toHaveBeenCalledWith(
 				expect.stringContaining("Discard changes to src/main.ts"),
-				{ title: "Discard Changes", kind: "warning" },
+				{
+					title: "Discard Changes",
+					kind: "warning",
+					okLabel: "Discard",
+					cancelLabel: "Cancel",
+				},
 			),
-		);
-
-		expect(vi.mocked(ask)).toHaveBeenCalledWith(
-			expect.stringContaining("Discard changes to src/main.ts"),
-			{ title: "Discard Changes", kind: "warning" },
 		);
 	});
 

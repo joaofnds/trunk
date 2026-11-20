@@ -85,7 +85,11 @@ async function handleCherryPickContinue() {
 async function handleCherryPickAbort() {
 	const confirmed = await ask(
 		"Abort cherry-pick? This will discard the in-progress cherry-pick and return to the previous state.",
-		{ title: "Abort Cherry-pick", kind: "warning" },
+		{
+			title: "Abort Cherry-pick",
+			kind: "warning",
+			okLabel: "Abort Cherry-pick",
+		},
 	);
 	if (!confirmed) return;
 	loading = true;
@@ -103,7 +107,7 @@ async function handleCherryPickAbort() {
 async function handleRevertAbort() {
 	const confirmed = await ask(
 		"Abort revert? This will discard the in-progress revert and return to the previous state.",
-		{ title: "Abort Revert", kind: "warning" },
+		{ title: "Abort Revert", kind: "warning", okLabel: "Abort Revert" },
 	);
 	if (!confirmed) return;
 	loading = true;

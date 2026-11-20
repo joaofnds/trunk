@@ -322,7 +322,6 @@ async function confirmResolved(filePaths: string[]): Promise<boolean> {
 			title: "Conflict Markers Remain",
 			kind: "warning",
 			okLabel: "Mark Resolved",
-			cancelLabel: "Cancel",
 		},
 	);
 }
@@ -397,6 +396,7 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 	const confirmed = await ask(msg, {
 		title: isUntracked ? "Delete File" : "Discard Changes",
 		kind: "warning",
+		okLabel: isUntracked ? "Delete" : "Discard",
 	});
 	if (!confirmed) return;
 	try {
@@ -416,7 +416,7 @@ async function handleDiscardDirectory(dirPath: string) {
 
 	const confirmed = await ask(
 		`Discard all changes in ${dirPath}/ (${files.length} file${files.length === 1 ? "" : "s"})? This cannot be undone.`,
-		{ title: "Discard Directory Changes", kind: "warning" },
+		{ title: "Discard Directory Changes", kind: "warning", okLabel: "Discard" },
 	);
 	if (!confirmed) return;
 
@@ -693,7 +693,7 @@ async function handleDiscardAll() {
 	const files = `${count} file${count === 1 ? "" : "s"}`;
 	const confirmed = await ask(
 		`Discard all changes to ${files}? This cannot be undone.`,
-		{ title: "Discard All Changes", kind: "warning" },
+		{ title: "Discard All Changes", kind: "warning", okLabel: "Discard All" },
 	);
 	if (!confirmed) return;
 
@@ -743,7 +743,7 @@ async function runMergeContinue() {
 async function abortMerge() {
 	const confirmed = await ask(
 		"Abort merge? This will discard all merge progress and return to the previous state.",
-		{ title: "Abort Merge", kind: "warning" },
+		{ title: "Abort Merge", kind: "warning", okLabel: "Abort Merge" },
 	);
 	if (!confirmed) return;
 	mergeLoading = true;
@@ -793,6 +793,7 @@ async function abortRebase() {
 		{
 			title: "Abort Rebase",
 			kind: "warning",
+			okLabel: "Abort Rebase",
 		},
 	);
 	if (!confirmed) return;
