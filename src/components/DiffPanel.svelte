@@ -944,6 +944,7 @@ async function reportHunkActionError(
 	fallback: string,
 ) {
 	if (isTrunkError(e) && e.code === "stale_hunk") {
+		clearSelection();
 		showToast(
 			`${filePath} changed since its diff was shown, so nothing was done. The diff now shows the file as it is.`,
 			"error",
@@ -1296,11 +1297,11 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 			options: currentDiffOptions(),
 		});
 		await afterLineAction(filePath, outcome, "stage");
+		clearSelection();
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Stage lines failed");
 	} finally {
 		hunkOperationInFlight = false;
-		clearSelection();
 	}
 }
 
@@ -1318,11 +1319,11 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 			options: currentDiffOptions(),
 		});
 		await afterLineAction(filePath, outcome, "unstage");
+		clearSelection();
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Unstage lines failed");
 	} finally {
 		hunkOperationInFlight = false;
-		clearSelection();
 	}
 }
 
@@ -1355,11 +1356,11 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			"success",
 		);
 		await afterLineAction(filePath, outcome, "discard");
+		clearSelection();
 	} catch (e) {
 		await reportHunkActionError(e, filePath, "Discard lines failed");
 	} finally {
 		hunkOperationInFlight = false;
-		clearSelection();
 	}
 }
 </script>

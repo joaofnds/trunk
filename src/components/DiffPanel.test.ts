@@ -4300,6 +4300,95 @@ describe("DiffPanel hunk actions on a changed file", () => {
 
 				expect(await reloads.reload).toBe("src/main.ts");
 				expect(vi.mocked(showToast)).toHaveBeenCalledWith(staleToast, "error");
+				expect(screen.queryByRole("button", { name: action })).toBeNull();
+			},
+		);
+	});
+
+	describe("when a line action lands", () => {
+		beforeEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+		});
+
+		afterEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(false);
+		});
+
+		it.each([
+			{ action: "Stage Lines (1)", diffKind: "unstaged" },
+			{ action: "Unstage Lines (1)", diffKind: "staged" },
+			{ action: "Discard Lines (1)", diffKind: "unstaged" },
+		] as const)(
+			"lets go of the lines $action acted on",
+			async ({ action, diffKind }) => {
+				const refetched = vi.fn(async () => {});
+				await renderShown({ diffKind, onhunkaction: refetched });
+				await fireEvent.mouseDown(gutterOf("new twenty"));
+				await fireEvent.mouseUp(window);
+
+				await fireEvent.click(screen.getByRole("button", { name: action }));
+
+				await waitFor(() => expect(refetched).toHaveBeenCalled());
+				await waitFor(() =>
+					expect(screen.queryByRole("button", { name: action })).toBeNull(),
+				);
+			},
+		);
+	});
+
+	describe("when a line action fails", () => {
+		beforeEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+			const { showToast } = await import("../lib/toast.svelte.js");
+			vi.mocked(showToast).mockClear();
+		});
+
+		afterEach(async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(false);
+		});
+
+		it.each([
+			{
+				action: "Stage Lines (1)",
+				command: "stage_lines",
+				diffKind: "unstaged",
+			},
+			{
+				action: "Unstage Lines (1)",
+				command: "unstage_lines",
+				diffKind: "staged",
+			},
+			{
+				action: "Discard Lines (1)",
+				command: "discard_lines",
+				diffKind: "unstaged",
+			},
+		] as const)(
+			"keeps the lines selected for another try after $action",
+			async ({ action, command, diffKind }) => {
+				const { showToast } = await import("../lib/toast.svelte.js");
+				vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+					cmd === command
+						? Promise.reject(new Error("index.lock exists"))
+						: Promise.resolve(undefined),
+				);
+				await renderShown({ diffKind });
+				await fireEvent.mouseDown(gutterOf("new twenty"));
+				await fireEvent.mouseUp(window);
+
+				await fireEvent.click(screen.getByRole("button", { name: action }));
+
+				await waitFor(() =>
+					expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+						"index.lock exists",
+						"error",
+					),
+				);
+				expect(screen.getByRole("button", { name: action })).toBeTruthy();
 			},
 		);
 	});
