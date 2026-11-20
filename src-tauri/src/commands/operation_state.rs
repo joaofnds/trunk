@@ -61,6 +61,16 @@ fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
     None // Unparseable -- caller shows generic "Merge in progress"
 }
 
+fn merge_head_branch(repo: &git2::Repository) -> Option<String> {
+    let merge_head = std::fs::read_to_string(repo.path().join("MERGE_HEAD")).ok()?;
+    let mut heads = merge_head.lines();
+    let oid = heads.next()?.trim();
+    if heads.next().is_some() {
+        return None;
+    }
+    resolve_oid_to_branch(repo, oid)
+}
+
 fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<String> {
     let oid = git2::Oid::from_str(oid_str).ok()?;
     for reference in repo.references().ok()?.flatten() {
@@ -91,7 +101,8 @@ pub fn get_operation_state_inner(
         git2::RepositoryState::Merge => {
             let git_dir = repo.path();
             let merge_msg = std::fs::read_to_string(git_dir.join("MERGE_MSG")).ok();
-            let source = extract_merge_source(merge_msg.as_deref());
+            let source =
+                extract_merge_source(merge_msg.as_deref()).or_else(|| merge_head_branch(&repo));
             let target = repo
                 .head()
                 .ok()

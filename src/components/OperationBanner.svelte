@@ -7,7 +7,6 @@ import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
-import Chip from "../lib/ui/Chip.svelte";
 import BranchChip from "./BranchChip.svelte";
 
 interface Props {
@@ -123,14 +122,6 @@ async function handleRevertAbort() {
 }
 </script>
 
-{#snippet branch(name: string | null)}
-	{#if name === null}
-		<Chip variant="label">???</Chip>
-	{:else}
-		<BranchChip {name} />
-	{/if}
-{/snippet}
-
 <div
 	class="shrink-0 min-h-banded-lg py-1 px-3 flex items-center gap-2"
 	style:box-shadow="inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge
@@ -157,9 +148,13 @@ async function handleRevertAbort() {
 	>
 		{#if isMerge}
 			<span class="shrink-0">Merging</span>
-			{@render branch(info.source_branch)}
-			<span class="shrink-0">into</span>
-			{@render branch(info.target_branch)}
+			{#if info.source_branch !== null}
+				<BranchChip name={info.source_branch} />
+			{/if}
+			{#if info.target_branch !== null}
+				<span class="shrink-0">into</span>
+				<BranchChip name={info.target_branch} />
+			{/if}
 		{:else}
 			<span>{label}</span>
 		{/if}

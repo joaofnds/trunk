@@ -49,6 +49,50 @@ fn merge_in_progress_reports_merge_state() {
     assert!(info.progress.is_none());
 }
 
+fn merging_feature_with_a_conflict() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build()
+}
+
+#[test]
+fn a_merge_whose_message_names_no_branch_names_the_branch_it_merges() {
+    let ctx = merging_feature_with_a_conflict();
+    std::fs::write(
+        ctx.repo().path().join("MERGE_MSG"),
+        "Bring in the feature work\n",
+    )
+    .unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+
+    assert_eq!(info.source_branch.as_deref(), Some("feature"));
+}
+
+#[test]
+fn a_merge_of_a_commit_no_branch_points_at_names_no_source() {
+    let ctx = merging_feature_with_a_conflict();
+    let repo = ctx.repo();
+    std::fs::write(repo.path().join("MERGE_MSG"), "Merge commit 'abc1234'\n").unwrap();
+    repo.find_branch("feature", git2::BranchType::Local)
+        .unwrap()
+        .delete()
+        .unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+
+    assert_eq!(info.source_branch, None);
+}
+
 #[test]
 fn merge_branch_begin_non_conflicting_then_continue_creates_merge_commit() {
     // Divergent changes on DIFFERENT files -> non-ff clean merge. The two-step

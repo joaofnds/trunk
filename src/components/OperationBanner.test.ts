@@ -80,7 +80,14 @@ describe("OperationBanner", () => {
 	);
 
 	describe("when git names no branch for a side", () => {
-		it("marks the side unknown without offering anything to copy", () => {
+		function bannerText() {
+			return screen
+				.getByText("Merging")
+				.parentElement?.textContent?.replace(/\s+/g, " ")
+				.trim();
+		}
+
+		it("names only the branch merged into", () => {
 			render(OperationBanner, {
 				props: {
 					info: makeInfo({ op_type: "Merge", source_branch: null }),
@@ -89,8 +96,20 @@ describe("OperationBanner", () => {
 				},
 			});
 
-			expect(screen.getByText("???")).toBeVisible();
-			expect(screen.queryByRole("button", { name: "???" })).toBeNull();
+			expect(bannerText()).toBe("Merging into main");
+			expect(screen.getByRole("button", { name: "main" })).toBeVisible();
+		});
+
+		it("names only the branch being merged", () => {
+			render(OperationBanner, {
+				props: {
+					info: makeInfo({ op_type: "Merge", target_branch: null }),
+					repoPath: "/repo",
+					resolved: true,
+				},
+			});
+
+			expect(bannerText()).toBe("Merging feature");
 		});
 	});
 
