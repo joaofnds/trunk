@@ -66,6 +66,7 @@ import {
 	PILL_PADDING_X,
 	TABLE_INSET_X,
 } from "../lib/graph-constants.js";
+import { graphKeyTarget, isGraphKey } from "../lib/graph-keys.js";
 import { centredRowTop, openingScrollTop } from "../lib/graph-scroll.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
@@ -2321,10 +2322,14 @@ function handleRowSelect(oid: string, mods?: SelectModifiers) {
 	else oncommitselect?.(oid, mods);
 }
 
-// Keyboard arrow navigation for commit selection
+function rowsPerPage(): number {
+	const height = listViewport()?.clientHeight ?? 0;
+	return Math.max(1, Math.floor(height / svgRowHeight) - 1);
+}
+
 function handleKeydown(e: KeyboardEvent) {
 	const chord = keyChord(e);
-	if (chord !== "ArrowDown" && chord !== "ArrowUp") return;
+	if (!isGraphKey(chord)) return;
 	if (focusInEditable(document.activeElement)) return;
 
 	e.preventDefault();
@@ -2340,15 +2345,13 @@ function handleKeydown(e: KeyboardEvent) {
 			? 0
 			: items.findIndex((c) => c.oid === navigationCommitOid);
 
-	let nextIdx: number;
-	if (chord === "ArrowDown") {
-		if (currentIdx === -1) nextIdx = 0;
-		else if (currentIdx >= items.length - 1) return;
-		else nextIdx = currentIdx + 1;
-	} else {
-		if (currentIdx <= 0) return;
-		nextIdx = currentIdx - 1;
-	}
+	const nextIdx = graphKeyTarget(
+		chord,
+		currentIdx,
+		items.length,
+		rowsPerPage(),
+	);
+	if (nextIdx === null) return;
 
 	const commit = items[nextIdx];
 	const sequence = ++scrollSequence;

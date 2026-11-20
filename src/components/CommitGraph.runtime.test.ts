@@ -879,6 +879,43 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	describe("page and edge keys", () => {
+		const rowsInView = Math.floor(200 / ROW_HEIGHT) - 1;
+
+		it.each([
+			{ key: "PageDown", from: 40, to: 40 + rowsInView },
+			{ key: "PageUp", from: 40, to: 40 - rowsInView },
+			{ key: "Home", from: 40, to: 0 },
+			{ key: "End", from: 40, to: 149 },
+		])(
+			"moves the selection from row $from to row $to on $key",
+			async ({ key, from, to }) => {
+				host.seedGraph({
+					commits: history(150),
+					max_columns: 1,
+					revision: 1,
+					checked: true,
+				});
+				const navigated: string[] = [];
+				render(CommitGraph, {
+					props: {
+						...noReviewCounts(),
+						repoPath: "/repo",
+						tabActive: true,
+						selectedCommitOid: `oid-${from}`,
+						oncommitnavigate: (oid: string) => navigated.push(oid),
+					},
+					context: new Map([[SCHEDULER, clock]]),
+				});
+				await screen.findByText("commit 0");
+
+				await fireEvent.keyDown(screen.getByRole("listbox"), { key });
+
+				expect(navigated).toEqual([`oid-${to}`]);
+			},
+		);
+	});
+
 	describe("graph refresh consumption", () => {
 		it("does not replay a consumed notification when the graph remounts", async () => {
 			host.seedGraph(graph(1));
