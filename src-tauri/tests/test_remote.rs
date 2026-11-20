@@ -1823,14 +1823,31 @@ fn pull_the_branch_merges_carries_an_uncommitted_change_when_only_rebases_autost
     );
 }
 
+/// Pulls over an uncommitted change where `config` forbids stashing it, and returns
+/// the refusal's code with the file the refusal left.
+fn refused_pull(config: &[(&str, &str)], strategy: Option<&str>) -> (String, String) {
+    let ctx = dirty_where_upstream_changed_another_line();
+    set_config(&ctx, config);
+
+    let refusal = ctx.remote().pull(strategy).unwrap_err();
+
+    (refusal.code, read(&ctx, "file.txt"))
+}
+
 #[test]
 fn merge_pull_leaves_an_uncommitted_change_where_merges_must_not_autostash() {
-    assert!(file_after_pull(&[("merge.autostash", "false")], None).is_err());
+    assert_eq!(
+        refused_pull(&[("merge.autostash", "false")], None),
+        ("remote_error".to_owned(), "one\ntwo\nTHREE\n".to_owned())
+    );
 }
 
 #[test]
 fn rebase_pull_leaves_an_uncommitted_change_where_rebases_must_not_autostash() {
-    assert!(file_after_pull(&[("rebase.autostash", "false")], Some("rebase")).is_err());
+    assert_eq!(
+        refused_pull(&[("rebase.autostash", "false")], Some("rebase")),
+        ("remote_error".to_owned(), "one\ntwo\nTHREE\n".to_owned())
+    );
 }
 
 fn head_parents(ctx: &TestContext) -> Vec<String> {
