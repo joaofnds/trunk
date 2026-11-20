@@ -421,6 +421,55 @@ describe("OperationBanner cherry-pick recovery", () => {
 		});
 	});
 
+	it("says the cherry-pick completed once its message is committed", async () => {
+		_resetToasts();
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				resolved: true,
+				onopenmessageeditor: vi.fn().mockResolvedValue("edited pick"),
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Continue"));
+
+		await waitFor(() => {
+			expect(toasts.items.map(({ message }) => message)).toEqual([
+				"Cherry-pick completed",
+			]);
+		});
+	});
+
+	it("reports no failure when the sequence stops on its next commit's conflicts", async () => {
+		_resetToasts();
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "get_merge_message") return Promise.resolve("Side change\n");
+			if (cmd !== "cherry_pick_continue") return Promise.resolve(undefined);
+			return concluded(args) === "needs_message"
+				? Promise.resolve("needs_message")
+				: Promise.reject({
+						code: "conflict_state",
+						message: "error: could not apply 1a2b3c4... Side change again",
+					});
+		});
+		const onaction = vi.fn();
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				resolved: true,
+				onopenmessageeditor: vi.fn().mockResolvedValue("edited pick"),
+				onaction,
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Continue"));
+
+		await waitFor(() => expect(onaction).toHaveBeenCalled());
+		expect(toasts.items).toEqual([]);
+	});
+
 	it("ends a cherry-pick resolved back to HEAD without asking for a message", async () => {
 		_resetToasts();
 		mockInvoke.mockImplementation((cmd: string) =>
@@ -440,7 +489,7 @@ describe("OperationBanner cherry-pick recovery", () => {
 
 		await waitFor(() => {
 			expect(toasts.items.map(({ message }) => message)).toEqual([
-				"Nothing was left to commit, so the cherry-pick ended without a commit.",
+				"Nothing was left to commit, so the cherry-pick skipped that commit.",
 			]);
 		});
 		expect(onopenmessageeditor).not.toHaveBeenCalled();

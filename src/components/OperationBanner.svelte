@@ -3,7 +3,7 @@ import GitBranch from "@lucide/svelte/icons/git-branch";
 import GitMerge from "@lucide/svelte/icons/git-merge";
 import { ask } from "../lib/dialog.js";
 import { reportErrorToast } from "../lib/error-report.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Conclusion, OperationInfo } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -71,11 +71,14 @@ async function continueOperation(continuation: Continuation) {
 		}
 		showToast(
 			conclusion === "skipped"
-				? `Nothing was left to commit, so the ${noun} ended without a commit.`
+				? `Nothing was left to commit, so the ${noun} skipped that commit.`
 				: completed,
 			"success",
 		);
 	} catch (e) {
+		// The commit landed and git stopped on the next commit of a sequence, which
+		// the banner then names, with its conflicted files below.
+		if (isTrunkError(e) && e.code === "conflict_state") return;
 		reportErrorToast(e, "Continue failed");
 	} finally {
 		loading = false;

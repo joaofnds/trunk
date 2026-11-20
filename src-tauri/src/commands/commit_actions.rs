@@ -121,14 +121,11 @@ pub enum Conclusion {
     NeedsMessage,
 }
 
-/// Whether the operation `state` names is still in progress with nothing left to
-/// commit: nothing conflicts and the index holds HEAD's own tree.
-fn nothing_to_commit(
-    path: &std::path::Path,
-    state: git2::RepositoryState,
-) -> Result<bool, TrunkError> {
+/// Whether the operation `sequencer` names is still in progress with nothing left
+/// to commit: nothing conflicts and the index holds HEAD's own tree.
+fn nothing_to_commit(path: &std::path::Path, sequencer: Sequencer) -> Result<bool, TrunkError> {
     let repo = git2::Repository::open(path)?;
-    if repo.state() != state {
+    if !sequencer.is_stopped_in(repo.state()) {
         return Ok(false);
     }
 
@@ -142,8 +139,36 @@ fn nothing_to_commit(
     Ok(staged.deltas().len() == 0)
 }
 
-fn skip(path: &std::path::Path, operation: &str, code: &str) -> Result<(), TrunkError> {
-    UserGit::in_dir(path).args([operation, "--skip"]).run(code)
+/// Moves a stopped pick or revert past its current commit, applying the rest of a
+/// sequence started in a terminal.
+fn skip(path: &std::path::Path, sequencer: Sequencer) -> Result<(), TrunkError> {
+    sequence_step(path, sequencer, "--skip")
+}
+
+fn apply_rest_of_sequence(path: &std::path::Path, sequencer: Sequencer) -> Result<(), TrunkError> {
+    sequence_step(path, sequencer, "--continue")
+}
+
+/// A sequence started with `--edit` asks for every later commit's message, and
+/// `--no-edit` does not override that, so the editor keeps the message git wrote.
+fn sequence_step(
+    path: &std::path::Path,
+    sequencer: Sequencer,
+    step: &str,
+) -> Result<(), TrunkError> {
+    let output = UserGit::in_dir(path)
+        .args([sequencer.operation(), step])
+        .env("GIT_EDITOR", "true")
+        .output()
+        .map_err(|e| TrunkError::new(sequencer.error_code(), e.to_string()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(stopped_error(path, &output, sequencer.error_code()))
+}
+
+fn in_sequence(path: &std::path::Path, sequencer: Sequencer) -> Result<bool, TrunkError> {
+    Ok(git2::Repository::open(path)?.state() == sequencer.sequence_state())
 }
 
 /// The git operations that stop on a conflict and are continued one commit at a time.
@@ -159,6 +184,19 @@ impl Sequencer {
             Self::CherryPick => git2::RepositoryState::CherryPick,
             Self::Revert => git2::RepositoryState::Revert,
         }
+    }
+
+    /// The state of a pick or revert of several commits, which git applies one at
+    /// a time from its todo list.
+    const fn sequence_state(self) -> git2::RepositoryState {
+        match self {
+            Self::CherryPick => git2::RepositoryState::CherryPickSequence,
+            Self::Revert => git2::RepositoryState::RevertSequence,
+        }
+    }
+
+    fn is_stopped_in(self, state: git2::RepositoryState) -> bool {
+        state == self.state() || state == self.sequence_state()
     }
 
     const fn operation(self) -> &'static str {
@@ -186,14 +224,20 @@ fn conclude(
 ) -> Result<(crate::state::GraphRead, Conclusion), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let conclusion = state_map.hold_for_git(path, |_| {
-        if nothing_to_commit(path_buf, sequencer.state())? {
-            skip(path_buf, sequencer.operation(), sequencer.error_code())?;
+        if nothing_to_commit(path_buf, sequencer)? {
+            skip(path_buf, sequencer)?;
             return Ok(Conclusion::Skipped);
         }
         let Some(message) = message else {
             return Ok(Conclusion::NeedsMessage);
         };
+        // Committing ends only the commit git stopped on, and leaves the rest of
+        // the sequence waiting in git's todo list where nothing shows it.
+        let rest_to_apply = in_sequence(path_buf, sequencer)?;
         conclude_with_message(path_buf, message, sequencer.error_code())?;
+        if rest_to_apply {
+            apply_rest_of_sequence(path_buf, sequencer)?;
+        }
         Ok(Conclusion::Committed)
     })?;
 
@@ -208,9 +252,7 @@ fn asks_for_message(
     sequencer: Sequencer,
 ) -> Result<bool, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    state_map.hold_for_git(path, |_| {
-        Ok(!nothing_to_commit(path_buf, sequencer.state())?)
-    })
+    state_map.hold_for_git(path, |_| Ok(!nothing_to_commit(path_buf, sequencer)?))
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -237,8 +279,8 @@ pub fn cherry_pick_inner(
             .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
 
         if !output.status.success() {
-            if nothing_to_commit(path_buf, git2::RepositoryState::CherryPick)? {
-                skip(path_buf, "cherry-pick", "cherry_pick_error")?;
+            if nothing_to_commit(path_buf, Sequencer::CherryPick)? {
+                skip(path_buf, Sequencer::CherryPick)?;
                 return Err(TrunkError::new("cherry_pick_empty", refusal(&output)));
             }
             return Err(stopped_error(path_buf, &output, "cherry_pick_error"));
@@ -253,11 +295,13 @@ pub fn cherry_pick_inner(
 /// Conclude a conflicted cherry-pick, skipping it when nothing is left to commit.
 ///
 /// A resolution that changes something is committed with `message`, or left in
-/// progress as `NeedsMessage` when no message is given.
+/// progress as `NeedsMessage` when no message is given. A pick of several commits
+/// started in a terminal then applies the rest.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and `cherry_pick_error` carrying
+/// Returns `not_open` when `path` names no open repository, `conflict_state` when
+/// the rest of a sequence stops on a conflict, and `cherry_pick_error` carrying
 /// git's own message when `git` will not run or the commit fails.
 pub fn cherry_pick_continue_inner(
     path: &str,
@@ -320,8 +364,8 @@ pub fn revert_commit_begin_inner(
         if !output.status.success() {
             return Err(stopped_error(path_buf, &output, "revert_error"));
         }
-        if nothing_to_commit(path_buf, git2::RepositoryState::Revert)? {
-            skip(path_buf, "revert", "revert_error")?;
+        if nothing_to_commit(path_buf, Sequencer::Revert)? {
+            skip(path_buf, Sequencer::Revert)?;
             return Err(TrunkError::new(
                 "revert_empty",
                 "HEAD already undoes this commit's changes, so there was nothing to revert.",
@@ -371,11 +415,13 @@ fn refuse_staged_changes(repo: &git2::Repository) -> Result<(), TrunkError> {
 /// Conclude a staged revert, skipping it when nothing is left to commit.
 ///
 /// A revert that changes something is committed with `message`, or left in progress
-/// as `NeedsMessage` when no message is given.
+/// as `NeedsMessage` when no message is given. A revert of several commits started
+/// in a terminal then reverts the rest.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, and `revert_error` carrying git's
+/// Returns `not_open` when `path` names no open repository, `conflict_state` when
+/// the rest of a sequence stops on a conflict, and `revert_error` carrying git's
 /// own message when `git` will not run or the commit fails.
 pub fn revert_continue_inner(
     path: &str,

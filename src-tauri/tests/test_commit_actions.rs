@@ -658,6 +658,54 @@ fn revert_continue_ends_a_revert_whose_changes_were_unstaged_without_a_commit() 
 }
 
 #[test]
+fn revert_continue_skips_a_resolution_back_to_head_and_reverts_the_rest_of_the_sequence() {
+    let ctx = TestContext::builder()
+        .with_file("f.txt", "base\n")
+        .with_commit("Base")
+        .with_file("f.txt", "a\n")
+        .with_commit("Change f")
+        .with_file("g.txt", "g\n")
+        .with_commit("Add g")
+        .with_file("f.txt", "c\n")
+        .with_commit("Change f again")
+        .build();
+    let revert = std::process::Command::new("git")
+        .args([
+            "-c",
+            "core.editor=true",
+            "revert",
+            "--edit",
+            "HEAD~2",
+            "HEAD~1",
+        ])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(
+        !revert.status.success(),
+        "the first revert must stop on its conflict"
+    );
+    assert_eq!(ctx.repo().state(), git2::RepositoryState::RevertSequence);
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("core.editor", "false")
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("f.txt"), "c\n").unwrap();
+    ctx.stage_file("f.txt").unwrap();
+
+    let conclusion = ctx.revert_continue_unasked().unwrap();
+
+    assert_eq!(conclusion, Conclusion::Skipped);
+    assert_eq!(ctx.repo().state(), git2::RepositoryState::Clean);
+    assert_eq!(
+        ctx.get_head_commit_message().unwrap().subject,
+        "Revert \"Add g\""
+    );
+    assert!(!ctx.repo_path().join("g.txt").exists());
+}
+
+#[test]
 fn revert_abort_restores_the_reverted_file() {
     let (ctx, _first_oid, second_oid) = build_two_commit_ctx();
     ctx.revert_commit_begin(&second_oid)
@@ -784,6 +832,114 @@ mod cherry_pick_lifecycle {
             std::fs::read_to_string(ctx.repo_path().join("notes.txt")).unwrap(),
             "kept\n"
         );
+    }
+
+    /// A pick of two side commits started in a terminal, stopped on the first,
+    /// which conflicts, with the second still to apply.
+    fn stopped_two_commit_pick_ctx() -> TestContext {
+        let ctx = TestContext::builder()
+            .with_file("f.txt", "base\n")
+            .with_commit("Base")
+            .with_branch("side")
+            .checkout("side")
+            .with_file("f.txt", "side\n")
+            .with_commit("Side change")
+            .with_file("g.txt", "extra\n")
+            .with_commit("Side extra")
+            .checkout("main")
+            .with_file("f.txt", "main\n")
+            .with_commit("Main change")
+            .build();
+        let pick = std::process::Command::new("git")
+            .args(["cherry-pick", "main..side"])
+            .current_dir(ctx.repo_path())
+            .output()
+            .unwrap();
+        assert!(
+            !pick.status.success(),
+            "the first pick must stop on its conflict"
+        );
+        assert_eq!(
+            ctx.repo().state(),
+            git2::RepositoryState::CherryPickSequence
+        );
+        ctx
+    }
+
+    fn summaries_from_head(ctx: &TestContext, count: usize) -> Vec<String> {
+        let repo = ctx.repo();
+        let mut walk = repo.revwalk().unwrap();
+        walk.push_head().unwrap();
+        walk.take(count)
+            .map(|oid| {
+                let commit = repo.find_commit(oid.unwrap()).unwrap();
+                commit.summary().unwrap().unwrap().to_owned()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn cherry_pick_continue_commits_the_resolution_and_applies_the_rest_of_the_sequence() {
+        let ctx = stopped_two_commit_pick_ctx();
+        resolve_conflict(&ctx);
+
+        let conclusion = ctx.cherry_pick_continue("Pick the side change").unwrap();
+
+        assert_eq!(conclusion, Conclusion::Committed);
+        assert_eq!(ctx.repo().state(), git2::RepositoryState::Clean);
+        assert_eq!(
+            summaries_from_head(&ctx, 3),
+            ["Side extra", "Pick the side change", "Main change"]
+        );
+    }
+
+    #[test]
+    fn cherry_pick_continue_skips_a_resolution_back_to_head_and_applies_the_rest_of_the_sequence() {
+        let ctx = stopped_two_commit_pick_ctx();
+        std::fs::write(ctx.repo_path().join("f.txt"), "main\n").unwrap();
+        ctx.stage_file("f.txt").unwrap();
+
+        let conclusion = ctx.cherry_pick_continue_unasked().unwrap();
+
+        assert_eq!(conclusion, Conclusion::Skipped);
+        assert_eq!(ctx.repo().state(), git2::RepositoryState::Clean);
+        assert_eq!(summaries_from_head(&ctx, 2), ["Side extra", "Main change"]);
+    }
+
+    #[test]
+    fn cherry_pick_continue_stops_on_the_next_commit_of_the_sequence_that_conflicts() {
+        let ctx = TestContext::builder()
+            .with_file("f.txt", "base\n")
+            .with_commit("Base")
+            .with_branch("side")
+            .checkout("side")
+            .with_file("f.txt", "side\n")
+            .with_commit("Side change")
+            .with_file("f.txt", "side again\n")
+            .with_commit("Side change again")
+            .checkout("main")
+            .with_file("f.txt", "main\n")
+            .with_commit("Main change")
+            .build();
+        let pick = std::process::Command::new("git")
+            .args(["cherry-pick", "main..side"])
+            .current_dir(ctx.repo_path())
+            .output()
+            .unwrap();
+        assert!(
+            !pick.status.success(),
+            "the first pick must stop on its conflict"
+        );
+        resolve_conflict(&ctx);
+
+        let err = ctx
+            .cherry_pick_continue("Pick the side change")
+            .unwrap_err();
+
+        assert_eq!(err.code, "conflict_state");
+        assert_eq!(summaries_from_head(&ctx, 1), ["Pick the side change"]);
+        let stopped_on = ctx.get_operation_state().unwrap().commit.unwrap();
+        assert_eq!(stopped_on.summary, "Side change again");
     }
 
     #[test]
