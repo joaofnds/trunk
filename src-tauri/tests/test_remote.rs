@@ -79,8 +79,22 @@ fn classify_auth_failure_ssh() {
 }
 
 #[test]
-fn classify_auth_failure_remote_read() {
-    let err = classify_git_error("fatal: could not read from remote repository.");
+fn classify_a_remote_that_is_not_a_repository_as_what_git_said() {
+    let err = classify_git_error(
+        "fatal: 'nosuch' does not appear to be a git repository\n\
+         fatal: Could not read from remote repository.\n\n\
+         Please make sure you have the correct access rights\n\
+         and the repository exists.",
+    );
+    assert_eq!(err.code, "remote_error");
+}
+
+#[test]
+fn classify_an_ssh_key_the_server_refuses_as_auth_failure() {
+    let err = classify_git_error(
+        "git@github.com: Permission denied (publickey).\n\
+         fatal: Could not read from remote repository.",
+    );
     assert_eq!(err.code, "auth_failure");
 }
 
@@ -91,9 +105,9 @@ fn classify_auth_failure_host_key() {
 }
 
 #[test]
-fn classify_auth_failure_connection_refused() {
+fn classify_a_refused_connection_as_what_git_said() {
     let err = classify_git_error("ssh: connect to host github.com port 22: Connection refused");
-    assert_eq!(err.code, "auth_failure");
+    assert_eq!(err.code, "remote_error");
 }
 
 #[test]

@@ -24,11 +24,11 @@ fn git_own_lines(lower: &str) -> impl Iterator<Item = &str> {
 pub fn classify_git_error(stderr: &str) -> TrunkError {
     let lower = stderr.to_lowercase();
 
+    // Not "could not read from remote": git closes every transport failure with
+    // it, a missing repository and an unreachable host as much as a refused key.
     if lower.contains("authentication failed")
         || lower.contains("permission denied")
-        || lower.contains("could not read from remote")
         || lower.contains("host key verification failed")
-        || lower.contains("connection refused")
     {
         TrunkError::new("auth_failure", stderr)
     } else if lower.contains("remote rejected") || lower.contains("hook declined") {
