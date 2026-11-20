@@ -1971,24 +1971,36 @@ function replaceGraph(response: GraphResponse): void {
 function refreshAnsweredSearch() {
 	const query = searchQuery.trim();
 	if (!searchOpen || !searchAnswered || !query) return;
-	const current = searchResults[searchCurrentIndex]?.oid;
 	invalidateSearchRequest();
+	void currentSearchFor(query).then((results) => {
+		if (results === undefined) return;
+		const current = searchResults[searchCurrentIndex]?.oid;
+		searchResults = results;
+		searchCurrentIndex = Math.max(
+			0,
+			results.findIndex((r) => r.oid === current),
+		);
+	});
+}
+
+/** Resolves to undefined when a newer search, a closed bar or another repository
+ *  made this one obsolete, and reports a failure only while it is still current. */
+async function currentSearchFor(
+	query: string,
+): Promise<SearchResult[] | undefined> {
 	const generation = searchGeneration;
 	const path = repoPath;
-	safeInvoke<SearchResult[]>("search_commits", { path, query }).then(
-		(results) => {
-			if (!isCurrentSearch(generation, path)) return;
-			searchResults = results;
-			searchCurrentIndex = Math.max(
-				0,
-				results.findIndex((r) => r.oid === current),
-			);
-		},
-		(error) => {
-			if (isCurrentSearch(generation, path))
-				reportErrorToast(error, "Could not search commits");
-		},
-	);
+	try {
+		const results = await safeInvoke<SearchResult[]>("search_commits", {
+			path,
+			query,
+		});
+		return isCurrentSearch(generation, path) ? results : undefined;
+	} catch (error) {
+		if (isCurrentSearch(generation, path))
+			reportErrorToast(error, "Could not search commits");
+		return undefined;
+	}
 }
 
 function requestRead(task: CoalescedTask) {
@@ -2260,7 +2272,6 @@ function handleSearchQueryChange(query: string) {
 	invalidateSearchRequest();
 	const generation = searchGeneration;
 	const path = repoPath;
-	const isCurrent = () => isCurrentSearch(generation, path);
 	searchResults = [];
 	searchCurrentIndex = 0;
 	searchAnswered = false;
@@ -2270,27 +2281,16 @@ function handleSearchQueryChange(query: string) {
 
 	searchDebounceTimer = setTimeout(async () => {
 		searchDebounceTimer = null;
-		if (!isCurrent()) return;
+		if (!isCurrentSearch(generation, path)) return;
 
-		try {
-			const results = await safeInvoke<SearchResult[]>("search_commits", {
-				path,
-				query: trimmed,
-			});
-			if (!isCurrent()) return;
+		const results = await currentSearchFor(trimmed);
+		if (results === undefined) return;
 
-			searchAnswered = true;
-			searchResults = results;
-			searchCurrentIndex = 0;
-			if (results.length > 0) {
-				selectSearchResult(results[0].oid);
-			}
-		} catch (error) {
-			if (!isCurrent()) return;
-
-			reportErrorToast(error, "Could not search commits");
-			searchResults = [];
-			searchCurrentIndex = 0;
+		searchAnswered = true;
+		searchResults = results;
+		searchCurrentIndex = 0;
+		if (results.length > 0) {
+			selectSearchResult(results[0].oid);
 		}
 	}, 200);
 }
