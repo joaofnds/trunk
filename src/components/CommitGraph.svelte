@@ -86,10 +86,7 @@ import {
 	runTagAction,
 } from "../lib/ref-actions.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
-import {
-	createRemoteState,
-	type RemoteState,
-} from "../lib/remote-state.svelte.js";
+import type { RemoteState } from "../lib/remote-state.svelte.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
@@ -135,7 +132,7 @@ interface Props {
 	onready?: () => void;
 	repoPath: string;
 	/** The tab's remote operation, which a remote delete from a menu runs as. */
-	remoteState?: RemoteState;
+	remoteState: RemoteState;
 	/** The checked-out branch, read from every ref, so it is known while HEAD's row
 	 *  is not yet loaded. Undefined while HEAD is detached. */
 	headBranch?: string;
@@ -195,7 +192,7 @@ interface Props {
 
 let {
 	repoPath,
-	remoteState = createRemoteState(),
+	remoteState,
 	headBranch,
 	onready,
 	oncommitselect,

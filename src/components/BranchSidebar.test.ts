@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { CHECKOUT_CONFLICT_MESSAGE } from "../lib/checkout.js";
+import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
@@ -183,6 +184,7 @@ describe("BranchSidebar", () => {
 		const { rerender } = render(BranchSidebar, {
 			props: {
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				refreshSignal: 0,
 				workingTreeDirty: true,
 			},
@@ -221,7 +223,7 @@ describe("BranchSidebar", () => {
 
 	it("renders without crashing", () => {
 		const { container } = render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 		expect(container).toBeTruthy();
 	});
@@ -234,8 +236,10 @@ describe("BranchSidebar", () => {
 				? new Promise((resolve) => pending.push(resolve))
 				: Promise.resolve(undefined),
 		);
+		const remoteState = createRemoteState();
 		const props = (refreshSignal: number) => ({
 			repoPath: "/test/repo",
+			remoteState,
 			refreshSignal,
 		});
 		const { rerender } = render(BranchSidebar, {
@@ -256,7 +260,7 @@ describe("BranchSidebar", () => {
 
 	it("renders local branch section header", async () => {
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 		// BranchSection renders "{label} ({count})" — e.g. "Local (1)"
 		await waitFor(() => {
@@ -266,7 +270,7 @@ describe("BranchSidebar", () => {
 
 	it("renders branch name from refs response", async () => {
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 		await waitFor(() => {
 			expect(screen.getByText("main")).toBeInTheDocument();
@@ -302,7 +306,7 @@ describe("BranchSidebar", () => {
 		});
 
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 
 		await waitFor(() => {
@@ -313,7 +317,7 @@ describe("BranchSidebar", () => {
 
 	it("calls list_refs on mount with correct repo path", async () => {
 		render(BranchSidebar, {
-			props: { repoPath: "/my/project" },
+			props: { repoPath: "/my/project", remoteState: createRemoteState() },
 		});
 		await waitFor(() => {
 			expect(mockInvoke).toHaveBeenCalledWith("list_refs", {
@@ -355,7 +359,7 @@ describe("BranchSidebar", () => {
 			});
 
 			render(BranchSidebar, {
-				props: { repoPath: "/test/repo" },
+				props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 			});
 
 			// Wait for Remote section to appear, then expand it
@@ -398,7 +402,7 @@ describe("BranchSidebar", () => {
 			});
 
 			render(BranchSidebar, {
-				props: { repoPath: "/test/repo" },
+				props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 			});
 
 			// Expand Remote section
@@ -459,6 +463,7 @@ describe("BranchSidebar", () => {
 			const { container } = render(BranchSidebar, {
 				props: {
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					onopenmessageeditor: onopenmessageeditor as never,
 				},
 			});
@@ -598,7 +603,9 @@ describe("BranchSidebar ref visibility", () => {
 	// It writes each hideable row's own entry, so the eye on a row always shows that row's
 	// real state (João, 2026-09-02).
 	it("hiding a section writes every hideable row, skipping HEAD's branch", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		// Wait for the rows themselves, not just the section header: the header renders
 		// while the refs are still loading, and a bulk action then covers nothing.
@@ -621,7 +628,9 @@ describe("BranchSidebar ref visibility", () => {
 	// section showed as hidden while its own state said otherwise, and showing the section
 	// resurrected rows the user had hidden individually.
 	it("shows each row's own state, not the section's", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
@@ -647,7 +656,9 @@ describe("BranchSidebar ref visibility", () => {
 			"/test/repo": { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		// main is HEAD and cannot be hidden, so topic alone being hidden makes the whole
 		// section hidden as far as the user can act on it.
@@ -662,7 +673,9 @@ describe("BranchSidebar ref visibility", () => {
 			"/test/repo": { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Show all Local refs")).toBeInTheDocument();
@@ -681,7 +694,9 @@ describe("BranchSidebar ref visibility", () => {
 
 	// Acceptance #5: HEAD's branch row offers no toggle, every other row does.
 	it("offers a toggle on every row but HEAD's branch", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
@@ -692,7 +707,9 @@ describe("BranchSidebar ref visibility", () => {
 	// Acceptance #1 and #2: the toggle pushes the new set to the backend, which rebuilds
 	// the graph, so the pills update and stay updated across a reload.
 	it("pushes the hidden set to the backend when a row is toggled", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
@@ -714,7 +731,9 @@ describe("BranchSidebar ref visibility", () => {
 
 	// Acceptance #7: the same hidden set comes back when the repository is reopened.
 	it("persists the hidden set to prefs", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
@@ -739,7 +758,9 @@ describe("BranchSidebar ref visibility", () => {
 			},
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Show topic")).toBeInTheDocument();
@@ -757,7 +778,9 @@ describe("BranchSidebar ref visibility", () => {
 			},
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(mockInvoke).toHaveBeenCalledWith(
@@ -801,7 +824,9 @@ describe("BranchSidebar ref visibility", () => {
 			return Promise.resolve(undefined);
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		await fireEvent.click(await screen.findByLabelText("Hide stash@{0}"));
@@ -834,7 +859,9 @@ describe("BranchSidebar ref visibility", () => {
 				}),
 			);
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 
 		await fireEvent.contextMenu(await screen.findByLabelText("Hide stash@{0}"));
@@ -879,7 +906,9 @@ describe("BranchSidebar ref visibility", () => {
 			return Promise.resolve(undefined);
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 
@@ -923,7 +952,7 @@ describe("BranchSidebar ref visibility", () => {
 		});
 
 		const { container } = render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
@@ -968,7 +997,7 @@ describe("BranchSidebar ref visibility", () => {
 		});
 
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
 		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
@@ -1012,7 +1041,9 @@ describe("BranchSidebar ref visibility", () => {
 			return Promise.resolve(undefined);
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		const row = await screen.findByRole("button", { name: /WIP on main/ });
@@ -1055,7 +1086,9 @@ describe("BranchSidebar ref visibility", () => {
 			return Promise.resolve(undefined);
 		});
 
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		const eye = await screen.findByLabelText("Hide stash@{0}");
@@ -1073,6 +1106,7 @@ describe("BranchSidebar ref visibility", () => {
 		const view = render(BranchSidebar, {
 			props: {
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				repoListenerSettled: false,
 				onvisibilityresolved: resolved,
 			},
@@ -1111,7 +1145,11 @@ describe("BranchSidebar ref visibility", () => {
 		});
 		const resolved = vi.fn();
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo", onvisibilityresolved: resolved },
+			props: {
+				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
+				onvisibilityresolved: resolved,
+			},
 		});
 
 		await waitFor(() => {
@@ -1146,6 +1184,7 @@ describe("BranchSidebar ref visibility", () => {
 		render(BranchSidebar, {
 			props: {
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				onvisibilitychanged: (graph) => received.push(graph),
 			},
 		});
@@ -1168,7 +1207,9 @@ describe("BranchSidebar ref visibility", () => {
 	});
 
 	it("does not push anything when nothing is hidden", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await waitFor(() => {
 			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
@@ -1183,7 +1224,11 @@ describe("BranchSidebar ref visibility", () => {
 	// every page they scrolled through.
 	it("tells the backend how many rows the graph already holds", async () => {
 		render(BranchSidebar, {
-			props: { repoPath: "/test/repo", loadedRows: () => 400 },
+			props: {
+				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
+				loadedRows: () => 400,
+			},
 		});
 
 		await waitFor(() => {
@@ -1220,7 +1265,9 @@ describe("BranchSidebar stash creation", () => {
 				);
 			return base ? base(cmd, args) : Promise.resolve(undefined);
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByLabelText("Create new stash"));
 		await fireEvent.click(await screen.findByText("Stash"));
@@ -1235,7 +1282,9 @@ describe("BranchSidebar stash creation", () => {
 	});
 
 	it("draws Stash as the small primary action", async () => {
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 
 		await fireEvent.click(await screen.findByLabelText("Create new stash"));
 
@@ -1276,7 +1325,9 @@ describe("BranchSidebar checking out or creating a branch", () => {
 			if (called === cmd) return answer();
 			return Promise.resolve(undefined);
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 	}
 
 	async function doubleClickLocal(name: string) {
@@ -1357,7 +1408,9 @@ describe("BranchSidebar checking out or creating a branch", () => {
 				);
 			return Promise.resolve("topic");
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 		await fireEvent.click(await screen.findByText("Remote (1)"));
 
 		const subheader = await screen.findByTestId("remote-group-subheader");
@@ -1391,7 +1444,9 @@ describe("BranchSidebar checking out or creating a branch", () => {
 				);
 			return Promise.resolve("topic");
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 		await fireEvent.click(await screen.findByText("Remote (1)"));
 
 		const row = await waitFor(() => {
@@ -1522,7 +1577,9 @@ describe("BranchSidebar stash and tag actions", () => {
 				tags = tags.filter((tag) => tag.short_name !== tagName);
 			return Promise.resolve(undefined);
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 	});
 
 	it("takes a popped stash off the list", async () => {
@@ -1634,7 +1691,9 @@ describe("BranchSidebar branch remote actions", () => {
 			if (cmd === "list_remotes") return Promise.resolve(["origin"]);
 			return Promise.resolve(undefined);
 		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", remoteState: createRemoteState() },
+		});
 	});
 
 	it("pulls and pushes the checked-out branch as the toolbar does", async () => {

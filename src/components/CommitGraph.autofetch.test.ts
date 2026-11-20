@@ -16,6 +16,7 @@ import { makeCommit, makeRef } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
+import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import type { GraphResponse } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
@@ -60,6 +61,7 @@ function mountGraph(
 		props: {
 			...noReviewCounts(),
 			repoPath: "/repo",
+			remoteState: createRemoteState(),
 			tabActive: true,
 			refreshSignal: 0,
 			cachedGraphRevision,

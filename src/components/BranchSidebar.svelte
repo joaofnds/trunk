@@ -38,10 +38,7 @@ import {
 	toggleStash,
 	visibilityVerb,
 } from "../lib/ref-visibility.js";
-import {
-	createRemoteState,
-	type RemoteState,
-} from "../lib/remote-state.svelte.js";
+import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
@@ -71,7 +68,7 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 interface Props {
 	repoPath: string;
 	/** The tab's remote operation, which a remote delete from a menu runs as. */
-	remoteState?: RemoteState;
+	remoteState: RemoteState;
 	onrefreshed?: () => void;
 	onrefschange?: (refs: RefsResponse) => void;
 	/** The graph as the backend re-laid it out after a visibility change. */
@@ -100,7 +97,7 @@ interface Props {
 
 let {
 	repoPath,
-	remoteState = createRemoteState(),
+	remoteState,
 	onrefreshed,
 	onrefschange,
 	onvisibilitychanged,

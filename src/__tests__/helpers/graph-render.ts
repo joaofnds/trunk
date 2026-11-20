@@ -18,6 +18,7 @@ import {
 	UNSCROLLED_VIEWPORT_HEIGHT,
 } from "./virtual-list-layout.js";
 import "./tauri-mock";
+import { createRemoteState } from "../../lib/remote-state.svelte.js";
 import { noReviewCounts } from "./review-props.js";
 
 vi.mock("../../lib/invoke.js", async () => {
@@ -142,6 +143,7 @@ async function renderGraph(fixture: LayoutExport, wipCount: number) {
 		props: {
 			...noReviewCounts(),
 			repoPath: "/fixture",
+			remoteState: createRemoteState(),
 			wipCount,
 			tabActive: true,
 		},

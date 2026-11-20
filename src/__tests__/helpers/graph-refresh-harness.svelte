@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import CommitGraph from "../../components/CommitGraph.svelte";
+import { createRemoteState } from "../../lib/remote-state.svelte.js";
 import Button from "../../lib/ui/Button.svelte";
 
 let {
@@ -22,6 +23,7 @@ let {
 	withWip?: boolean;
 	onconsumed?: (generation: number) => void;
 } = $props();
+const remoteState = createRemoteState();
 let commandGeneration = $state(0);
 let consumedRefreshSignal = $state(0);
 let wipCount = $state(untrack(() => (withWip ? 1 : 0)));
@@ -48,6 +50,7 @@ let wipCount = $state(untrack(() => (withWip ? 1 : 0)));
 {#if visible}
 	<CommitGraph
 		repoPath="/repo"
+		{remoteState}
 		tabActive={true}
 		commentCounts={new Map()}
 		commentTallies={new Map()}

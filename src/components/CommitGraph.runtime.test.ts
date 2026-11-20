@@ -405,6 +405,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					oncommitselect: (oid) => selections.push(oid),
 				},
@@ -498,7 +499,12 @@ describe("CommitGraph", () => {
 				head: { files_changed: 1, insertions: 7, deletions: 0 },
 			});
 			const view = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -521,7 +527,12 @@ describe("CommitGraph", () => {
 		it("does no stats work for an inactive tab", async () => {
 			host.seedGraph(graph(1));
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: false },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: false,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -538,7 +549,12 @@ describe("CommitGraph", () => {
 			host.seedGraph({ commits, max_columns: 1, revision: 1, checked: true });
 			host.seedResponse("get_commit_stats", stats(commits.slice(32)));
 			const view = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await waitFor(() =>
@@ -590,7 +606,12 @@ describe("CommitGraph", () => {
 			host.seedResponse("get_commit_stats", stats(commits));
 			const first = host.holdNextReply("get_commit_stats");
 			const view = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			const firstArgs = await first.entered;
@@ -627,7 +648,12 @@ describe("CommitGraph", () => {
 				head: { files_changed: 1, insertions: 7, deletions: 0 },
 			});
 			const view = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: false },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: false,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("revision 1");
@@ -644,7 +670,12 @@ describe("CommitGraph", () => {
 			const errors: unknown[][] = [];
 			console.error = (...args) => errors.push(args);
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await failure.entered;
@@ -675,7 +706,12 @@ describe("CommitGraph", () => {
 				stats(commits.filter((_, i) => i !== 55)),
 			);
 			const view = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findAllByTestId("diff-stat-bar");
@@ -851,6 +887,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					selectedCommitOid: "oid-0",
 				},
@@ -901,6 +938,7 @@ describe("CommitGraph", () => {
 					props: {
 						...noReviewCounts(),
 						repoPath: "/repo",
+						remoteState: createRemoteState(),
 						tabActive: true,
 						selectedCommitOid: `oid-${from}`,
 						oncommitnavigate: (oid: string) => navigated.push(oid),

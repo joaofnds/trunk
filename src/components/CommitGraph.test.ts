@@ -25,6 +25,7 @@ import {
 	TABLE_INSET_X,
 } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
@@ -295,6 +296,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 				reviewComments,
 				commentCounts: new Map(),
@@ -311,6 +313,7 @@ describe("CommitGraph", () => {
 		const { container } = render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 				wipCount: 1,
 				commentCounts: new Map([
@@ -338,6 +341,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -352,6 +356,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -369,6 +374,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -385,6 +391,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -397,6 +404,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -414,6 +422,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					oncommitselect,
 				},
@@ -436,6 +445,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					wipCount: 1,
 					oncommitselect,
@@ -462,6 +472,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					oncommitselect,
 				},
@@ -478,6 +489,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -496,6 +508,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -512,6 +525,7 @@ describe("CommitGraph", () => {
 			props: {
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
 				tabActive: true,
 			},
 		});
@@ -570,6 +584,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -594,6 +609,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -628,7 +644,12 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await openContextMenu(1);
 
@@ -650,7 +671,12 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await openContextMenu(1);
 
@@ -672,7 +698,12 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await openContextMenu(1);
 
@@ -701,6 +732,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -739,7 +771,12 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await openContextMenu(1);
 
@@ -769,6 +806,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor: vi.fn().mockResolvedValue("edited revert"),
 				},
@@ -799,7 +837,12 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await openContextMenu(0);
 
@@ -822,6 +865,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -850,6 +894,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -885,6 +930,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -913,6 +959,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -953,6 +1000,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/repo/a",
+					remoteState: createRemoteState(),
 					tabActive: false,
 				},
 			});
@@ -960,6 +1008,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/repo/b",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -1028,6 +1077,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -1143,7 +1193,12 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 		}
 
@@ -1470,6 +1525,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					refreshSignal: 0,
 					wipCount: options.wipMessage === undefined ? 0 : 1,
@@ -1845,7 +1901,12 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 		}
 
@@ -1907,7 +1968,12 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath, tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath,
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 		}
 
@@ -2610,6 +2676,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -2626,9 +2693,11 @@ describe("CommitGraph", () => {
 	});
 
 	describe("refresh backpressure", () => {
+		const remoteState = createRemoteState();
 		const props = (refreshSignal: number) => ({
 			...noReviewCounts(),
 			repoPath: "/test/repo",
+			remoteState,
 			tabActive: true,
 			refreshSignal,
 		});
@@ -2719,6 +2788,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 				},
 			});
@@ -2860,7 +2930,12 @@ describe("CommitGraph", () => {
 			});
 
 			const rendered = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("old commit 0")).toBeInTheDocument();
@@ -2958,6 +3033,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					refreshSignal: 0,
 				},
@@ -3027,7 +3103,12 @@ describe("CommitGraph", () => {
 
 		async function mounted() {
 			const rendered = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("old commit 0")).toBeInTheDocument();
@@ -3211,7 +3292,12 @@ describe("CommitGraph", () => {
 
 		async function mounted() {
 			const rendered = render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("commit 0")).toBeInTheDocument();
@@ -3277,6 +3363,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					oncommitschange,
 				},
@@ -3375,6 +3462,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					refreshSignal: 0,
 				},
@@ -3472,9 +3560,11 @@ describe("CommitGraph", () => {
 					});
 				},
 			});
+			const remoteState = createRemoteState();
 			const props = (tabActive: boolean, cachedGraphRevision: number) => ({
 				...noReviewCounts(),
 				repoPath: "/test/repo",
+				remoteState,
 				tabActive,
 				cachedGraphRevision,
 				selectedCommitOid,
@@ -3590,6 +3680,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/first",
+					remoteState: createRemoteState(),
 					wipCount: 0,
 					tabActive: true,
 				},
@@ -3598,6 +3689,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/second",
+					remoteState: createRemoteState(),
 					wipCount: 0,
 					tabActive: true,
 				},
@@ -3618,6 +3710,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/only",
+					remoteState: createRemoteState(),
 					wipCount: 0,
 					tabActive: true,
 				},
@@ -3678,6 +3771,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					wipCount: 1,
 				},
@@ -3706,7 +3800,12 @@ describe("CommitGraph", () => {
 		it("names the branch it moves and the commit it moves it to", async () => {
 			installReads({ commits: [HEAD_COMMIT, TARGET] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
@@ -3726,7 +3825,12 @@ describe("CommitGraph", () => {
 		it("warns that a hard reset leaves the branch with the target's history", async () => {
 			installReads({ commits: [HEAD_COMMIT, TARGET] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
@@ -3746,7 +3850,12 @@ describe("CommitGraph", () => {
 		it("warns that a hard reset deletes new files that were only staged", async () => {
 			installReads({ commits: [HEAD_COMMIT, TARGET] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
@@ -3774,6 +3883,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					headBranch: "main",
 				},
@@ -3799,7 +3909,12 @@ describe("CommitGraph", () => {
 			});
 			installReads({ commits: [detached, TARGET] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
@@ -3817,7 +3932,12 @@ describe("CommitGraph", () => {
 		it("says a soft reset leaves unstaged changes unstaged", async () => {
 			installReads({ commits: [HEAD_COMMIT, TARGET] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
@@ -3845,7 +3965,12 @@ describe("CommitGraph", () => {
 			});
 			installReads({ commits: [commit] });
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[0]);
@@ -3868,7 +3993,12 @@ describe("CommitGraph", () => {
 
 		async function mountGraph() {
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
@@ -3958,7 +4088,12 @@ describe("CommitGraph", () => {
 				],
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
@@ -4089,6 +4224,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					wipCount: 1,
 					...props,
@@ -4138,6 +4274,7 @@ describe("CommitGraph", () => {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
 					tabActive: true,
 					selectedCommitOid,
 				},
@@ -4235,7 +4372,12 @@ describe("CommitGraph", () => {
 				override: (called) => (called === cmd ? answer() : undefined),
 			});
 			render(CommitGraph, {
-				props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+				props: {
+					...noReviewCounts(),
+					repoPath: "/test/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+				},
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();
@@ -4375,7 +4517,12 @@ describe("CommitGraph ref and stash actions", () => {
 			},
 		});
 		render(CommitGraph, {
-			props: { ...noReviewCounts(), repoPath: "/test/repo", tabActive: true },
+			props: {
+				...noReviewCounts(),
+				repoPath: "/test/repo",
+				remoteState: createRemoteState(),
+				tabActive: true,
+			},
 		});
 		await screen.findAllByTestId("commit-row");
 		await flush();
