@@ -470,48 +470,8 @@ mod when_another_writer_runs_meanwhile {
     use super::*;
     use common::drivers::commit::commit_what_is_staged;
     use common::drivers::staging::stage_path;
+    use common::hooks::PausedHook;
     use trunk_git::error::TrunkError;
-
-    /// A `pre-commit` hook that says it has started, then waits to be let go.
-    struct PausedHook {
-        fifos: tempfile::TempDir,
-    }
-
-    impl PausedHook {
-        fn install(ctx: &TestContext) -> Self {
-            let fifos = tempfile::tempdir().unwrap();
-            for name in ["started", "go"] {
-                let made = std::process::Command::new("mkfifo")
-                    .arg(fifos.path().join(name))
-                    .status()
-                    .unwrap();
-                assert!(made.success(), "mkfifo failed");
-            }
-            let hook = Self { fifos };
-            ctx.install_hook(
-                "pre-commit",
-                &format!(
-                    "echo started > '{}'\nread line < '{}'",
-                    hook.fifo("started").display(),
-                    hook.fifo("go").display()
-                ),
-            );
-
-            hook
-        }
-
-        fn fifo(&self, name: &str) -> std::path::PathBuf {
-            self.fifos.path().join(name)
-        }
-
-        fn wait_until_started(&self) {
-            std::fs::read_to_string(self.fifo("started")).unwrap();
-        }
-
-        fn let_go(&self) {
-            std::fs::write(self.fifo("go"), "go\n").unwrap();
-        }
-    }
 
     /// Runs `create_commit` and, once its pre-commit hook has started, another writer
     /// that stages `file_path`. The hook is let go once that writer waits or ends.
@@ -521,7 +481,7 @@ mod when_another_writer_runs_meanwhile {
     ) -> Result<(), TrunkError> {
         std::fs::write(ctx.repo_path().join(file_path), file_path).unwrap();
         let repo = ctx.repo();
-        let hook = PausedHook::install(ctx);
+        let hook = PausedHook::install(ctx, "pre-commit");
         let (queued, waits_or_ends) = std::sync::mpsc::channel();
         let ended = queued.clone();
 

@@ -238,6 +238,19 @@ impl RemoteOps {
         process
     }
 
+    /// Request cancellation of a background fetch on `path`, leaving an operation the
+    /// user started to finish, since stopping a pull partway can leave a rebase half done.
+    pub fn cancel_background(&mut self, path: &str) -> Option<RemoteProcess> {
+        let operation = self.operations.values_mut().find(|operation| {
+            operation.path == path && operation.kind == OperationKind::Background
+        })?;
+        operation.cancelled = true;
+        let process = operation.process;
+        self.changed.notify_waiters();
+
+        process
+    }
+
     fn complete(&mut self, id: u64) {
         if self.operations.remove(&id).is_some() {
             self.changed.notify_waiters();

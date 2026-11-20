@@ -64,7 +64,8 @@ pub async fn open_repo<R: Runtime>(
     Ok(())
 }
 
-/// Forget a repository, cancel its remote operation, and stop watching it.
+/// Forget a repository, cancel its background fetch, and stop watching it. A remote
+/// operation the user started runs on to its end.
 ///
 /// # Errors
 ///
@@ -88,7 +89,7 @@ pub async fn close_repo(
     let mut repositories = state.0.lock().unwrap();
     cache.forget(&path);
     repositories.forget(&path);
-    let process = running.0.lock().unwrap().cancel(&path);
+    let process = running.0.lock().unwrap().cancel_background(&path);
     if let Some(process) = process {
         process.stop();
     }
@@ -121,6 +122,10 @@ pub async fn force_close_repo(
     background: State<'_, crate::background_fetch::BackgroundFetch>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
+    let process = running.0.lock().unwrap().cancel(&path);
+    if let Some(process) = process {
+        process.stop();
+    }
     close_repo(
         activity,
         path,
