@@ -256,6 +256,21 @@ impl ReviewDriver<'_> {
         .unwrap()
     }
 
+    /// Block until the work the app started on its own, such as the follow a
+    /// publication starts, has finished, its announcement included.
+    ///
+    /// Receiving that announcement is not enough: a listener runs inside the
+    /// emit, and an emit made while another is still calling its listeners is
+    /// queued until that one ends, so a test that acts on the first wake can
+    /// miss the announcement of what it does next. The update drain waits for
+    /// every admitted worker, so this drains and reopens.
+    pub fn wait_for_background_work(&self) {
+        let activity = self.app.state::<trunk_lib::activity::ActivityState>();
+        let token = activity.begin_drain().unwrap();
+        activity.wait_for_preparation(&token).unwrap();
+        activity.cancel_prepare(&token).unwrap();
+    }
+
     /// Each later `reviews-changed`, for a test that blocks until work the app
     /// started on its own has announced itself.
     pub fn reviews_changed_events(&self) -> Receiver<()> {

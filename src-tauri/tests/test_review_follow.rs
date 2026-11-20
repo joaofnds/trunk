@@ -504,8 +504,8 @@ fn a_thread_whose_lines_are_untouched_follows_unmarked_when_other_files_of_its_c
 }
 
 /// Comments on the local commit and pulls with rebase in a terminal, returning
-/// the commit that left the graph. The comment makes the next publication's
-/// follow announce itself, which is what a test waits on before it adds more.
+/// the commit that left the graph. The comment gives the next publication's
+/// follow a thread to move, so the follow a test waits out has real work.
 fn commented_then_pulled_with_rebase(ctx: &TestContext, store: &Store) -> String {
     let written_on = git(ctx, &["rev-parse", "HEAD"]);
     comment_on(store, ctx, &written_on, 4);
@@ -520,9 +520,8 @@ fn a_thread_written_on_a_commit_that_already_left_the_graph_follows_on_the_next_
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let written_on = commented_then_pulled_with_rebase(&ctx, &store);
     let review = ctx.review();
-    let announced = review.reviews_changed_events();
     review.publish_graph();
-    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+    review.wait_for_background_work();
     let late = comment_on(&store, &ctx, &written_on, 4);
 
     review.refresh_staleness().unwrap();
@@ -539,10 +538,10 @@ fn the_narrower_ref_recheck_announces_the_follow_it_makes() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let written_on = commented_then_pulled_with_rebase(&ctx, &store);
     let review = ctx.review();
-    let announced = review.reviews_changed_events();
     review.publish_graph();
-    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+    review.wait_for_background_work();
     let late = comment_on(&store, &ctx, &written_on, 4);
+    let announced = review.reviews_changed_events();
 
     review.refresh_ref_staleness().unwrap();
 
@@ -596,9 +595,8 @@ fn a_follow_decided_on_a_graph_older_than_the_published_one_moves_nothing() {
     review.publish_graph();
     let before_the_pull = review.published_graph();
     commented_then_pulled_with_rebase(&ctx, &store);
-    let announced = review.reviews_changed_events();
     review.publish_graph();
-    announced.recv_timeout(ANNOUNCE_TIMEOUT).unwrap();
+    review.wait_for_background_work();
 
     let moved = review.follow_against(&store, &before_the_pull);
 
