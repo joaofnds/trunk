@@ -25,6 +25,10 @@ const fetchStatus = $derived(autofetchSummary(remoteState.autofetch));
 const pulling = $derived(
 	remoteState.isRunning && remoteState.lastOp !== "push",
 );
+const pullTooltip = $derived.by(() => {
+	if (!pulling) return fetchStatus;
+	return remoteState.lastOp === "fetch" ? "Fetching…" : "Pulling…";
+});
 
 interface PullOption {
 	label: string;
@@ -143,11 +147,7 @@ $effect(() => {
 			aria-label="Pull"
 			aria-busy={pulling || undefined}
 			aria-describedby={remoteState.autofetch ? statusId : undefined}
-			tooltip={pulling
-				? remoteState.lastOp === "fetch"
-					? "Fetching…"
-					: "Pulling…"
-				: fetchStatus}
+			tooltip={pullTooltip}
 		>
 			{#if pulling}
 				<LoaderCircle size={14} class="animate-spin" />

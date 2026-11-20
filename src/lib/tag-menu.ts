@@ -1,13 +1,13 @@
 /** What a tag's context menu entry does to the tag. */
 export type TagAction =
-	| { kind: "push"; remote: string }
-	| { kind: "delete" }
-	| { kind: "delete_remote"; remote: string };
+	| { readonly kind: "push"; readonly remote: string }
+	| { readonly kind: "delete" }
+	| { readonly kind: "delete_remote"; readonly remote: string };
 
 export interface TagMenuEntry {
-	text: string;
-	action: TagAction;
-	enabled: boolean;
+	readonly text: string;
+	readonly action: TagAction;
+	readonly enabled: boolean;
 }
 
 /**

@@ -11,6 +11,7 @@ import {
 } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
+import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import {
 	createUndoRedoState,
 	type UndoEntry,
@@ -137,6 +138,38 @@ describe("Toolbar", () => {
 			expect(screen.getByRole("button", { name: idle })).not.toHaveAttribute(
 				"aria-busy",
 			);
+		},
+	);
+
+	it.each([
+		["push", "Push", "Pushing…"],
+		["pull", "Pull", "Pulling…"],
+		["fetch", "Pull", "Fetching…"],
+	] as const)(
+		"names a running %s in its button's tooltip",
+		async (op, button, tooltip) => {
+			vi.useFakeTimers();
+			onTestFinished(() => {
+				document.querySelector(".tooltip-pop")?.remove();
+				vi.useRealTimers();
+			});
+			const remoteState = makeRemoteState();
+			remoteState.isRunning = true;
+			remoteState.lastOp = op;
+			render(Toolbar, {
+				props: {
+					repoPath: "/test/repo",
+					remoteState,
+					undoRedo: makeUndoRedo(),
+					shownHeadOid: null,
+					reviewActive: false,
+				},
+			});
+
+			await fireEvent.mouseEnter(screen.getByRole("button", { name: button }));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+			expect(document.querySelector(".tooltip-pop")).toHaveTextContent(tooltip);
 		},
 	);
 
