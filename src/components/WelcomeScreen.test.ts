@@ -102,7 +102,11 @@ describe("WelcomeScreen", () => {
 			{ name: "trunk", path: "/Users/test/code/trunk" },
 		]);
 		render(WelcomeScreen, {
-			props: { onopen: (path: string) => void opened.push(path) },
+			props: {
+				onopen: async (path: string) => {
+					opened.push(path);
+				},
+			},
 		});
 		await screen.findByText("trunk");
 
@@ -134,14 +138,24 @@ describe("WelcomeScreen", () => {
 		});
 	});
 
+	it("opens a recent repository once when it is clicked twice", async () => {
+		const onopen = vi.fn(() => new Promise<void>(() => {}));
+		const { row } = await renderWithRecentRepo(onopen);
+
+		await fireEvent.click(row);
+		await fireEvent.click(row);
+		await vi.waitFor(() => expect(onopen).toHaveBeenCalled());
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(onopen).toHaveBeenCalledTimes(1);
+	});
+
 	it("shows the backend message when opening a repo fails", async () => {
-		// Command-scoped, not mockRejectedValueOnce: a leaked flow must not consume it.
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			cmd === "open_repo"
-				? Promise.reject({ code: "git_error", message: "not a git repository" })
-				: Promise.resolve(undefined),
+		const { row } = await renderWithRecentRepo(
+			vi.fn(() =>
+				Promise.reject({ code: "git_error", message: "not a git repository" }),
+			),
 		);
-		const { row } = await renderWithRecentRepo();
 
 		await fireEvent.click(row);
 

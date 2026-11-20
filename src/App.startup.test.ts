@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/svelte";
+import { fireEvent, screen, waitFor, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeCommit } from "./__tests__/helpers/factories.js";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
@@ -304,6 +304,29 @@ describe("App startup", () => {
 			}),
 		);
 		expect(app.host.preferences.get("recent_repos")).toEqual([unplugged]);
+	});
+
+	it("switches to the tab already showing a repository opened from the welcome screen, without reopening it", async () => {
+		app = new StartupHarness([savedTabs[1]], "active");
+		app.host.preferences.set("recent_repos", [
+			{ path: "/active", name: "active" },
+		]);
+		app.start();
+		await screen.findByText("restored history");
+		await app.settle();
+		await fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+		const recent = (await screen.findByText("Recent")).parentElement;
+		if (!recent) throw new Error("the Recent heading has no list around it");
+
+		await fireEvent.click(await within(recent).findByText("active"));
+		await app.settle();
+
+		expect(app.paths("open_repo")).toEqual(["/active"]);
+		expect(screen.queryByRole("tab", { name: "New Tab" })).toBeNull();
+		expect(screen.getByRole("tab", { name: "active" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
 	});
 
 	it("keeps a replacement when the previous repository finishes opening", async () => {

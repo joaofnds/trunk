@@ -690,34 +690,31 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 	}
 }
 
+/** Shows `path` from tab `tabId`. A repository another tab already shows is not
+ *  opened again, since opening it resets that tab's backend state. Rejects with
+ *  the reason when the repository will not open. */
+async function openRepository(tabId: string, path: string, name: string) {
+	const key = repositoryPathKey(path);
+	if (!tabs.some((tab) => repositoryPathKey(tab.repoPath) === key))
+		await safeInvoke("open_repo", { path });
+	await addRecentRepo({ name, path });
+	await openRepoInTab(tabId, path, name);
+}
+
 async function handlePickerPick(path: string, name: string) {
 	// No-op if the active tab already shows this repo (CONTEXT.md decision).
 	if (activeTab?.repoPath === path) {
 		pickerOpen = false;
 		return;
 	}
-	if (
-		tabs.some(
-			(tab) => repositoryPathKey(tab.repoPath) === repositoryPathKey(path),
-		)
-	) {
-		await addRecentRepo({ name, path });
-		await openRepoInTab(activeTabId, path, name);
-		pickerOpen = false;
-		return;
-	}
 	try {
-		await safeInvoke("open_repo", { path });
+		await openRepository(activeTabId, path, name);
 	} catch (e) {
 		showToast(
 			`Could not open ${name}: ${errorMessage(e, "unknown error")}`,
 			"error",
 		);
-		pickerOpen = false;
-		return;
 	}
-	await addRecentRepo({ name, path });
-	await openRepoInTab(activeTabId, path, name);
 	pickerOpen = false;
 }
 
@@ -1430,9 +1427,7 @@ $effect(() => {
 				{:else}
 					<WelcomeScreen
 						{isFullscreen}
-						onopen={(path, name) => {
-							void openRepoInTab(tab.id, path, name);
-						}}
+						onopen={(path, name) => openRepository(tab.id, path, name)}
 					/>
 				{/if}
 			</div>

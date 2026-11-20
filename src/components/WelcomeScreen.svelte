@@ -2,11 +2,9 @@
 import X from "@lucide/svelte/icons/x";
 import { open } from "../lib/dialog.js";
 import { errorMessage } from "../lib/error-report.js";
-import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";
 import { repositoryToOpen } from "../lib/repository-to-open.js";
 import {
-	addRecentRepo,
 	getRecentRepos,
 	type RecentRepo,
 	removeRecentRepo,
@@ -15,7 +13,8 @@ import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 
 interface Props {
-	onopen: (path: string, name: string) => void;
+	/** Opens the repository, rejecting with the reason when it will not open. */
+	onopen: (path: string, name: string) => Promise<void>;
 	isFullscreen?: boolean;
 }
 
@@ -57,14 +56,11 @@ async function openRepository() {
 }
 
 async function openPath(path: string) {
+	if (loading) return;
 	error = null;
 	loading = true;
 	try {
-		await safeInvoke("open_repo", { path });
-		const name = path.split("/").at(-1) || path;
-		await addRecentRepo({ name, path });
-		recentRepos = await getRecentRepos();
-		onopen(path, name);
+		await onopen(path, path.split("/").at(-1) || path);
 	} catch (e: unknown) {
 		error = errorMessage(e, "Failed to open repository");
 	} finally {
