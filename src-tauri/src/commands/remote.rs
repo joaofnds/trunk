@@ -870,7 +870,7 @@ pub async fn delete_remote_branch<R: Runtime>(
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository or it closes during the
-/// delete, `invalid_ref` when `branch_name` has no slash, `op_in_progress` while
+/// delete, `invalid_ref` when no one remote tracks `branch_name`, `op_in_progress` while
 /// another remote operation runs on it, `cancelled` when the user cancels the
 /// delete, a `git_*` code when the repository cannot be opened, `spawn_error` when a
 /// blocking step cannot be joined, and otherwise the code [`classify_git_error`]
@@ -889,16 +889,16 @@ pub async fn delete_remote_branch_inner<R: Runtime>(
     let repository = state_map.repository(path)?.clone();
     let path_buf = repository.location().to_path_buf();
 
-    let (remote, branch) = branch_name.split_once('/').ok_or_else(|| {
-        TrunkError::new(
-            "invalid_ref",
-            format!("Invalid remote branch name: {branch_name}"),
-        )
-    })?;
+    let location = path_buf.clone();
+    let tracking = branch_name.to_owned();
+    let (remote, branch) = activity
+        .spawn_blocking(move || tracked_remote_ref(&location, &tracking))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
     let completion = run_git_remote(
         activity,
-        &["push", "--delete", "--", remote, branch],
+        &["push", "--delete", "--", &remote, &branch],
         &path_buf,
         app,
         path,
@@ -916,6 +916,40 @@ pub async fn delete_remote_branch_inner<R: Runtime>(
         completion.session,
     )
     .await
+}
+
+/// The remote that `branch_name`, a remote-tracking branch such as
+/// `origin/feature`, belongs to, and the ref it tracks there. The remote is the
+/// one whose fetch refspec maps into `refs/remotes/<branch_name>`, as git's own
+/// lookup finds it, so a remote named with a slash is matched whole and the
+/// first slash is not taken for the end of its name.
+fn tracked_remote_ref(
+    location: &std::path::Path,
+    branch_name: &str,
+) -> Result<(String, String), TrunkError> {
+    let untracked =
+        || TrunkError::new("invalid_ref", format!("No one remote tracks {branch_name}"));
+    let repo = git2::Repository::open(location)?;
+    let tracking = format!("refs/remotes/{branch_name}");
+    let name = repo
+        .branch_remote_name(&tracking)
+        .map_err(|_| untracked())?
+        .as_str()
+        .map_err(|_| untracked())?
+        .to_owned();
+    let remote = repo.find_remote(&name)?;
+    let source = remote
+        .refspecs()
+        .filter(|spec| spec.direction() == git2::Direction::Fetch && spec.dst_matches(&tracking))
+        .find_map(|spec| {
+            spec.rtransform(&tracking)
+                .ok()?
+                .as_str()
+                .ok()
+                .map(str::to_owned)
+        })
+        .ok_or_else(untracked)?;
+    Ok((name, source))
 }
 
 /// # Errors

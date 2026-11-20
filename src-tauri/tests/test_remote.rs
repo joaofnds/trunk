@@ -312,6 +312,23 @@ fn delete_remote_branch_removes_the_branch_from_its_remote_and_the_graph() {
     );
 }
 
+#[test]
+fn delete_remote_branch_removes_a_branch_of_a_remote_whose_name_has_a_slash() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("team/fork")
+        .build();
+    let bare = bare_remote(&ctx, "team/fork");
+    git(&ctx, &["push", "team/fork", "HEAD:refs/heads/feature"]);
+
+    ctx.remote()
+        .delete_remote_branch("team/fork/feature")
+        .unwrap();
+
+    assert!(!has_branch(&bare, "feature"));
+}
+
 #[cfg(unix)]
 #[test]
 fn delete_remote_branch_returns_while_a_process_its_hook_started_still_runs() {
