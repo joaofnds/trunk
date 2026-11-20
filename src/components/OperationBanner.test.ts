@@ -19,7 +19,6 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
 	ask: vi.fn().mockResolvedValue(false),
-	message: vi.fn().mockResolvedValue(undefined),
 }));
 
 function makeInfo(overrides: Partial<OperationInfo> = {}): OperationInfo {

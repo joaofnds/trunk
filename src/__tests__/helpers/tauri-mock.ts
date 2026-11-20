@@ -9,7 +9,6 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
 	ask: vi.fn().mockResolvedValue(false),
-	message: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock @tauri-apps/plugin-clipboard-manager — writeText

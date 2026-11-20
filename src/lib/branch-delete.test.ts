@@ -1,12 +1,9 @@
-import { ask, message } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteBranch, deletePrompt } from "./branch-delete.js";
 import { safeInvoke } from "./invoke.js";
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-	ask: vi.fn(),
-	message: vi.fn(),
-}));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn() }));
 
 vi.mock("./invoke.js", async (importActual) => ({
 	...(await importActual<typeof import("./invoke.js")>()),
@@ -134,7 +131,6 @@ describe("deletePrompt", () => {
 describe("deleteBranch", () => {
 	beforeEach(() => {
 		vi.mocked(ask).mockReset();
-		vi.mocked(message).mockReset();
 		vi.mocked(safeInvoke).mockReset();
 	});
 
@@ -154,7 +150,6 @@ describe("deleteBranch", () => {
 					"Cannot delete 'topic' while the worktree at /work/wt is rebasing it. Finish or abort the rebase there, then delete again.",
 			});
 			expect(ask).not.toHaveBeenCalled();
-			expect(message).not.toHaveBeenCalled();
 		});
 	});
 });

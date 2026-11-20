@@ -49,7 +49,6 @@ vi.mock("../lib/invoke.js", async () => {
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
 	ask: vi.fn().mockResolvedValue(false),
-	message: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
