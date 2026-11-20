@@ -1,42 +1,83 @@
-import { describe, expect, it } from "vitest";
-import { createUndoRedoState, type UndoEntry } from "./undo-redo.svelte.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { DeletedBranch } from "./types.js";
+import {
+	_resetHistory,
+	lastDeletion,
+	pendingRedo,
+	pushDeletion,
+	pushRedo,
+	type RedoEntry,
+	recordDeletion,
+	takeDeletion,
+	takeRedo,
+} from "./undo-redo.svelte.js";
 
-/** These tests are about stack behaviour, so the position and repository an
- *  entry belongs to only have to be present and distinct, not meaningful. */
-function entry(name: string): UndoEntry {
-	return { undoneOid: name, headOid: `parent-of-${name}`, repoPath: "/repo" };
+function deleted(name: string): DeletedBranch {
+	return { name, tip: `tip-of-${name}`, config: [], head_oid: "head" };
 }
 
-describe("createUndoRedoState", () => {
-	it("starts with empty redoStack", () => {
-		const mgr = createUndoRedoState();
-		expect(mgr.state.redoStack).toHaveLength(0);
+function redo(name: string, repoPath = "/repo"): RedoEntry {
+	return { kind: "commit", undoneOid: name, headOid: "head", repoPath };
+}
+
+beforeEach(() => {
+	_resetHistory();
+});
+
+describe("deletions", () => {
+	it("hands back the latest deletion first", () => {
+		recordDeletion("/repo", deleted("first"));
+		recordDeletion("/repo", deleted("second"));
+
+		expect(takeDeletion("/repo")).toEqual(deleted("second"));
+		expect(lastDeletion("/repo")).toEqual(deleted("first"));
 	});
 
-	it("push adds entry", () => {
-		const mgr = createUndoRedoState();
-		mgr.push(entry("test"));
-		expect(mgr.state.redoStack).toHaveLength(1);
+	it("keeps each repository's deletions to itself", () => {
+		recordDeletion("/a", deleted("topic"));
+
+		expect(lastDeletion("/b")).toBeNull();
+		expect(takeDeletion("/b")).toBeUndefined();
 	});
 
-	it("pop returns last pushed entry (LIFO)", () => {
-		const mgr = createUndoRedoState();
-		mgr.push(entry("first"));
-		mgr.push(entry("second"));
-		const popped = mgr.pop();
-		expect(popped).toEqual(entry("second"));
+	it("ends what Redo could take again once the user deletes a branch", () => {
+		pushRedo(redo("c2"));
+
+		recordDeletion("/repo", deleted("topic"));
+
+		expect(pendingRedo("/repo")).toBeNull();
 	});
 
-	it("pop returns undefined on empty stack", () => {
-		const mgr = createUndoRedoState();
-		expect(mgr.pop()).toBeUndefined();
+	it("leaves another repository's redo alone", () => {
+		pushRedo(redo("c2", "/other"));
+
+		recordDeletion("/repo", deleted("topic"));
+
+		expect(pendingRedo("/other")).toEqual(redo("c2", "/other"));
 	});
 
-	it("instances are independent", () => {
-		const a = createUndoRedoState();
-		const b = createUndoRedoState();
-		a.push(entry("only-on-a"));
-		expect(b.state.redoStack).toHaveLength(0);
-		expect(b.pop()).toBeUndefined();
+	it("keeps the redo when a redone delete is handed back", () => {
+		pushRedo(redo("c2"));
+
+		pushDeletion("/repo", deleted("topic"));
+
+		expect(pendingRedo("/repo")).toEqual(redo("c2"));
+	});
+});
+
+describe("redo", () => {
+	it("hands back the latest step first", () => {
+		pushRedo(redo("first"));
+		pushRedo(redo("second"));
+
+		expect(takeRedo("/repo")).toEqual(redo("second"));
+		expect(pendingRedo("/repo")).toEqual(redo("first"));
+	});
+
+	it("has nothing for a repository that never undid anything", () => {
+		pushRedo(redo("c2", "/a"));
+
+		expect(pendingRedo("/b")).toBeNull();
+		expect(takeRedo("/b")).toBeUndefined();
 	});
 });

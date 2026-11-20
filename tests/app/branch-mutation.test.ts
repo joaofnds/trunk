@@ -152,6 +152,46 @@ describe("branch mutation", () => {
 		]);
 	});
 
+	it("puts a deleted branch back with its upstream on Undo, and Redo deletes it again", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					...TWO_COMMITS.steps,
+					{ step: "remote", name: "origin" },
+					{ step: "branch", name: "feature" },
+					{ step: "push", remote: "origin", branch: "feature" },
+					{ step: "trackUpstream", remote: "origin", branch: "feature" },
+					{ step: "checkout", name: "main" },
+				],
+			},
+		});
+		const upstream = () =>
+			execFileSync("git", ["config", "--get", "branch.feature.merge"], {
+				cwd: app.repo.path,
+				encoding: "utf8",
+			}).trim();
+		await app.repo.open();
+		app.dialog.confirms();
+		await app.branches.contextMenu("feature");
+		app.contextMenu.choose("Delete");
+		await waitFor("the feature branch to go", () =>
+			app.branches.lists("feature") ? null : true,
+		);
+
+		await app.toolbar.undo();
+
+		await waitFor("the feature branch to come back", () =>
+			app.branches.lists("feature") ? true : null,
+		);
+		expect(upstream()).toBe("refs/heads/feature");
+
+		await app.toolbar.redo();
+
+		await waitFor("the feature branch to go again", () =>
+			app.branches.lists("feature") ? null : true,
+		);
+	});
+
 	// TRUNK-277: an edit the new branch's tree does not touch rides along, as git switch -c does.
 	it("creates a branch over an uncommitted edit and carries the edit onto it", async () => {
 		const app = await setup({ repo: TWO_COMMITS });

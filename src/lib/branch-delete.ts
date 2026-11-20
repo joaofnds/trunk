@@ -11,6 +11,7 @@ import type {
 	RemovalRisk,
 	WorktreeRemoval,
 } from "./types.js";
+import { recordDeletion } from "./undo-redo.svelte.js";
 
 export type DeletePrompt =
 	| { readonly kind: "ask"; readonly message: string }
@@ -90,10 +91,14 @@ async function askThenDelete(
 		if (!isTrunkError(e)) throw e;
 		throw { ...e, message: forDisplay(e.message, MAX_MESSAGE_CHARS) };
 	}
-	return {
-		kind: "deleted",
-		report: `Deleted branch ${forDisplay(branchName, MAX_PATH_CHARS)} (was ${deleted.tip.slice(0, 7)})`,
-	};
+	// A removed worktree cannot come back, which the question already said, so
+	// only a plain delete is left for Undo.
+	if (prompt.kind === "ask") recordDeletion(repoPath, deleted);
+	return { kind: "deleted", report: deletedReport(deleted) };
+}
+
+export function deletedReport(deleted: DeletedBranch): string {
+	return `Deleted branch ${forDisplay(deleted.name, MAX_PATH_CHARS)} (was ${deleted.tip.slice(0, 7)})`;
 }
 
 /** `lost` counts the commits no other branch, tag or HEAD contains, which the

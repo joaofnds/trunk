@@ -10,12 +10,14 @@ import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit } from "@tauri-apps/api/event";
 import { SvelteSet } from "svelte/reactivity";
+import { deletedReport } from "../lib/branch-delete.js";
 import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
 	isCheckoutConflict,
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
+import { forDisplay, MAX_PATH_CHARS } from "../lib/display-text.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "../lib/keyboard.js";
@@ -25,10 +27,18 @@ import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { isStashing, popStash, saveStash } from "../lib/stash-actions.js";
 import { clearErrorToasts, showToast } from "../lib/toast.svelte.js";
-import type { ReviewTone, StashEntry } from "../lib/types.js";
+import type { DeletedBranch, ReviewTone, StashEntry } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
-import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
+import {
+	lastDeletion,
+	pendingRedo as pendingRedoIn,
+	pushDeletion,
+	pushRedo,
+	type RedoEntry,
+	takeDeletion,
+	takeRedo,
+} from "../lib/undo-redo.svelte.js";
 import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
@@ -36,7 +46,6 @@ import PullDropdown from "./PullDropdown.svelte";
 interface Props {
 	repoPath: string;
 	remoteState: RemoteState;
-	undoRedo: UndoRedoManager;
 	// The commit the graph shows as HEAD, or null before it has shown one. Undo
 	// takes back this commit and no other.
 	shownHeadOid: string | null;
@@ -59,7 +68,6 @@ interface Props {
 let {
 	repoPath,
 	remoteState,
-	undoRedo,
 	shownHeadOid,
 	reviewActive,
 	reviewPanelShowing = true,
@@ -110,19 +118,38 @@ let headOid = $state<string | null>(null);
 const movingHeadIn = new SvelteSet<string>();
 const poppingIn = new SvelteSet<string>();
 
-let pendingRedo = $derived(
-	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
-);
+let pendingRedo = $derived(pendingRedoIn(repoPath));
 let canRedo = $derived(
-	pendingRedo !== null &&
+	pendingRedo !== null && headOid !== null && pendingRedo.headOid === headOid,
+);
+// Undo takes back the latest thing it can. A delete is later than every commit
+// while HEAD has not moved since it, and it is the latest left when what moved
+// HEAD last cannot be undone.
+let deletion = $derived(lastDeletion(repoPath));
+let undoesDeletion = $derived(
+	deletion !== null &&
 		headOid !== null &&
-		pendingRedo.headOid === headOid &&
-		pendingRedo.repoPath === repoPath,
+		(deletion.head_oid === headOid || !canUndo),
 );
 let undoAllowed = $derived(
-	canUndo && shownHeadOid !== null && !movingHeadIn.has(repoPath),
+	!movingHeadIn.has(repoPath) &&
+		(undoesDeletion || (canUndo && shownHeadOid !== null)),
 );
 let redoAllowed = $derived(canRedo && !movingHeadIn.has(repoPath));
+let undoTooltip = $derived(
+	undoesDeletion && deletion !== null
+		? `Undo delete of branch ${branchLabel(deletion)}`
+		: "Undo",
+);
+let redoTooltip = $derived(
+	canRedo && pendingRedo?.kind === "delete"
+		? `Redo delete of branch ${branchLabel(pendingRedo.deleted)}`
+		: "Redo",
+);
+
+function branchLabel(deleted: DeletedBranch): string {
+	return forDisplay(deleted.name, MAX_PATH_CHARS);
+}
 
 async function readUndoState(path: string) {
 	let nextCanUndo = false;
@@ -160,9 +187,15 @@ $effect(() => {
 });
 
 async function handleUndo() {
+	if (!undoAllowed) return;
+	if (undoesDeletion) {
+		await undoDeletion(repoPath);
+		return;
+	}
+
 	const path = repoPath;
 	const expectedHeadOid = shownHeadOid;
-	if (!undoAllowed || expectedHeadOid === null) return;
+	if (expectedHeadOid === null) return;
 
 	movingHeadIn.add(path);
 	try {
@@ -172,7 +205,8 @@ async function handleUndo() {
 			head_oid: string;
 			undone_oid: string;
 		}>("undo_commit", { path, expectedHeadOid });
-		undoRedo.push({
+		pushRedo({
+			kind: "commit",
 			undoneOid: result.undone_oid,
 			headOid: result.head_oid,
 			repoPath: path,
@@ -186,29 +220,72 @@ async function handleUndo() {
 	}
 }
 
+// A branch made since under the same name, or a commit the repository no
+// longer has, refuses every later try too, so the entry goes rather than staying
+// on offer to fail the same way.
+const UNDO_NEVER_LANDS = new Set(["branch_exists", "restore_missing"]);
+const REDO_NEVER_LANDS: Record<RedoEntry["kind"], Set<string>> = {
+	commit: new Set(["redo_missing"]),
+	delete: new Set(["redo_missing", "redo_stale"]),
+};
+
+async function undoDeletion(path: string) {
+	const deleted = takeDeletion(path);
+	const leftAt = headOid;
+	if (!deleted || leftAt === null) return;
+
+	movingHeadIn.add(path);
+	try {
+		await safeInvoke("restore_branch", { path, deleted });
+		pushRedo({ kind: "delete", deleted, headOid: leftAt, repoPath: path });
+		showToast(`Restored branch ${branchLabel(deleted)}`);
+	} catch (e) {
+		if (!(isTrunkError(e) && UNDO_NEVER_LANDS.has(e.code))) {
+			pushDeletion(path, deleted);
+		}
+		reportErrorToast(e, "Undo failed");
+	} finally {
+		movingHeadIn.delete(path);
+	}
+}
+
 async function handleRedo() {
 	const path = repoPath;
 	if (!redoAllowed) return;
-	const entry = undoRedo.pop();
+	const entry = takeRedo(path);
 	if (!entry) return;
 
 	movingHeadIn.add(path);
 	try {
-		await safeInvoke("redo_commit", {
-			path,
-			undoneOid: entry.undoneOid,
-			expectedHeadOid: entry.headOid,
-			expectedRepoPath: entry.repoPath,
-		});
-		clearErrorToasts();
+		await redo(entry);
 	} catch (e) {
-		// A commit the repository no longer has can never be restored, so the
-		// entry goes rather than leaving Redo on offer to fail the same way.
-		if (!(isTrunkError(e) && e.code === "redo_missing")) undoRedo.push(entry);
+		if (!(isTrunkError(e) && REDO_NEVER_LANDS[entry.kind].has(e.code))) {
+			pushRedo(entry);
+		}
 		reportErrorToast(e, "Redo failed");
 	} finally {
 		movingHeadIn.delete(path);
 	}
+}
+
+async function redo(entry: RedoEntry) {
+	if (entry.kind === "delete") {
+		const deleted = await safeInvoke<DeletedBranch>("redo_branch_delete", {
+			path: entry.repoPath,
+			branchName: entry.deleted.name,
+			expectedTip: entry.deleted.tip,
+		});
+		pushDeletion(entry.repoPath, deleted);
+		showToast(deletedReport(deleted));
+		return;
+	}
+	await safeInvoke("redo_commit", {
+		path: entry.repoPath,
+		undoneOid: entry.undoneOid,
+		expectedHeadOid: entry.headOid,
+		expectedRepoPath: entry.repoPath,
+	});
+	clearErrorToasts();
 }
 
 // Cmd is the shortcut key on macOS, where Ctrl+Z belongs to nothing, and Ctrl
@@ -360,7 +437,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 			disabled={!undoAllowed}
 			onclick={handleUndo}
 			aria-label="Undo"
-			tooltip="Undo"
+			tooltip={undoTooltip}
 		>
 			<Undo2 size={14} />
 		</Button>
@@ -369,7 +446,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 			disabled={!redoAllowed}
 			onclick={handleRedo}
 			aria-label="Redo"
-			tooltip="Redo"
+			tooltip={redoTooltip}
 		>
 			<Redo2 size={14} />
 		</Button>

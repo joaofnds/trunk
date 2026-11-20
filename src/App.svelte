@@ -73,10 +73,6 @@ import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
-import {
-	createUndoRedoState,
-	type UndoRedoManager,
-} from "./lib/undo-redo.svelte.js";
 import { releaseUrl, type UpdateStatus, updates } from "./lib/updates.js";
 import { provideUpdatePreparation } from "./lib/updates-context.js";
 import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
@@ -539,7 +535,6 @@ $effect(() => {
 // Per-tab state management (App.svelte owns creation, passes as props)
 interface TabState {
 	remoteState: RemoteState;
-	undoRedo: UndoRedoManager;
 	// The commit the tab's graph shows as HEAD, which the toolbar aims Undo at.
 	shownHead: { oid: string | null };
 }
@@ -554,7 +549,6 @@ function createTabState(tabId: string, repoPath: string | null = null): void {
 	const shownHead = $state<TabState["shownHead"]>({ oid: null });
 	tabStates.set(tabId, {
 		remoteState,
-		undoRedo: createUndoRedoState(),
 		shownHead,
 	});
 }
@@ -1283,7 +1277,6 @@ $effect(() => {
 			<Toolbar
 				repoPath={activeTab.repoPath}
 				remoteState={activeState.remoteState}
-				undoRedo={activeState.undoRedo}
 				shownHeadOid={activeState.shownHead.oid}
 				reviewActive={reviewPanelOpen}
 				reviewPanelShowing={activeReviewPanelShowing}

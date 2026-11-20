@@ -2,6 +2,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteBranch, deletePrompt } from "./branch-delete.js";
 import { safeInvoke } from "./invoke.js";
+import { _resetHistory, lastDeletion } from "./undo-redo.svelte.js";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn() }));
 
@@ -181,6 +182,7 @@ describe("deleteBranch", () => {
 	beforeEach(() => {
 		vi.mocked(ask).mockReset();
 		vi.mocked(safeInvoke).mockReset();
+		_resetHistory();
 	});
 
 	it("reports the tip it deleted, so the branch can be made again", async () => {
@@ -217,6 +219,35 @@ describe("deleteBranch", () => {
 			"Delete branch 'topic'? Trunk could not check whether another branch or tag contains its commits.",
 			expect.anything(),
 		);
+	});
+
+	it("leaves a plain delete for Undo to take back", async () => {
+		vi.mocked(ask).mockResolvedValue(true);
+		vi.mocked(safeInvoke).mockImplementation(async (command) => {
+			if (command === "branch_hold") return { kind: "not_held" };
+			if (command === "commits_only_on_branch") return 0;
+			if (command === "delete_branch") return DELETED;
+			throw new Error(`unexpected ${command}`);
+		});
+
+		await deleteBranch("/repo", "topic");
+
+		expect(lastDeletion("/repo")).toEqual(DELETED);
+	});
+
+	it("leaves nothing for Undo once the delete removed a worktree", async () => {
+		vi.mocked(ask).mockResolvedValue(true);
+		vi.mocked(safeInvoke).mockImplementation(async (command) => {
+			if (command === "branch_hold")
+				return { kind: "offer", name: "wt", path: PATH };
+			if (command === "commits_only_on_branch") return 0;
+			if (command === "delete_branch") return DELETED;
+			throw new Error(`unexpected ${command}`);
+		});
+
+		await deleteBranch("/repo", "topic");
+
+		expect(lastDeletion("/repo")).toBeNull();
 	});
 
 	it("deletes nothing once the user declines", async () => {

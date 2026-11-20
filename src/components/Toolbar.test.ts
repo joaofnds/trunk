@@ -13,9 +13,13 @@ import { SCHEDULER } from "../lib/scheduler.js";
 import { saveStash } from "../lib/stash-actions.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
+import type { DeletedBranch } from "../lib/types.js";
 import {
-	createUndoRedoState,
-	type UndoEntry,
+	_resetHistory,
+	lastDeletion,
+	pendingRedo,
+	pushRedo,
+	recordDeletion,
 } from "../lib/undo-redo.svelte.js";
 import { setUpdateFrozen } from "../lib/updates-lifecycle.js";
 import Toolbar from "./Toolbar.svelte";
@@ -57,6 +61,7 @@ function toasted(): { message: string; kind: string }[] {
 beforeEach(() => {
 	vi.mocked(safeInvoke).mockReset();
 	_resetToasts();
+	_resetHistory();
 	vi.mocked(emit).mockReset();
 	vi.mocked(listen)
 		.mockReset()
@@ -65,15 +70,6 @@ beforeEach(() => {
 
 function makeRemoteState(): RemoteState {
 	return createRemoteState();
-}
-
-function makeUndoRedo() {
-	return {
-		state: { redoStack: [] as UndoEntry[] },
-		push: vi.fn(),
-		pop: vi.fn(),
-		clear: vi.fn(),
-	};
 }
 
 function deferred<T>() {
@@ -90,7 +86,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -103,7 +98,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -126,7 +120,6 @@ describe("Toolbar", () => {
 				props: {
 					repoPath: "/test/repo",
 					remoteState,
-					undoRedo: makeUndoRedo(),
 					shownHeadOid: null,
 					reviewActive: false,
 				},
@@ -161,7 +154,6 @@ describe("Toolbar", () => {
 				props: {
 					repoPath: "/test/repo",
 					remoteState,
-					undoRedo: makeUndoRedo(),
 					shownHeadOid: null,
 					reviewActive: false,
 				},
@@ -182,7 +174,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState,
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -201,7 +192,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -214,7 +204,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -228,7 +217,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -261,7 +249,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -289,7 +276,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState,
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -306,7 +292,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(), // empty redoStack
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -320,16 +305,17 @@ describe("Toolbar", () => {
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
 			cmd === "head_oid" ? "abc123" : false,
 		);
-		const undoRedo = makeUndoRedo();
-		undoRedo.state.redoStack = [
-			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
-		];
+		pushRedo({
+			kind: "commit",
+			undoneOid: "c2",
+			headOid: "abc123",
+			repoPath: "/test/repo",
+		});
 
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -344,16 +330,17 @@ describe("Toolbar", () => {
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
 			cmd === "head_oid" ? "moved-elsewhere" : false,
 		);
-		const undoRedo = makeUndoRedo();
-		undoRedo.state.redoStack = [
-			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
-		];
+		pushRedo({
+			kind: "commit",
+			undoneOid: "c2",
+			headOid: "abc123",
+			repoPath: "/test/repo",
+		});
 
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -371,16 +358,17 @@ describe("Toolbar", () => {
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
 			cmd === "head_oid" ? "abc123" : false,
 		);
-		const undoRedo = makeUndoRedo();
-		undoRedo.state.redoStack = [
-			{ undoneOid: "c2", headOid: "abc123", repoPath: "/a/clone" },
-		];
+		pushRedo({
+			kind: "commit",
+			undoneOid: "c2",
+			headOid: "abc123",
+			repoPath: "/a/clone",
+		});
 
 		render(Toolbar, {
 			props: {
 				repoPath: "/another/clone",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -401,21 +389,17 @@ describe("Toolbar", () => {
 		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
 			cmd === "head_oid" ? "abc123" : false,
 		);
-		const undoRedo = makeUndoRedo();
-		undoRedo.state.redoStack = [
-			{
-				undoneOid: "c2",
-				headOid: "abc123",
-				repoPath: "/test/repo",
-			},
-		];
-		undoRedo.pop.mockReturnValue(undoRedo.state.redoStack[0]);
+		pushRedo({
+			kind: "commit",
+			undoneOid: "c2",
+			headOid: "abc123",
+			repoPath: "/test/repo",
+		});
 
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -446,8 +430,8 @@ describe("Toolbar", () => {
 			if (cmd === "redo_commit") throw error;
 			return cmd === "head_oid" ? "abc123" : false;
 		});
-		const undoRedo = createUndoRedoState();
-		undoRedo.push({
+		pushRedo({
+			kind: "commit",
 			undoneOid: "c2",
 			headOid: "abc123",
 			repoPath: "/test/repo",
@@ -456,7 +440,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -473,24 +456,26 @@ describe("Toolbar", () => {
 				kind: "error",
 			}),
 		);
-		return undoRedo;
 	}
 
 	it("shows git's whole output and keeps the redo when git fails it", async () => {
-		const undoRedo = await redoFailingWith({
+		await redoFailingWith({
 			code: "redo_error",
 			message:
 				"fatal: Unable to create '/test/repo/.git/index.lock': File exists.",
 		});
 
-		expect(undoRedo.state.redoStack).toEqual([
-			{ undoneOid: "c2", headOid: "abc123", repoPath: "/test/repo" },
-		]);
+		expect(pendingRedo("/test/repo")).toEqual({
+			kind: "commit",
+			undoneOid: "c2",
+			headOid: "abc123",
+			repoPath: "/test/repo",
+		});
 		expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled();
 	});
 
 	it("clears the failure once a retried redo succeeds", async () => {
-		const undoRedo = await redoFailingWith({
+		await redoFailingWith({
 			code: "redo_error",
 			message: "index.lock exists",
 		});
@@ -500,7 +485,7 @@ describe("Toolbar", () => {
 
 		await fireEvent.click(screen.getByRole("button", { name: "Redo" }));
 
-		await waitFor(() => expect(undoRedo.state.redoStack).toEqual([]));
+		await waitFor(() => expect(pendingRedo("/test/repo")).toBeNull());
 		await waitFor(() =>
 			expect(toasted()).not.toContainEqual(
 				expect.objectContaining({ kind: "error" }),
@@ -509,12 +494,12 @@ describe("Toolbar", () => {
 	});
 
 	it("withdraws a redo whose commit the repository no longer has", async () => {
-		const undoRedo = await redoFailingWith({
+		await redoFailingWith({
 			code: "redo_missing",
 			message: "The commit this redo restores is no longer in the repository",
 		});
 
-		expect(undoRedo.state.redoStack).toEqual([]);
+		expect(pendingRedo("/test/repo")).toBeNull();
 		expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 	});
 
@@ -524,7 +509,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -539,7 +523,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: true,
 			},
@@ -553,7 +536,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: false,
@@ -569,7 +551,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: false,
@@ -586,7 +567,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: true,
 				reviewPanelShowing: true,
@@ -602,7 +582,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 3,
@@ -616,7 +595,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 0,
@@ -633,7 +611,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				reviewCommentCount: 4,
@@ -648,7 +625,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				reviewCommentCount: 0,
@@ -663,7 +639,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 2,
@@ -685,7 +660,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				viewCommentCount: 2,
@@ -708,7 +682,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -729,7 +702,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				reviewThreadsHidden: true,
@@ -748,7 +720,6 @@ describe("Toolbar", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 				reviewThreadsHidden: true,
@@ -771,7 +742,6 @@ describe("Toolbar", () => {
 				props: {
 					repoPath: "/test/repo",
 					remoteState: makeRemoteState(),
-					undoRedo: makeUndoRedo(),
 					shownHeadOid: null,
 					reviewActive: false,
 					reviewThreadsHidden: hidden,
@@ -801,7 +771,6 @@ describe("Toolbar remote failure feedback", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState,
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -825,7 +794,6 @@ describe("Toolbar remote failure feedback", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState,
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -861,7 +829,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -891,7 +858,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -914,7 +880,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -945,7 +910,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -977,7 +941,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -1010,7 +973,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -1038,7 +1000,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -1071,7 +1032,6 @@ describe("Toolbar stash", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -1092,7 +1052,6 @@ describe("Toolbar undo", () => {
 	const mockInvoke = vi.mocked(safeInvoke);
 
 	let view: ReturnType<typeof render<typeof Toolbar>>;
-	let undoRedo: ReturnType<typeof makeUndoRedo>;
 
 	function renderUndoable(undoCommit: () => Promise<unknown>) {
 		mockInvoke.mockImplementation((cmd: string) => {
@@ -1101,12 +1060,10 @@ describe("Toolbar undo", () => {
 			if (cmd === "undo_commit") return undoCommit();
 			return Promise.resolve(null);
 		});
-		undoRedo = makeUndoRedo();
 		view = render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: "head-commit",
 				reviewActive: false,
 			},
@@ -1243,7 +1200,8 @@ describe("Toolbar undo", () => {
 		});
 
 		await waitFor(() =>
-			expect(undoRedo.push).toHaveBeenCalledWith({
+			expect(pendingRedo("/test/repo")).toEqual({
+				kind: "commit",
 				undoneOid: "undone",
 				headOid: "parent",
 				repoPath: "/test/repo",
@@ -1371,12 +1329,11 @@ describe("Toolbar undo and redo shortcuts", () => {
 
 	let shown: ReturnType<typeof linearHistory>;
 
-	function renderToolbar(undoRedo = createUndoRedoState()) {
+	function renderToolbar() {
 		const view = render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo,
 				shownHeadOid: shown.tip,
 				reviewActive: false,
 			},
@@ -1548,13 +1505,13 @@ describe("Toolbar undo and redo shortcuts", () => {
 
 		it("does nothing on Cmd+Shift+Z when the redo belongs elsewhere", async () => {
 			const history = linearHistory("root", "parent");
-			const undoRedo = createUndoRedoState();
-			undoRedo.push({
+			pushRedo({
+				kind: "commit",
 				undoneOid: "tip",
 				headOid: "other",
 				repoPath: "/test/repo",
 			});
-			const { undo } = renderToolbar(undoRedo);
+			const { undo } = renderToolbar();
 			await waitFor(() => expect(undo).toBeEnabled());
 
 			await press(document.body, cmdShiftZ);
@@ -1625,7 +1582,6 @@ describe("Toolbar branch creation", () => {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
-				undoRedo: makeUndoRedo(),
 				shownHeadOid: null,
 				reviewActive: false,
 			},
@@ -1674,5 +1630,202 @@ describe("Toolbar branch creation", () => {
 		await waitFor(() =>
 			expect(toasted()).toContainEqual({ message: message, kind: "error" }),
 		);
+	});
+});
+
+describe("Toolbar undo of a branch delete", () => {
+	const mockInvoke = vi.mocked(safeInvoke);
+	const TOPIC: DeletedBranch = {
+		name: "topic",
+		tip: "5f3c2a1b9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b",
+		config: [["remote", "origin"]],
+		head_oid: "head-commit",
+	};
+
+	function backend({
+		commitUndoable = true,
+		restore = (): Promise<unknown> => Promise.resolve(null),
+		redoDelete = (): Promise<unknown> => Promise.resolve(TOPIC),
+	} = {}) {
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "check_undo_available")
+				return Promise.resolve(commitUndoable);
+			if (cmd === "head_oid") return Promise.resolve("head-commit");
+			if (cmd === "restore_branch") return restore();
+			if (cmd === "redo_branch_delete") return redoDelete();
+			if (cmd === "undo_commit")
+				return Promise.resolve({
+					head_oid: "parent",
+					undone_oid: "head-commit",
+				});
+			return Promise.resolve(null);
+		});
+	}
+
+	async function renderToolbar() {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				shownHeadOid: "head-commit",
+				reviewActive: false,
+			},
+		});
+		const undo = screen.getByRole("button", { name: "Undo" });
+		await waitFor(() => expect(undo).toBeEnabled());
+		return { undo, redo: screen.getByRole("button", { name: "Redo" }) };
+	}
+
+	function calls(command: string) {
+		return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
+	}
+
+	it("puts a deleted branch back on Undo while HEAD has not moved since", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend();
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Restored branch topic",
+				kind: "success",
+			}),
+		);
+		expect(calls("restore_branch")).toEqual([
+			["restore_branch", { path: "/test/repo", deleted: TOPIC }],
+		]);
+		expect(calls("undo_commit")).toEqual([]);
+	});
+
+	it("takes back a commit made since the delete first", async () => {
+		recordDeletion("/test/repo", { ...TOPIC, head_oid: "before-the-commit" });
+		backend();
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(calls("undo_commit")).toHaveLength(1));
+		expect(calls("restore_branch")).toEqual([]);
+	});
+
+	it("puts the branch back once what moved HEAD since cannot be undone", async () => {
+		recordDeletion("/test/repo", { ...TOPIC, head_oid: "before-the-pull" });
+		backend({ commitUndoable: false });
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() => expect(calls("restore_branch")).toHaveLength(1));
+	});
+
+	it("names the branch Undo will put back", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend();
+		const { undo } = await renderToolbar();
+		onTestFinished(() => document.querySelector(".tooltip-pop")?.remove());
+
+		await fireEvent.mouseEnter(undo);
+
+		await waitFor(() =>
+			expect(document.querySelector(".tooltip-pop")).toHaveTextContent(
+				"Undo delete of branch topic",
+			),
+		);
+	});
+
+	it("puts the branch back once when Undo is pressed twice", async () => {
+		const reply = deferred<unknown>();
+		recordDeletion("/test/repo", TOPIC);
+		backend({ restore: () => reply.promise });
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+		await fireEvent.click(undo);
+		reply.resolve(null);
+
+		await waitFor(() => expect(undo).toBeEnabled());
+		expect(calls("restore_branch")).toHaveLength(1);
+		expect(calls("undo_commit")).toEqual([]);
+	});
+
+	it("deletes the branch again on Redo, and leaves that for Undo", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend();
+		const { undo, redo } = await renderToolbar();
+		await fireEvent.click(undo);
+		await waitFor(() => expect(redo).toBeEnabled());
+
+		await fireEvent.click(redo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "Deleted branch topic (was 5f3c2a1)",
+				kind: "success",
+			}),
+		);
+		expect(calls("redo_branch_delete")).toEqual([
+			[
+				"redo_branch_delete",
+				{ path: "/test/repo", branchName: "topic", expectedTip: TOPIC.tip },
+			],
+		]);
+		expect(lastDeletion("/test/repo")).toEqual(TOPIC);
+	});
+
+	it("drops a delete whose name has been taken since", async () => {
+		const message =
+			"A branch named 'topic' has been made since the delete, so the deleted one was not restored";
+		recordDeletion("/test/repo", TOPIC);
+		backend({
+			restore: () => Promise.reject({ code: "branch_exists", message }),
+		});
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({ message, kind: "error" }),
+		);
+		expect(lastDeletion("/test/repo")).toBeNull();
+	});
+
+	it("keeps the delete for another try when the restore fails otherwise", async () => {
+		recordDeletion("/test/repo", TOPIC);
+		backend({
+			restore: () =>
+				Promise.reject({ code: "git_error", message: "config is locked" }),
+		});
+		const { undo } = await renderToolbar();
+
+		await fireEvent.click(undo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({
+				message: "config is locked",
+				kind: "error",
+			}),
+		);
+		expect(lastDeletion("/test/repo")).toEqual(TOPIC);
+	});
+
+	it("drops a redo whose branch has moved since the undo", async () => {
+		const message =
+			"The branch 'topic' has moved since the undo, so it was not deleted";
+		recordDeletion("/test/repo", TOPIC);
+		backend({
+			redoDelete: () => Promise.reject({ code: "redo_stale", message }),
+		});
+		const { undo, redo } = await renderToolbar();
+		await fireEvent.click(undo);
+		await waitFor(() => expect(redo).toBeEnabled());
+
+		await fireEvent.click(redo);
+
+		await waitFor(() =>
+			expect(toasted()).toContainEqual({ message, kind: "error" }),
+		);
+		expect(pendingRedo("/test/repo")).toBeNull();
 	});
 });
