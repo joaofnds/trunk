@@ -824,8 +824,15 @@ impl CommitCache {
     /// # Panics
     ///
     /// Panics when the lock is poisoned.
+    #[cfg(test)]
     pub fn forget(&self, path: &str) {
         self.0.lock().unwrap().forget(path);
+    }
+
+    pub(crate) fn forget_with_visibility(&self, path: &str, visibility: &RefVisibilityState) {
+        let mut visibility = visibility.0.lock().unwrap();
+        self.0.lock().unwrap().forget(path);
+        visibility.remove(path);
     }
 }
 
@@ -962,32 +969,23 @@ impl RefVisibilityState {
             .unwrap_or_default()
     }
 
-    /// Record the refs `path` has hidden, replacing any earlier set.
+    /// Seed the hidden set for a test that drives graph publication separately.
     ///
     /// # Panics
     ///
     /// Panics when the lock is poisoned.
+    #[cfg(any(test, feature = "test-util"))]
     pub fn set(&self, path: String, visibility: trunk_git::graph_input::RefVisibility) {
         self.0.lock().unwrap().insert(path, visibility);
-    }
-
-    /// Drop what `path` had hidden.
-    ///
-    /// # Panics
-    ///
-    /// Panics when the lock is poisoned.
-    pub fn forget(&self, path: &str) {
-        self.0.lock().unwrap().remove(path);
     }
 }
 
 /// The owner of the read-visibility / walk-repository / write-cache triple every graph
 /// rebuild performs.
 ///
-/// `CommitCache` and `RefVisibilityState` stay independently managed and independently
-/// reachable — `close_repo` forgets each on its own, and `set_ref_visibility` re-lays out
-/// an existing capture rather than rebuilding — this struct only bundles the handles a
-/// rebuild site needs so the triple has one call instead of three statements.
+/// Visibility changes and repository close take the visibility lock before the cache lock
+/// so the hidden set and its graph change together. A visibility toggle reuses a cached
+/// capture when available.
 ///
 /// Production closures return a checked `GraphRead` containing a `GraphSource` — the capture, not a laid-out snapshot — so
 /// it has no way to hand back a `GraphSnapshot` built under a visibility of its own choosing.
@@ -1246,38 +1244,81 @@ impl<'a> GraphRebuild<'a> {
         Ok((snapshot, extra))
     }
 
-    /// Publish a cached capture under the latest visibility, retaining its checked
-    /// inputs and fencing a concurrent capture or a closed opening session.
-    ///
-    /// # Errors
-    ///
-    /// Returns session or layout errors.
-    ///
-    /// # Panics
-    ///
-    /// Panics when a state lock is poisoned.
-    pub async fn publish_relayout(
+    pub(crate) async fn set_visibility_in_session<T>(
+        &self,
+        path: &str,
+        session: u64,
+        visibility: RefVisibility,
+        repositories: &RepoState,
+        render: impl FnOnce(&GraphSnapshot, GraphVersion) -> T,
+    ) -> Result<T, TrunkError> {
+        let (_gate, mut ticket) = self.cache.begin_rebuild(path, session).await?;
+
+        let (snapshot, inputs) = if let Some(cached) = self.cache.snapshot(path) {
+            let snapshot = self
+                .activity
+                .spawn_blocking(move || cached.with_visibility(visibility))
+                .await
+                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))?;
+            (snapshot, None)
+        } else {
+            ticket.require_fresh = true;
+            let repository = repositories.snapshot().repository(path)?.clone();
+            self.activity
+                .spawn_blocking(move || {
+                    let read = repository.read_graph()?;
+                    if read.changed {
+                        return Err(TrunkError::new(
+                            "graph_changed",
+                            "Repository changed while refreshing its graph",
+                        ));
+                    }
+
+                    Ok((GraphSnapshot::new(read.source, visibility), read.inputs))
+                })
+                .await
+                .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??
+        };
+
+        self.publish_relayout(path.to_owned(), snapshot, inputs, ticket)?;
+        let read = self.cache.read_versioned_with_session(path, None, render)?;
+        if read.session != session {
+            return Err(TrunkError::new("not_open", "Repository session closed"));
+        }
+
+        Ok(read.value)
+    }
+
+    fn publish_relayout(
         &self,
         path: String,
-        read: &GraphSnapshot,
         snapshot: GraphSnapshot,
+        inputs: Option<crate::ref_state::RefState>,
         ticket: GraphTicket,
     ) -> Result<GraphSnapshot, TrunkError> {
-        let inputs = {
-            let cache = self.cache.0.lock().unwrap();
+        let (published, before, current) = {
+            let mut visibility = self.ref_visibility.0.lock().unwrap();
+            let mut cache = self.cache.0.lock().unwrap();
             if cache.sessions.get(&path) != Some(&ticket.session) {
                 return Err(TrunkError::new("not_open", "Repository session closed"));
             }
-            let current = cache
-                .get(&path)
-                .ok_or_else(|| TrunkError::new("not_open", "Repository closed"))?;
-            if !current.same_capture_as(read) {
-                return Ok(current.clone());
+            if cache.generations.get(&path) != Some(&ticket.generation) {
+                return Err(TrunkError::new(
+                    "graph_changed",
+                    "A newer graph read superseded this result",
+                ));
             }
-            cache.inputs.get(&path).cloned()
+
+            let before = cache.get(&path).cloned();
+            let inputs = inputs.or_else(|| cache.inputs.get(&path).cloned());
+            let published = cache.publish(path.clone(), ticket, snapshot, inputs)?;
+            visibility.insert(path.clone(), published.visibility().clone());
+            drop(visibility);
+            (published, before, cache.get(&path).cloned())
         };
 
-        self.publish(path, ticket, snapshot, inputs).await
+        self.finish_publication(&path, &published, before, current);
+        Ok(published)
     }
 
     async fn publish(
@@ -1299,36 +1340,40 @@ impl<'a> GraphRebuild<'a> {
             // Visibility cannot change between this comparison and publication.
             let visibility = self.ref_visibility.0.lock().unwrap();
             if visibility.get(&path).cloned().unwrap_or_default() == *snapshot.visibility() {
-                let (published, replaced_history, current) = {
+                let (published, before, current) = {
                     let mut cache = self.cache.0.lock().unwrap();
                     let before = cache.get(&path).cloned();
                     let published = cache.publish(path.clone(), ticket, snapshot, inputs)?;
-                    let current = cache.get(&path).cloned();
-                    drop(cache);
-                    let replaced_history = current.as_ref().is_some_and(|current| {
-                        before
-                            .as_ref()
-                            .is_none_or(|before| !before.same_history_as(current))
-                    });
-                    (published, replaced_history, current)
+                    (published, before, cache.get(&path).cloned())
                 };
                 drop(visibility);
 
-                // Lay out the other worktree state now, so the first edit after this only
-                // selects its plan.
-                if let Some(current) = current {
-                    drop(self.activity.spawn_blocking(move || {
-                        current.lay_out_unobserved_worktree_state();
-                    }));
-                }
-
-                if replaced_history {
-                    self.cache.announce_publication(&path, &published);
-                }
+                self.finish_publication(&path, &published, before, current);
                 return Ok(published);
             }
         }
         self.cache.0.lock().unwrap().retain_current(&path, ticket)
+    }
+
+    fn finish_publication(
+        &self,
+        path: &str,
+        published: &GraphSnapshot,
+        before: Option<GraphSnapshot>,
+        current: Option<GraphSnapshot>,
+    ) {
+        if let Some(current) = current {
+            let replaced_history = before.is_none_or(|before| !before.same_history_as(&current));
+
+            // Lay out the other worktree state now, so the first edit only selects its plan.
+            drop(self.activity.spawn_blocking(move || {
+                current.lay_out_unobserved_worktree_state();
+            }));
+
+            if replaced_history {
+                self.cache.announce_publication(path, published);
+            }
+        }
     }
 
     /// Reconcile a ref notification against the last checked capture, without recapturing
@@ -2479,20 +2524,16 @@ mod tests {
 
         let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
         let visibility = RefVisibilityState::default();
-        visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
-        tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
-                "/repo".to_owned(),
-                &read,
-                relaid_out,
-                ticket,
-            ),
-        )
-        .unwrap();
+        visibility.set("/repo".to_owned(), fresher.visibility().clone());
 
-        let cached = cache.0.lock().unwrap();
+        let error = GraphRebuild::new(activity(), &cache, &visibility)
+            .publish_relayout("/repo".to_owned(), relaid_out, None, ticket)
+            .unwrap_err();
+
+        assert_eq!(error.code, "graph_changed");
+        assert_eq!(visibility.get("/repo"), *fresher.visibility());
         assert_eq!(
-            cached.get("/repo").unwrap().visibility(),
+            cache.snapshot("/repo").unwrap().visibility(),
             fresher.visibility(),
             "the toggle overwrote a rebuild that landed after it read the cache"
         );
@@ -2501,32 +2542,90 @@ mod tests {
     #[test]
     fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
         let cache = CommitCache::new(GraphCache::default());
-        let read = tagged_graph("pre-toggle");
         cache
             .0
             .lock()
             .unwrap()
-            .insert("/repo".to_owned(), read.clone());
+            .insert("/repo".to_owned(), tagged_graph("pre-toggle"));
 
-        let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
-        let ticket = cache.begin_write("/repo").unwrap();
+        let hidden = tagged_graph("toggled").visibility().clone();
+        let session = cache.capture_session("/repo").unwrap();
         let visibility = RefVisibilityState::default();
-        visibility.set("/repo".to_owned(), relaid_out.visibility().clone());
-        tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
-                "/repo".to_owned(),
-                &read,
-                relaid_out.clone(),
-                ticket,
+        let repositories = super::RepoState(std::sync::Mutex::default());
+
+        let applied = tauri::async_runtime::block_on(
+            GraphRebuild::new(activity(), &cache, &visibility).set_visibility_in_session(
+                "/repo",
+                session,
+                hidden.clone(),
+                &repositories,
+                |graph, _| graph.visibility().clone(),
             ),
         )
         .unwrap();
 
-        let cached = cache.0.lock().unwrap();
-        assert_eq!(
-            cached.get("/repo").unwrap().visibility(),
-            relaid_out.visibility()
+        assert_eq!(applied, hidden);
+        assert_eq!(visibility.get("/repo"), hidden);
+        assert_eq!(cache.snapshot("/repo").unwrap().visibility(), &hidden);
+    }
+
+    #[test]
+    fn a_toggle_from_a_closed_session_cannot_hide_refs_after_reopening() {
+        let path = "/repo";
+        let cache = CommitCache::new(GraphCache::default());
+        let visibility = RefVisibilityState::default();
+        let repositories = super::RepoState(std::sync::Mutex::default());
+        let rebuild = GraphRebuild::new(activity(), &cache, &visibility);
+        cache.open_session(path);
+        let old_session = cache.capture_session(path).unwrap();
+        let mut hidden = RefVisibility::default();
+        hidden.hidden_refs.insert("refs/heads/topic".to_owned());
+        visibility.set(
+            path.to_owned(),
+            tagged_graph("previous").visibility().clone(),
         );
+
+        cache.forget_with_visibility(path, &visibility);
+        cache.open_session(path);
+        let (error, graph) = tauri::async_runtime::block_on(async {
+            let error = rebuild
+                .set_visibility_in_session(path, old_session, hidden, &repositories, |_, _| ())
+                .await
+                .unwrap_err();
+            let graph = rebuild
+                .rebuild(path.to_owned(), || Ok(two_root_source_with_topic_tip()))
+                .await
+                .unwrap();
+            (error, graph)
+        });
+
+        assert_eq!(error.code, "not_open");
+        assert_eq!(graph.visibility(), &RefVisibility::default());
+        assert_eq!(graph.layout().commits.len(), 2);
+    }
+
+    #[test]
+    fn a_rejected_toggle_without_a_capture_keeps_the_previous_visibility() {
+        let path = "/repo";
+        let cache = CommitCache::new(GraphCache::default());
+        cache.open_session(path);
+        let session = cache.capture_session(path).unwrap();
+        let visibility = RefVisibilityState::default();
+        let repositories = super::RepoState(std::sync::Mutex::default());
+        let rebuild = GraphRebuild::new(activity(), &cache, &visibility);
+        let hidden = tagged_graph("toggle").visibility().clone();
+
+        let error = tauri::async_runtime::block_on(rebuild.set_visibility_in_session(
+            path,
+            session,
+            hidden,
+            &repositories,
+            |_, _| (),
+        ))
+        .unwrap_err();
+
+        assert_eq!(error.code, "not_open");
+        assert_eq!(visibility.get(path), RefVisibility::default());
     }
 
     fn count_publications(cache: &CommitCache) -> Arc<AtomicUsize> {
@@ -2566,18 +2665,11 @@ mod tests {
         let read = rebuild(&cache, &visibility);
         let told = count_publications(&cache);
         let toggled = read.with_visibility(tagged_graph("toggled").visibility().clone());
-        visibility.set("/repo".to_owned(), toggled.visibility().clone());
         let ticket = cache.begin_write("/repo").unwrap();
 
-        tauri::async_runtime::block_on(
-            GraphRebuild::new(activity(), &cache, &visibility).publish_relayout(
-                "/repo".to_owned(),
-                &read,
-                toggled.clone(),
-                ticket,
-            ),
-        )
-        .unwrap();
+        GraphRebuild::new(activity(), &cache, &visibility)
+            .publish_relayout("/repo".to_owned(), toggled.clone(), None, ticket)
+            .unwrap();
 
         assert_eq!(
             cache.snapshot("/repo").unwrap().visibility(),

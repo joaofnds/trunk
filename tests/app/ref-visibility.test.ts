@@ -181,6 +181,78 @@ describe("ref visibility", () => {
 		expect(app.branches.isHidden("topic")).toBe(true);
 	});
 
+	it("keeps the latest queued visibility when a tab is closed and reopened", async () => {
+		const app = await setup({ repo: DIVERGED });
+		await app.seedPref("ref_visibility", {
+			[app.repo.path]: { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+		});
+		await app.repo.open();
+		const before = app.invokes().length;
+		const release = app.holdCommand("set_ref_visibility");
+		const repositoryCommands = () =>
+			app
+				.invokes()
+				.slice(before)
+				.filter(
+					({ cmd, args }) =>
+						args.path === app.repo.path &&
+						(cmd === "set_ref_visibility" ||
+							cmd === "close_repo" ||
+							cmd === "open_repo"),
+				)
+				.map(({ cmd }) => cmd);
+		let whileHeld: string[];
+
+		try {
+			await app.branches.toggleVisibility("topic");
+			await waitFor("the first Show command to be held", () =>
+				repositoryCommands().includes("set_ref_visibility") ? true : null,
+			);
+			await app.branches.toggleVisibility("topic");
+			await app.branches.toggleVisibility("topic");
+			await app.repo.close();
+			await app.repo.pick();
+			whileHeld = repositoryCommands();
+		} finally {
+			release();
+		}
+
+		expect(whileHeld).toEqual(["set_ref_visibility"]);
+		await app.elapseUntil("the reopened graph to include topic", () =>
+			app.repo.refPills().includes("topic") ? true : null,
+		);
+		await app.settled();
+		expect(app.branches.isHidden("topic")).toBe(false);
+		expect(repositoryCommands()).toEqual([
+			"set_ref_visibility",
+			"set_ref_visibility",
+			"set_ref_visibility",
+			"close_repo",
+			"open_repo",
+		]);
+	});
+
+	it("saves a click accepted before the starting visibility read returns", async () => {
+		const app = await setup({ repo: DIVERGED });
+		const release = app.holdPrefsGet("ref_visibility");
+
+		try {
+			await app.repo.pick();
+			await app.branches.toggleVisibility("topic");
+			await app.repo.close();
+			await app.repo.pick();
+		} finally {
+			release();
+		}
+
+		await app.elapseUntil("the reopened graph to show main", () =>
+			app.repo.commitRows().includes("Main one") ? true : null,
+		);
+		await app.settled();
+		expect(app.repo.refPills()).not.toContain("topic");
+		expect(app.branches.isHidden("topic")).toBe(true);
+	});
+
 	// TRUNK-128: BranchSidebar's stored-visibility read and CommitGraph's first page
 	// load are independent sibling mount effects with no ordering between them.
 	// open_repo always builds its first graph against an empty backend visibility

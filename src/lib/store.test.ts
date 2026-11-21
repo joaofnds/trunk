@@ -1,3 +1,4 @@
+import { setImmediate } from "node:timers/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { columnFloors } from "./column-widths.js";
 import {
@@ -795,6 +796,62 @@ describe("ref visibility", () => {
 		await setRefVisibility("/one", hidden);
 
 		expect(await getRefVisibility("/two")).toEqual(EVERYTHING_VISIBLE);
+		expect(await getRefVisibility("/one")).toEqual(hidden);
+	});
+
+	it("keeps both repositories' hidden sets when saves overlap", async () => {
+		const first = toggleStash(EVERYTHING_VISIBLE, "abc123");
+		const second = toggleStash(EVERYTHING_VISIBLE, "def456");
+
+		await Promise.all([
+			setRefVisibility("/one", first),
+			setRefVisibility("/two", second),
+		]);
+
+		expect(await getRefVisibility("/one")).toEqual(first);
+		expect(await getRefVisibility("/two")).toEqual(second);
+	});
+
+	it("waits for the same repository's pending save before returning its visibility", async () => {
+		const hidden = toggleStash(EVERYTHING_VISIBLE, "abc123");
+		const release = holdNextPrefWrite();
+		const saving = setRefVisibility("/one", hidden);
+		let restored: typeof hidden | undefined;
+		const reading = getRefVisibility("/one").then((value) => {
+			restored = value;
+		});
+
+		try {
+			await setImmediate();
+			expect(restored).toBeUndefined();
+		} finally {
+			release();
+			await saving;
+			await reading;
+		}
+
+		expect(restored).toEqual(hidden);
+	});
+
+	it("fills a missing field from older settings and preserves that repository on save", async () => {
+		const legacy = { hiddenRefs: ["refs/heads/legacy"] };
+		backingStore.set("ref_visibility", { "/legacy": legacy });
+
+		await setRefVisibility("/new", toggleStash(EVERYTHING_VISIBLE, "abc123"));
+
+		expect(await getRefVisibility("/legacy")).toEqual({
+			...legacy,
+			hiddenStashes: [],
+		});
+	});
+
+	it("allows a later visibility save after a write fails", async () => {
+		const hidden = toggleStash(EVERYTHING_VISIBLE, "abc123");
+		failNextPrefWriteTo("ref_visibility");
+
+		await expect(setRefVisibility("/one", hidden)).rejects.toThrow("disk full");
+		await setRefVisibility("/one", hidden);
+
 		expect(await getRefVisibility("/one")).toEqual(hidden);
 	});
 });

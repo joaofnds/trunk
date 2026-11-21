@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import RemoteGroup from "./RemoteGroup.svelte";
 import "../__tests__/helpers/tauri-mock";
 
+const main = { name: "origin/main", shortName: "main" };
+const dev = { name: "origin/dev", shortName: "dev" };
+
 describe("RemoteGroup", () => {
 	const defaultProps = {
 		remoteName: "origin",
-		branches: ["main", "dev"],
+		branches: [main, dev],
 		checkingOut: null,
-		errorBranch: null,
-		errorText: "",
 		oncheckout: vi.fn(),
 	};
 
@@ -72,10 +73,8 @@ describe("RemoteGroup visibility", () => {
 	function defaultPropsFor() {
 		return {
 			remoteName: "origin",
-			branches: ["main", "dev"],
+			branches: [main, dev],
 			checkingOut: null,
-			errorBranch: null,
-			errorText: "",
 			oncheckout: vi.fn(),
 		};
 	}
@@ -132,10 +131,8 @@ describe("RemoteGroup visibility toggle target size", () => {
 		render(RemoteGroup, {
 			props: {
 				remoteName: "origin",
-				branches: ["main", "dev"],
+				branches: [main, dev],
 				checkingOut: null,
-				errorBranch: null,
-				errorText: "",
 				oncheckout: vi.fn(),
 				groupState: "some" as const,
 				hiddenBranches: { "origin/main": true, "origin/dev": false },
@@ -156,10 +153,8 @@ describe("RemoteGroup trailing controls", () => {
 		render(RemoteGroup, {
 			props: {
 				remoteName: "origin",
-				branches: ["main"],
+				branches: [main],
 				checkingOut: null,
-				errorBranch: null,
-				errorText: "",
 				oncheckout: vi.fn(),
 				groupState: "some" as const,
 				hiddenBranches: { "origin/main": true },
@@ -184,10 +179,8 @@ describe("RemoteGroup trailing controls", () => {
 		render(RemoteGroup, {
 			props: {
 				remoteName: "origin",
-				branches: ["main"],
+				branches: [main],
 				checkingOut: null,
-				errorBranch: null,
-				errorText: "",
 				oncheckout: vi.fn(),
 				groupState: "some" as const,
 				hiddenBranches: { "origin/main": true },

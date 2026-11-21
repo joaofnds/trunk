@@ -129,9 +129,8 @@ async fn refresh_graph_in_session(
 
 /// Record which refs the user has hidden for a repository and rebuild its graph.
 ///
-/// The visibility is stored before the walk, so every later rebuild — a commit, a checkout,
-/// a stash, the file watcher — sees the same set without the frontend having to resend it.
-/// The frontend persists it to prefs in parallel with this call.
+/// The hidden set is published with the graph for this opening session, so later
+/// rebuilds keep the same refs hidden. The frontend persists it to preferences.
 ///
 /// # Errors
 ///
@@ -152,43 +151,11 @@ pub async fn set_ref_visibility(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
     let session = cache.capture_session(&path).map_err(|e| e.to_json())?;
-    ref_visibility.set(path.clone(), visibility.clone());
-
-    let (gate, ticket) = cache
-        .begin_rebuild(&path, session)
-        .await
-        .map_err(|e| e.to_json())?;
-    let visibility = ref_visibility.get(&path);
-
-    let Some(cached) = cache.snapshot(&path) else {
-        drop(gate);
-        return refresh_graph_in_session(
-            &activity,
-            &path,
-            loaded,
-            state.snapshot(),
-            &cache,
-            &ref_visibility,
-            session,
-        )
-        .await
-        .map_err(|e| e.to_json());
-    };
-    let read = cached.clone();
-
-    let graph_result = activity
-        .spawn_blocking(move || cached.with_visibility(visibility))
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
-
-    crate::state::GraphRebuild::new(activity.clone(), &cache, &ref_visibility)
-        .publish_relayout(path.clone(), &read, graph_result, ticket)
-        .await
-        .map_err(|e| e.to_json())?;
-    cache
-        .read_versioned(&path, None, |graph, version| {
+    crate::state::GraphRebuild::new(activity, &cache, &ref_visibility)
+        .set_visibility_in_session(&path, session, visibility, &state, |graph, version| {
             GraphResponse::cached(graph, 0, loaded.max(PAGE), version)
         })
+        .await
         .map_err(|e| e.to_json())
 }
 

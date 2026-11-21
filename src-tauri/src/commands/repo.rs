@@ -107,7 +107,7 @@ pub async fn close_repo(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
     let mut repositories = state.0.lock().unwrap();
-    cache.forget(&path);
+    cache.forget_with_visibility(&path, &ref_visibility);
     repositories.forget(&path);
     let process = running.0.lock().unwrap().cancel_background(&path);
     if let Some(process) = process {
@@ -115,7 +115,6 @@ pub async fn close_repo(
     }
     background.forget(&path);
     commit_stats.0.lock().unwrap().forget(&path);
-    ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     drop(repositories);
     Ok(())

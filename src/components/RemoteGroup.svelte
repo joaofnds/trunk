@@ -1,3 +1,10 @@
+<script lang="ts" module>
+export interface RemoteGroupBranch {
+	name: string;
+	shortName: string;
+}
+</script>
+
 <script lang="ts">
 import { type GroupState, visibilityVerb } from "../lib/ref-visibility.js";
 import RowAction from "../lib/ui/RowAction.svelte";
@@ -6,10 +13,8 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	remoteName: string;
-	branches: string[];
+	branches: RemoteGroupBranch[];
 	checkingOut: string | null;
-	errorBranch: string | null;
-	errorText: string;
 	oncheckout: (fullName: string) => void;
 	ondblclick?: (fullName: string) => void;
 	oncontextmenu?: (e: MouseEvent, fullName: string) => void;
@@ -28,8 +33,6 @@ let {
 	remoteName,
 	branches,
 	checkingOut,
-	errorBranch,
-	errorText,
 	oncheckout,
 	ondblclick,
 	oncontextmenu,
@@ -64,21 +67,18 @@ let allHidden = $derived(groupState === "all");
 	</div>
 
 	<!-- Branch rows for this remote -->
-	{#each branches as branch (branch)}
-		{@const fullName = `${remoteName}/${branch}`}
+	{#each branches as { name, shortName } (name)}
 		<div class="pl-3 overflow-hidden">
 			<BranchRow
-				name={branch}
+				name={shortName}
 				kind="remote"
-				isLoading={checkingOut === fullName}
-				isError={errorBranch === fullName}
-				{errorText}
-				onclick={() => oncheckout(fullName)}
-				ondblclick={() => ondblclick?.(fullName)}
-				oncontextmenu={(e) => oncontextmenu?.(e, fullName)}
-				hidden={hiddenBranches[fullName] ?? false}
+				isLoading={checkingOut === name}
+				onclick={() => oncheckout(name)}
+				ondblclick={() => ondblclick?.(name)}
+				oncontextmenu={(e) => oncontextmenu?.(e, name)}
+				hidden={hiddenBranches[name] ?? false}
 				ontogglevisibility={ontogglebranchvisibility
-					? () => ontogglebranchvisibility?.(fullName)
+					? () => ontogglebranchvisibility?.(name)
 					: undefined}
 			/>
 		</div>

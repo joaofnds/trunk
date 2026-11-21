@@ -16,7 +16,7 @@ import {
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorToast } from "../lib/error-report.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { safeInvoke, trackPending } from "../lib/invoke.js";
 import { nativeMenu } from "../lib/native-menu.js";
 import {
 	branchRemoteMenuGroup,
@@ -33,12 +33,13 @@ import {
 	isStashHidden,
 	type RefVisibility,
 	setGroupHidden,
+	setRefHidden,
 	setStashGroupHidden,
+	setStashHidden,
 	stashGroupState,
-	toggleRef,
-	toggleStash,
 	visibilityVerb,
 } from "../lib/ref-visibility.js";
+import { enqueueVisibility } from "../lib/ref-visibility-jobs.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import {
@@ -69,7 +70,7 @@ import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
-import RemoteGroup from "./RemoteGroup.svelte";
+import RemoteGroup, { type RemoteGroupBranch } from "./RemoteGroup.svelte";
 import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
@@ -132,7 +133,10 @@ let refs = $state<RefsResponse | null>(null);
 let loading = $state(false);
 let loadSeq = 0;
 let search = $state("");
-let checkingOutBranch = $state<string | null>(null);
+let checkingOutBranch = $state<{
+	kind: "local" | "remote";
+	name: string;
+} | null>(null);
 let checkoutError = $state<{ branch: string; message: string } | null>(null);
 let localExpanded = $state(true);
 let remoteExpanded = $state(false);
@@ -142,9 +146,10 @@ let showStashForm = $state(false);
 let stashName = $state("");
 let showCreateInput = $state(false);
 let newBranchName = $state("");
-let visibility = $state<RefVisibility>(EVERYTHING_VISIBLE);
+let createInput = $state<HTMLInputElement>();
+let visibility = $state.raw<RefVisibility>(EVERYTHING_VISIBLE);
 
-/** The full ref name the hidden set is keyed by, for a row the sidebar lists by short name. */
+/** The full ref name for a local branch the sidebar lists by short name. */
 function localRefName(branch: string): string {
 	return `refs/heads/${branch}`;
 }
@@ -165,54 +170,156 @@ function refLabel(
 	return { name, short_name: name, ref_type, is_head, color_index: 0 };
 }
 
-/**
- * Push the new hidden set to the backend and hand the parent the graph it returns.
- *
- * The backend rebuilds the graph from the pushed set and caches it, so every later
- * rebuild keeps the same refs hidden without the frontend resending anything. The
- * set is saved to prefs only after the graph has changed: the save is not on the
- * path between the click and the graph.
- */
-async function applyVisibility(next: RefVisibility) {
-	visibility = next;
-	await pushVisibility(repoPath, next);
-	await saveVisibility(next);
+function visibilityBarrier() {
+	let resolve = () => {};
+	const promise = new Promise<void>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
 }
 
-async function pushVisibility(path: string, next: RefVisibility) {
-	const graph = await safeInvoke<GraphResponse>("set_ref_visibility", {
+interface VisibilityView {
+	path: string;
+	read: ReturnType<typeof visibilityBarrier> | null;
+	left: ReturnType<typeof visibilityBarrier>;
+	desired: RefVisibility;
+	applied: RefVisibility;
+	intent: number;
+}
+
+let visibilityView: VisibilityView | null = null;
+
+function isCurrentVisibilityView(view: VisibilityView) {
+	return sidebarActive && visibilityView === view && view.path === repoPath;
+}
+
+function sameHiddenMembers(before: string[], after: string[]): boolean {
+	return (
+		before === after ||
+		(before.length === after.length &&
+			before.every((member, i) => member === after[i]))
+	);
+}
+
+function sameVisibility(before: RefVisibility, after: RefVisibility): boolean {
+	return (
+		sameHiddenMembers(before.hiddenRefs, after.hiddenRefs) &&
+		sameHiddenMembers(before.hiddenStashes, after.hiddenStashes)
+	);
+}
+
+function applyVisibility(update: (current: RefVisibility) => RefVisibility) {
+	const view = visibilityView;
+	if (!view || !isCurrentVisibilityView(view)) return;
+	const intent = ++view.intent;
+
+	const choose = () => {
+		const previous = view.desired;
+		const next = update(previous);
+		view.desired = next;
+		if (isCurrentVisibilityView(view)) visibility = next;
+		return { next, changed: !sameVisibility(previous, next) };
+	};
+	const choice = view.read ? view.read.promise.then(choose) : choose();
+
+	// Register the click now, even if it needs the startup read to choose a set.
+	// Closing the tab joins these jobs before replacing the backend session.
+	const job = enqueueVisibility(view.path, async () => {
+		const { next, changed } = await choice;
+		if (sameVisibility(view.applied, next)) {
+			if (changed) void trackPending(saveVisibility(view.path, next));
+			return;
+		}
+		const loaded = isCurrentVisibilityView(view) ? (loadedRows?.() ?? 0) : 0;
+		let graph: GraphResponse;
+		try {
+			graph = await pushVisibility(view.path, next, loaded);
+		} catch (e) {
+			if (intent === view.intent) {
+				view.desired = view.applied;
+				if (isCurrentVisibilityView(view)) {
+					visibility = view.applied;
+					reportErrorToast(e, "Could not change which refs are hidden");
+				}
+			}
+			return;
+		}
+		view.applied = next;
+		void trackPending(saveVisibility(view.path, next));
+		if (isCurrentVisibilityView(view)) onvisibilitychanged?.(graph);
+	});
+	void trackPending(job);
+}
+
+function toggleRefVisibility(ref: RefLabel) {
+	const hidden = !isRefHidden(visibility, ref);
+	applyVisibility((current) => setRefHidden(current, ref, hidden));
+}
+
+function toggleGroupVisibility(members: RefLabel[]) {
+	const hidden = groupState(visibility, members) !== "all";
+	applyVisibility((current) => setGroupHidden(current, members, hidden));
+}
+
+function toggleStashVisibility(oid: string) {
+	const hidden = !isStashHidden(visibility, oid);
+	applyVisibility((current) => setStashHidden(current, oid, hidden));
+}
+
+function toggleStashGroupVisibility(stashes: StashEntry[]) {
+	const hidden = stashGroupState(visibility, stashes) !== "all";
+	applyVisibility((current) => setStashGroupHidden(current, stashes, hidden));
+}
+
+function pushVisibility(path: string, next: RefVisibility, loaded: number) {
+	return safeInvoke<GraphResponse>("set_ref_visibility", {
 		path,
 		visibility: next,
-		loaded: loadedRows?.() ?? 0,
+		loaded,
 	});
-	if (sidebarActive && path === repoPath) onvisibilitychanged?.(graph);
 }
 
-async function saveVisibility(next: RefVisibility) {
+async function saveVisibility(path: string, next: RefVisibility) {
 	try {
-		await setRefVisibility(repoPath, next);
+		await setRefVisibility(path, next);
 	} catch {
 		showToast("Could not save which refs are hidden", "error");
 	}
 }
 
-async function loadVisibility(path: string) {
+function finishVisibilityRead(view: VisibilityView) {
+	view.read?.resolve();
+	view.read = null;
+}
+
+async function loadVisibility(view: VisibilityView) {
 	try {
-		const stored = await getRefVisibility(path);
-		if (!sidebarActive || path !== repoPath) return;
-		visibility = stored;
+		if (!isCurrentVisibilityView(view) && view.intent === 0) return;
+		const stored = await getRefVisibility(view.path);
+		view.desired = stored;
+		if (isCurrentVisibilityView(view)) visibility = stored;
+		finishVisibilityRead(view);
 		// Opening a repository walks with everything visible, so a repo with a stored set
 		// needs it pushed before its first graph is drawn.
-		if (hidesNothing(stored)) return;
-		await listenerSettled;
-		if (!sidebarActive || path !== repoPath) return;
-		await pushVisibility(path, stored);
+		if (!isCurrentVisibilityView(view) || hidesNothing(stored)) return;
+		await Promise.race([listenerSettled, view.left.promise]);
+		if (!isCurrentVisibilityView(view)) return;
+		const graph = await pushVisibility(view.path, stored, loadedRows?.() ?? 0);
+		view.applied = stored;
+		if (isCurrentVisibilityView(view)) onvisibilitychanged?.(graph);
 	} catch {
-		showToast("Could not load which refs are hidden", "error");
+		if (isCurrentVisibilityView(view)) {
+			if (view.intent === 0) {
+				view.desired = view.applied;
+				visibility = view.applied;
+			}
+			showToast("Could not load which refs are hidden", "error");
+		}
 	} finally {
+		finishVisibilityRead(view);
 		// Fires on failure too: CommitGraph's first load is gated on this signal, and
 		// a stuck gate would leave the graph with no first page at all.
-		if (sidebarActive && path === repoPath) onvisibilityresolved?.();
+		if (isCurrentVisibilityView(view)) onvisibilityresolved?.();
 	}
 }
 
@@ -248,26 +355,32 @@ let filteredStashes = $derived<StashEntry[]>(
 		: (refs?.stashes ?? []),
 );
 
-// Group remote branches by remote name: { "origin": ["main", "dev"] }. Each group
-// rebuilds its refs as `<group>/<short>`, so the group must be a prefix of the name: the
-// backend's remote where it is one, since a remote's name can hold a "/", and the first
-// "/" otherwise, as for a remote that fetches into a namespace not named after it.
-/** Where the remote group ends in a remote branch name, or -1 when nothing does. */
+// Use the backend's remote when it prefixes the branch name, even if it contains
+// a "/". Otherwise split at the first "/", as for an aliased fetch namespace.
 function remoteGroupEnd(b: BranchInfo): number {
 	if (b.remote && b.name.startsWith(`${b.remote}/`)) return b.remote.length;
 	return b.name.indexOf("/");
 }
 
-let remoteGroups = $derived(
-	filteredRemote.reduce<Record<string, string[]>>((acc, b) => {
-		const slash = remoteGroupEnd(b);
-		const remote = slash >= 0 ? b.name.slice(0, slash) : "unknown";
-		const short = slash >= 0 ? b.name.slice(slash + 1) : b.name;
-		if (!acc[remote]) acc[remote] = [];
-		acc[remote].push(short);
-		return acc;
-	}, {}),
-);
+let remoteGroups = $derived.by(() => {
+	const groups: Record<
+		string,
+		{ branches: RemoteGroupBranch[]; members: RefLabel[] }
+	> = Object.create(null);
+	for (const branch of filteredRemote) {
+		const slash = remoteGroupEnd(branch);
+		const prefix = slash >= 0 ? branch.name.slice(0, slash) : "";
+		groups[prefix] ??= { branches: [], members: [] };
+		const group = groups[prefix];
+		group.branches.push({
+			name: branch.name,
+			shortName: branch.name.slice(slash + 1),
+		});
+		group.members.push(refLabel(remoteRefName(branch.name), "RemoteBranch"));
+	}
+	// Array-index group names sort first. The empty key keeps a real "unknown" remote separate.
+	return Object.entries(groups);
+});
 
 // The refs each group toggle covers, as `RefLabel`s the visibility functions understand.
 // Built from the filtered rows rather than the full list, so a group toggle acts on exactly
@@ -278,18 +391,9 @@ let localMembers = $derived(
 	),
 );
 
-let remoteMembers = $derived(
-	Object.fromEntries(
-		Object.entries(remoteGroups).map(([remote, branches]) => [
-			remote,
-			branches.map((b) =>
-				refLabel(remoteRefName(`${remote}/${b}`), "RemoteBranch"),
-			),
-		]),
-	),
+let allRemoteMembers = $derived(
+	remoteGroups.flatMap(([, group]) => group.members),
 );
-
-let allRemoteMembers = $derived(Object.values(remoteMembers).flat());
 
 let tagMembers = $derived(
 	filteredTags.map((tg) => refLabel(tagRefName(tg.short_name), "Tag")),
@@ -297,9 +401,25 @@ let tagMembers = $derived(
 
 // Load refs on mount and when repoPath changes
 $effect(() => {
-	const path = repoPath;
-	void loadRefs(path);
-	void loadVisibility(path);
+	void loadRefs(repoPath);
+});
+
+$effect(() => {
+	const view: VisibilityView = {
+		path: repoPath,
+		read: visibilityBarrier(),
+		left: visibilityBarrier(),
+		desired: EVERYTHING_VISIBLE,
+		applied: EVERYTHING_VISIBLE,
+		intent: 0,
+	};
+	visibilityView = view;
+	visibility = EVERYTHING_VISIBLE;
+	enqueueVisibility(view.path, () => loadVisibility(view));
+	return () => {
+		visibilityView = null;
+		view.left.resolve();
+	};
 });
 
 // Reload refs when parent signals a refresh (e.g. context menu actions)
@@ -364,7 +484,7 @@ async function loadRefs(path: string) {
 async function handleCheckout(branchName: string) {
 	// Dismiss any existing error first
 	checkoutError = null;
-	checkingOutBranch = branchName;
+	checkingOutBranch = { kind: "local", name: branchName };
 	try {
 		await safeInvoke<void>("checkout_branch", { path: repoPath, branchName });
 		await loadRefs(repoPath);
@@ -383,13 +503,13 @@ async function handleCheckout(branchName: string) {
 	}
 }
 
-async function handleCheckoutRemoteBranch(fullName: string) {
+async function handleCheckoutRemoteBranch(name: string) {
 	checkoutError = null;
-	checkingOutBranch = fullName;
+	checkingOutBranch = { kind: "remote", name };
 	try {
 		const branch = await safeInvoke<string>("checkout_remote_branch", {
 			path: repoPath,
-			remoteRef: `refs/remotes/${fullName}`,
+			remoteRef: remoteRefName(name),
 		});
 		await loadRefs(repoPath);
 		onrefreshed?.();
@@ -642,7 +762,8 @@ async function showTagContextMenu(_e: MouseEvent, tagShortName: string) {
 	);
 }
 
-async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
+async function showRemoteContextMenu(name: string) {
+	const refName = remoteRefName(name);
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const headBranchName = refs?.local.find((b) => b.is_head)?.name;
 	const menu = await Menu.new({
@@ -650,21 +771,21 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 			...(headBranchName
 				? [
 						await MenuItem.new({
-							text: `Merge ${fullRefName} into ${headBranchName}`,
+							text: `Merge ${name} into ${headBranchName}`,
 							action: () => {
-								handleMergeBranch(fullRefName).catch(() => {});
+								handleMergeBranch(refName).catch(() => {});
 							},
 						}),
 						await MenuItem.new({
-							text: `Rebase ${headBranchName} onto ${fullRefName}`,
+							text: `Rebase ${headBranchName} onto ${name}`,
 							action: () => {
-								handleRebaseBranch(fullRefName).catch(() => {});
+								handleRebaseBranch(refName).catch(() => {});
 							},
 						}),
 						await MenuItem.new({
-							text: `Interactive Rebase ${fullRefName}...`,
+							text: `Interactive Rebase ${name}...`,
 							action: () => {
-								handleInteractiveRebase(fullRefName).catch(() => {});
+								handleInteractiveRebase(refName).catch(() => {});
 							},
 						}),
 						await PredefinedMenuItem.new({ item: "Separator" }),
@@ -674,7 +795,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 				text: "Delete",
 				enabled: !remoteState.isRunning,
 				action: () => {
-					handleDeleteRemoteBranch(fullRefName).catch(() => {});
+					handleDeleteRemoteBranch(name).catch(() => {});
 				},
 			}),
 		],
@@ -718,17 +839,12 @@ registerUpdateBlocker(() =>
 				ontoggle={() => (localExpanded = !localExpanded)}
 				showCreateButton={true}
 				oncreate={() => {
+					localExpanded = true;
 					showCreateInput = true;
+					createInput?.focus();
 				}}
 				groupState={groupState(visibility, localMembers)}
-				ontogglevisibility={() =>
-					applyVisibility(
-						setGroupHidden(
-							visibility,
-							localMembers,
-							groupState(visibility, localMembers) !== "all",
-						),
-					)}
+				ontogglevisibility={() => toggleGroupVisibility(localMembers)}
 			>
 				{#if showCreateInput}
 					<div class="py-1 px-2">
@@ -737,6 +853,7 @@ registerUpdateBlocker(() =>
 							type="text"
 							placeholder="New branch name"
 							bind:value={newBranchName}
+							bind:this={createInput}
 							use:autoFocus
 							class="w-full box-border bg-bg border border-accent create-input-ring text-text-strong text-callout py-1 px-2 h-control-lg rounded outline-none"
 							onkeydown={(e) => {
@@ -754,12 +871,13 @@ registerUpdateBlocker(() =>
 						name={branch.name}
 						kind="local"
 						isHead={branch.is_head}
-						isLoading={checkingOutBranch === branch.name}
+						isLoading={checkingOutBranch?.kind === "local" &&
+							checkingOutBranch.name === branch.name}
 						isError={checkoutError?.branch === branch.name}
 						errorText={checkoutError?.message}
 						ahead={branch.ahead}
 						behind={branch.behind}
-						onclick={() => onrefnavigate?.(branch.name)}
+						onclick={() => onrefnavigate?.(localRefName(branch.name))}
 						ondblclick={() => handleCheckout(branch.name)}
 						oncontextmenu={(e) =>
 							showBranchContextMenu(e, branch.name, branch.is_head)}
@@ -774,11 +892,8 @@ registerUpdateBlocker(() =>
 						ontogglevisibility={branch.is_head
 							? undefined
 							: () =>
-									applyVisibility(
-										toggleRef(
-											visibility,
-											refLabel(localRefName(branch.name), "LocalBranch"),
-										),
+									toggleRefVisibility(
+										refLabel(localRefName(branch.name), "LocalBranch"),
 									)}
 					/>
 				{/each}
@@ -793,55 +908,32 @@ registerUpdateBlocker(() =>
 				expanded={remoteExpanded}
 				ontoggle={() => (remoteExpanded = !remoteExpanded)}
 				groupState={groupState(visibility, allRemoteMembers)}
-				ontogglevisibility={() =>
-					applyVisibility(
-						setGroupHidden(
-							visibility,
-							allRemoteMembers,
-							groupState(visibility, allRemoteMembers) !== "all",
-						),
-					)}
+				ontogglevisibility={() => toggleGroupVisibility(allRemoteMembers)}
 			>
-				{#each Object.entries(
-					remoteGroups,
-				) as [remoteName, branches] (remoteName)}
+				{#each remoteGroups as [prefix, { branches, members }] (prefix)}
 					<RemoteGroup
-						{remoteName}
+						remoteName={prefix || "unknown"}
 						{branches}
-						checkingOut={checkingOutBranch}
-						errorBranch={checkoutError?.branch ?? null}
-						errorText={checkoutError?.message ?? ""}
-						oncheckout={(fullName) => onrefnavigate?.(fullName)}
+						checkingOut={checkingOutBranch?.kind === "remote"
+							? checkingOutBranch.name
+							: null}
+						oncheckout={(name) => onrefnavigate?.(remoteRefName(name))}
 						ondblclick={handleCheckoutRemoteBranch}
-						oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
-						groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
+						oncontextmenu={(_e, name) => showRemoteContextMenu(name)}
+						groupState={groupState(visibility, members)}
 						hiddenBranches={Object.fromEntries(
-							branches.map((b) => {
-								const fullName = `${remoteName}/${b}`;
-								return [
-									fullName,
-									isRefHidden(
-										visibility,
-										refLabel(remoteRefName(fullName), "RemoteBranch"),
-									),
-								];
-							}),
+							branches.map(({ name }) => [
+								name,
+								isRefHidden(
+									visibility,
+									refLabel(remoteRefName(name), "RemoteBranch"),
+								),
+							]),
 						)}
-						ontogglevisibility={() =>
-							applyVisibility(
-								setGroupHidden(
-									visibility,
-									remoteMembers[remoteName] ?? [],
-									groupState(visibility, remoteMembers[remoteName] ?? []) !==
-										"all",
-								),
-							)}
-						ontogglebranchvisibility={(fullName) =>
-							applyVisibility(
-								toggleRef(
-									visibility,
-									refLabel(remoteRefName(fullName), "RemoteBranch"),
-								),
+						ontogglevisibility={() => toggleGroupVisibility(members)}
+						ontogglebranchvisibility={(name) =>
+							toggleRefVisibility(
+								refLabel(remoteRefName(name), "RemoteBranch"),
 							)}
 					/>
 				{/each}
@@ -856,32 +948,20 @@ registerUpdateBlocker(() =>
 				expanded={tagsExpanded}
 				ontoggle={() => (tagsExpanded = !tagsExpanded)}
 				groupState={groupState(visibility, tagMembers)}
-				ontogglevisibility={() =>
-					applyVisibility(
-						setGroupHidden(
-							visibility,
-							tagMembers,
-							groupState(visibility, tagMembers) !== "all",
-						),
-					)}
+				ontogglevisibility={() => toggleGroupVisibility(tagMembers)}
 			>
 				{#each filteredTags as tag (tag.name)}
 					<BranchRow
 						name={tag.short_name}
 						kind="tag"
-						onclick={() => onrefnavigate?.(tag.short_name)}
+						onclick={() => onrefnavigate?.(tag.name)}
 						oncontextmenu={(e) => showTagContextMenu(e, tag.short_name)}
 						hidden={isRefHidden(
 							visibility,
 							refLabel(tagRefName(tag.short_name), "Tag"),
 						)}
 						ontogglevisibility={() =>
-							applyVisibility(
-								toggleRef(
-									visibility,
-									refLabel(tagRefName(tag.short_name), "Tag"),
-								),
-							)}
+							toggleRefVisibility(refLabel(tagRefName(tag.short_name), "Tag"))}
 					/>
 				{/each}
 			</BranchSection>
@@ -894,14 +974,7 @@ registerUpdateBlocker(() =>
 			expanded={stashesExpanded}
 			ontoggle={() => (stashesExpanded = !stashesExpanded)}
 			groupState={stashGroupState(visibility, filteredStashes)}
-			ontogglevisibility={() =>
-				applyVisibility(
-					setStashGroupHidden(
-						visibility,
-						filteredStashes,
-						stashGroupState(visibility, filteredStashes) !== "all",
-					),
-				)}
+			ontogglevisibility={() => toggleStashGroupVisibility(filteredStashes)}
 			showCreateButton={true}
 			createLabel="Create new stash"
 			oncreate={() => {
@@ -943,8 +1016,7 @@ registerUpdateBlocker(() =>
 				>
 					{#snippet actions()}
 						<RowAction
-							onclick={() =>
-								applyVisibility(toggleStash(visibility, stash.oid))}
+							onclick={() => toggleStashVisibility(stash.oid)}
 							oncontextmenu={(e) => showStashEntryMenu(e, stash)}
 							aria-label="{visibilityVerb(stashHidden)} {stash.short_name}"
 						>

@@ -22,12 +22,13 @@ import {
 } from "./lib/coalesced-task.js";
 import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
-import { invokesSettled, safeInvoke } from "./lib/invoke.js";
+import { invokesSettled, safeInvoke, trackPending } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
 import { nativeMenu } from "./lib/native-menu.js";
 import { createOwnedTimer } from "./lib/owned-timer.js";
 import { repositoryName } from "./lib/path.js";
 import { perfEnabled, record } from "./lib/perf.js";
+import { visibilityJobsSettled } from "./lib/ref-visibility-jobs.js";
 import {
 	createRemoteState,
 	type RemoteState,
@@ -58,6 +59,7 @@ import {
 	getRightPaneWidth,
 	getZoomLevel,
 	preferenceGeneration,
+	refVisibilityWritesSettled,
 	setActiveTabId,
 	setDiffContentMode,
 	setLeftPaneCollapsed,
@@ -397,8 +399,9 @@ const scheduler = getScheduler();
 const autofetch = new AutofetchScheduler(scheduler, runAutofetch);
 let repositoryTabsDisposed = false;
 const dirtyCountRefreshes = new Map<string, CoalescedTask>();
+const closingRepositories = new Map<string, Promise<void>>();
 const repositories = new RepositoryTabs(scheduler, {
-	open: (path) => safeInvoke<void>("open_repo", { path }),
+	open: openRepositoryBackend,
 	close: closeUnusedRepository,
 	loadUnvisitedBadge: async ({ id, repoPath: path }) => {
 		try {
@@ -674,7 +677,7 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 	await menu.popup();
 }
 
-async function openRepoInTab(tabId: string, path: string, name: string) {
+function openRepoInTab(tabId: string, path: string, name: string) {
 	// TAB-10: Duplicate detection — switch to existing tab instead of creating duplicate
 	const normalizedPath = repositoryPathKey(path);
 	const existing = tabs.find(
@@ -708,7 +711,6 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 		tab.repoName = name;
 		persistTabs();
 		if (previousPath) {
-			await tick();
 			void closeUnusedRepository(previousPath);
 		}
 	}
@@ -720,9 +722,9 @@ async function openRepoInTab(tabId: string, path: string, name: string) {
 async function openRepository(tabId: string, path: string, name: string) {
 	const key = repositoryPathKey(path);
 	if (!tabs.some((tab) => repositoryPathKey(tab.repoPath) === key))
-		await safeInvoke("open_repo", { path });
+		await openRepositoryBackend(path);
 	await addRecentRepo({ name, path });
-	await openRepoInTab(tabId, path, name);
+	openRepoInTab(tabId, path, name);
 }
 
 async function handlePickerPick(path: string, name: string) {
@@ -792,7 +794,7 @@ function forceCloseTab(tabId: string) {
 
 	// Force close on backend (D-11)
 	if (repoPath) {
-		safeInvoke("force_close_repo", { path: repoPath }).catch(() => {});
+		void closeRepositoryBackend(repoPath, "force_close_repo");
 	}
 
 	persistTabs();
@@ -857,7 +859,20 @@ $effect(() => {
 			return;
 		}
 
-		const restoredTabs: TabInfo[] = restored.map((pt) => {
+		// A backend path has one tab, including when older saved tabs contain duplicates.
+		const activePath = repositoryPathKey(
+			restored.find((tab) => tab.id === savedActive)?.repoPath ?? null,
+		);
+		const seenPaths = new Set<string>();
+		const uniqueTabs = restored.filter(({ id, repoPath }) => {
+			if (repoPath === null) return true;
+			const key = repositoryPathKey(repoPath);
+			if (seenPaths.has(key) || (key === activePath && id !== savedActive))
+				return false;
+			seenPaths.add(key);
+			return true;
+		});
+		const restoredTabs: TabInfo[] = uniqueTabs.map((pt) => {
 			createTabState(pt.id);
 			return {
 				id: pt.id,
@@ -1131,7 +1146,34 @@ async function closeUnusedRepository(path: string): Promise<void> {
 	if (!repositoryTabsDisposed && tabs.some((tab) => tab.repoPath === path))
 		return;
 
-	await safeInvoke<void>("close_repo", { path }).catch(() => {});
+	await closeRepositoryBackend(path, "close_repo");
+}
+
+async function openRepositoryBackend(path: string): Promise<void> {
+	const closing = closingRepositories.get(path);
+	if (closing) await closing;
+	await safeInvoke<void>("open_repo", { path });
+}
+
+function closeRepositoryBackend(
+	path: string,
+	command: "close_repo" | "force_close_repo",
+): Promise<void> {
+	const closing = closingRepositories.get(path);
+	if (closing) return closing;
+
+	async function close() {
+		// Let the old sidebar unmount, then join its graph work and any saves it started.
+		await tick();
+		await visibilityJobsSettled(path);
+		await refVisibilityWritesSettled(path);
+		await safeInvoke<void>(command, { path }).catch(() => {});
+	}
+	const done = trackPending(close()).finally(() =>
+		closingRepositories.delete(path),
+	);
+	closingRepositories.set(path, done);
+	return done;
 }
 
 function isRepoViewMounted(tab: TabInfo): boolean {

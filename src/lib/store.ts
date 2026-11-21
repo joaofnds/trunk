@@ -63,6 +63,7 @@ export async function flushPreferencesForUpdate(
 	activeTabId: string,
 ): Promise<void> {
 	await columnLayoutQueue;
+	await refVisibilityQueue;
 	await Promise.all([
 		sharedColumnVisibility.settled(),
 		sharedTreeView.settled(),
@@ -737,8 +738,15 @@ export function subscribeFetchInterval(
 // Which refs each repository hides from its graph, keyed by absolute repo path like
 // commit_drafts above. A repository absent from the map hides nothing.
 const REF_VISIBILITY_KEY = "ref_visibility";
+let refVisibilityQueue = Promise.resolve();
+const refVisibilityWrites = new Map<string, Promise<void>>();
+
+export async function refVisibilityWritesSettled(path: string): Promise<void> {
+	await refVisibilityWrites.get(path);
+}
 
 export async function getRefVisibility(path: string): Promise<RefVisibility> {
+	await refVisibilityWritesSettled(path);
 	const all =
 		(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
 	// Spread-merged over the default so a file written before a field existed still
@@ -749,13 +757,25 @@ export async function getRefVisibility(path: string): Promise<RefVisibility> {
 		: { ...EVERYTHING_VISIBLE, ...stored };
 }
 
-export async function setRefVisibility(
+export function setRefVisibility(
 	path: string,
 	visibility: RefVisibility,
 ): Promise<void> {
-	const all =
-		(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
-	await setPref(REF_VISIBILITY_KEY, { ...all, [path]: visibility });
+	// A single preference holds every repository, so each whole read/write pair
+	// must finish before another save reads it.
+	const done = refVisibilityQueue.then(async () => {
+		const all =
+			(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
+		await setPref(REF_VISIBILITY_KEY, { ...all, [path]: visibility });
+	});
+	const settled = done.catch(() => {});
+	refVisibilityQueue = settled;
+	refVisibilityWrites.set(path, settled);
+	void settled.then(() => {
+		if (refVisibilityWrites.get(path) === settled)
+			refVisibilityWrites.delete(path);
+	});
+	return done;
 }
 
 const reviewUpdateKey = (path: string) => `update_review_composer:${path}`;
