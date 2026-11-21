@@ -65,6 +65,12 @@ interface HeldRead {
 	release: () => void;
 }
 
+interface HeldCommandReply {
+	command: string;
+	entered: () => void;
+	resumed: Promise<void>;
+}
+
 export class TauriInternals {
 	private readonly callbacks = new Map<number, Callback>();
 	private readonly listeners = new Map<number, Listener>();
@@ -79,6 +85,7 @@ export class TauriInternals {
 	private readonly heldReads: HeldRead[] = [];
 	private heldCommand: string | null = null;
 	private readonly heldCommands: Array<() => void> = [];
+	private heldReply?: HeldCommandReply;
 	private inFlight = 0;
 	private readonly trail: string[] = [];
 
@@ -110,6 +117,21 @@ export class TauriInternals {
 			const held = this.heldCommands.splice(0);
 			for (const release of held) release();
 		};
+	}
+
+	/** Leaves the real host's successful reply pending in the frontend. */
+	holdNextCommandReply(command: string): {
+		entered: Promise<void>;
+		release: () => void;
+	} {
+		const entered = Promise.withResolvers<void>();
+		const resumed = Promise.withResolvers<void>();
+		this.heldReply = {
+			command,
+			entered: entered.resolve,
+			resumed: resumed.promise,
+		};
+		return { entered: entered.promise, release: resumed.resolve };
 	}
 
 	/** Points every `plugin:` command at the Fake that owns it. Separate from
@@ -202,7 +224,15 @@ export class TauriInternals {
 					this.heldReads.push({ key: args.key as string, release });
 				});
 			}
-			return await this.host.invoke(cmd, args);
+			const reply =
+				this.heldReply?.command === cmd ? this.heldReply : undefined;
+			if (reply) this.heldReply = undefined;
+			const result = await this.host.invoke(cmd, args);
+			if (reply) {
+				reply.entered();
+				await reply.resumed;
+			}
+			return result;
 		}
 
 		return this.fake(cmd).answer(commandOf(cmd), args);

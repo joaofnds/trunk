@@ -1,11 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { safeInvoke } from "../lib/invoke.js";
-import {
-	addRecentRepo,
-	getRecentRepos,
-	removeRecentRepo,
-} from "../lib/store.js";
+import { getRecentRepos, removeRecentRepo } from "../lib/store.js";
 import WelcomeScreen from "./WelcomeScreen.svelte";
 
 // Shared Tauri mock (mocks invoke, dialog, clipboard, etc.)
@@ -18,21 +13,12 @@ vi.mock("@tauri-apps/api/path", () => ({
 
 vi.mock("../lib/store.js", () => ({
 	getRecentRepos: vi.fn().mockResolvedValue([]),
-	addRecentRepo: vi.fn().mockResolvedValue(undefined),
 	removeRecentRepo: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../lib/invoke.js", async (importActual) => ({
-	...(await importActual<typeof import("../lib/invoke.js")>()),
-	safeInvoke: vi.fn(),
 }));
 
 describe("WelcomeScreen", () => {
 	beforeEach(() => {
-		vi.mocked(safeInvoke).mockReset();
-		vi.mocked(safeInvoke).mockResolvedValue(undefined);
 		vi.mocked(getRecentRepos).mockResolvedValue([]);
-		vi.mocked(addRecentRepo).mockResolvedValue(undefined);
 		vi.mocked(removeRecentRepo).mockResolvedValue(undefined);
 	});
 
@@ -92,22 +78,19 @@ describe("WelcomeScreen", () => {
 		await fireEvent.click(row);
 
 		await vi.waitFor(() => {
-			expect(onopen).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
+			expect(onopen).toHaveBeenCalledWith({
+				path: "/Users/test/code/trunk",
+				name: "trunk",
+			});
 		});
 	});
 
 	it("removes a recent repo without opening it", async () => {
-		const opened: string[] = [];
+		const onopen = vi.fn();
 		vi.mocked(getRecentRepos).mockResolvedValueOnce([
 			{ name: "trunk", path: "/Users/test/code/trunk" },
 		]);
-		render(WelcomeScreen, {
-			props: {
-				onopen: async (path: string) => {
-					opened.push(path);
-				},
-			},
-		});
+		render(WelcomeScreen, { props: { onopen } });
 		await screen.findByText("trunk");
 
 		await fireEvent.click(screen.getByLabelText("Remove from recent"));
@@ -116,63 +99,18 @@ describe("WelcomeScreen", () => {
 			expect(screen.queryByText("trunk")).not.toBeInTheDocument();
 		});
 		expect(removeRecentRepo).toHaveBeenCalledWith("/Users/test/code/trunk");
-		expect(opened).toEqual([]);
+		expect(onopen).not.toHaveBeenCalled();
 	});
 
-	it("opens the repository a chosen folder lies inside once the user agrees", async () => {
-		const dialog = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
-		vi.mocked(dialog.ask).mockResolvedValueOnce(true);
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			Promise.resolve(
-				cmd === "enclosing_repository" ? "/Users/test/code/trunk" : undefined,
-			),
-		);
+	it("offers to choose another folder while opening a repository", async () => {
 		const onopen = vi.fn();
-		render(WelcomeScreen, { props: { onopen } });
+		render(WelcomeScreen, { props: { onopen, opening: true } });
 
-		await fireEvent.click(screen.getByText("Open Repository"));
-
-		await vi.waitFor(() => {
-			expect(onopen).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
-		});
-	});
-
-	it("shows why a chosen folder could not be opened when looking it up fails", async () => {
-		const dialog = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
-		vi.mocked(safeInvoke).mockRejectedValue({
-			code: "spawn_error",
-			message: "the lookup stopped",
-		});
-		render(WelcomeScreen, { props: { onopen: vi.fn() } });
-
-		await fireEvent.click(screen.getByText("Open Repository"));
-
-		expect(await screen.findByText("the lookup stopped")).toBeInTheDocument();
-	});
-
-	it("opens a recent repository once when it is clicked twice", async () => {
-		const onopen = vi.fn(() => new Promise<void>(() => {}));
-		const { row } = await renderWithRecentRepo(onopen);
-
-		await fireEvent.click(row);
-		await fireEvent.click(row);
-		await vi.waitFor(() => expect(onopen).toHaveBeenCalled());
-		await new Promise<void>((resolve) => setImmediate(resolve));
-
-		expect(onopen).toHaveBeenCalledTimes(1);
-	});
-
-	it("shows the backend message when opening a repo fails", async () => {
-		const { row } = await renderWithRecentRepo(
-			vi.fn(() =>
-				Promise.reject({ code: "git_error", message: "not a git repository" }),
-			),
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Open Repository" }),
 		);
 
-		await fireEvent.click(row);
-
-		expect(await screen.findByText("not a git repository")).toBeInTheDocument();
+		expect(onopen).toHaveBeenCalledWith();
+		expect(screen.getByRole("status")).toHaveTextContent("Opening repository…");
 	});
 });

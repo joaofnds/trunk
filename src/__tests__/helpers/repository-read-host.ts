@@ -21,20 +21,23 @@ interface HeldReply {
 	reject(error: { code: string; message: string }): void;
 }
 
+interface ReplyBarrier {
+	matches(args: Record<string, unknown>): boolean;
+	wait(args: Record<string, unknown>): Promise<unknown>;
+}
+
 export class RepositoryReadHost implements HostChannel {
 	readonly preferences = new Map<string, unknown>();
 	readonly requests: Array<{ cmd: string; args: Record<string, unknown> }> = [];
 	private readonly responses = new Map<string, unknown>();
 	private graph: GraphResponse | undefined;
-	private readonly barriers = new Map<
-		string,
-		Array<(args: Record<string, unknown>) => Promise<unknown>>
-	>();
+	private readonly barriers = new Map<string, ReplyBarrier[]>();
 	private readonly eventHandlers: EventHandler[] = [];
 	private readonly registrations = new Map<string, number[]>();
 	private nextListener = 1;
 	private readonly transport = new TauriInternals(this);
 	readonly contextMenu = new FakeMenu(this.transport);
+	readonly dialog = new FakeDialog();
 	readonly opener = new FakeOpener();
 
 	install(): void {
@@ -43,7 +46,7 @@ export class RepositoryReadHost implements HostChannel {
 			new FakeWebview(),
 			new FakePath("/test"),
 			this.contextMenu,
-			new FakeDialog(),
+			this.dialog,
 			new FakeClipboard(),
 			this.opener,
 		]);
@@ -61,6 +64,7 @@ export class RepositoryReadHost implements HostChannel {
 		this.barriers.clear();
 		this.registrations.clear();
 		this.requests.length = 0;
+		this.dialog.reset();
 		this.opener.reset();
 	}
 
@@ -76,7 +80,10 @@ export class RepositoryReadHost implements HostChannel {
 		this.responses.set(command, response);
 	}
 
-	holdNextReply(command: string): HeldReply {
+	holdNextReply(
+		command: string,
+		matches: ReplyBarrier["matches"] = () => true,
+	): HeldReply {
 		let entered!: (args: Record<string, unknown>) => void;
 		let release!: (value: unknown) => void;
 		let reject!: (error: string) => void;
@@ -88,9 +95,12 @@ export class RepositoryReadHost implements HostChannel {
 			reject = fail;
 		});
 		const queued = this.barriers.get(command) ?? [];
-		queued.push((args) => {
-			entered(args);
-			return answer;
+		queued.push({
+			matches,
+			wait: (args) => {
+				entered(args);
+				return answer;
+			},
 		});
 		this.barriers.set(command, queued);
 
@@ -145,8 +155,14 @@ export class RepositoryReadHost implements HostChannel {
 		cmd: string,
 		args: Record<string, unknown>,
 	): Promise<unknown> {
-		const barrier = this.barriers.get(cmd)?.shift();
-		if (barrier) return barrier(args);
+		const queued = this.barriers.get(cmd);
+		if (queued) {
+			const index = queued.findIndex((barrier) => barrier.matches(args));
+			if (index !== -1) {
+				const [barrier] = queued.splice(index, 1);
+				return barrier.wait(args);
+			}
+		}
 		if (cmd === "get_commit_graph" && this.graph) {
 			const { loaded, revision, through } = args;
 			if (typeof revision === "number" && revision !== this.graph.revision) {

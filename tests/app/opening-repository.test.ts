@@ -13,6 +13,13 @@ const ONE_COMMIT: RepoSpec = {
 	],
 };
 
+const NESTED_FILE: RepoSpec = {
+	steps: [
+		{ step: "file", path: "src/a.txt", content: "a" },
+		{ step: "commit", message: "First" },
+	],
+};
+
 const MADE_ELSEWHERE = "Made elsewhere";
 
 /** A commit made in a terminal, outside the application. */
@@ -20,20 +27,6 @@ function commitElsewhere(repoPath: string): void {
 	execFileSync("git", ["commit", "--allow-empty", "-m", MADE_ELSEWHERE], {
 		cwd: repoPath,
 		env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" },
-	});
-}
-
-/** `open_repo` has answered once the open flow asks for the recent list after it. */
-async function openRepoAnswered(app: AppDriver): Promise<void> {
-	await waitFor("open_repo to answer", () => {
-		const commands = app.invokes();
-		const opened = commands.findIndex(({ cmd }) => cmd === "open_repo");
-		const recents = commands.findIndex(
-			({ cmd, args }, at) =>
-				at > opened && cmd === "prefs_get" && args.key === "recent_repos",
-		);
-
-		return opened >= 0 && recents > opened ? true : null;
 	});
 }
 
@@ -61,14 +54,14 @@ describe("opening a repository", () => {
 	it("shows a commit the watcher reported before the repository's view existed", async () => {
 		const app = await setup({ repo: ONE_COMMIT });
 		await app.settled();
-		const releaseRecents = app.holdPrefsGet("recent_repos");
+		const opening = app.holdNextCommandReply("open_repo");
 		await app.repo.pick();
-		await openRepoAnswered(app);
+		await opening.entered;
 		commitElsewhere(app.repo.path);
 		await app.events.externalChange(app.repo.path);
 		const rowsBeforeTheView = app.repo.commitRows();
 
-		releaseRecents();
+		opening.release();
 
 		expect(rowsBeforeTheView).toEqual([]);
 		await expect(
@@ -76,6 +69,19 @@ describe("opening a repository", () => {
 				showsCommitMadeElsewhere(app),
 			),
 		).resolves.toBe(true);
+	});
+
+	it("shows the repository while its recent-list update is still held", async () => {
+		const app = await setup({ repo: ONE_COMMIT });
+		await app.settled();
+		const releaseRecents = app.holdPrefsGet("recent_repos");
+
+		await app.repo.open();
+		const rows = app.repo.commitRows();
+		releaseRecents();
+		await app.settled();
+
+		expect(rows).toContain("First");
 	});
 
 	it("shows a commit the watcher reported while the view was registering its listener", async () => {
@@ -98,14 +104,7 @@ describe("opening a repository", () => {
 	});
 
 	it("opens the repository a chosen folder lies inside once the user agrees", async () => {
-		const app = await setup({
-			repo: {
-				steps: [
-					{ step: "file", path: "src/a.txt", content: "a" },
-					{ step: "commit", message: "First" },
-				],
-			},
-		});
+		const app = await setup({ repo: NESTED_FILE });
 		await app.settled();
 		app.dialog.chooses(`${app.repo.path}/src`);
 		app.dialog.confirms();
@@ -121,5 +120,22 @@ describe("opening a repository", () => {
 		expect(app.dialog.questions[0]).toMatch(
 			/is a folder inside the repository .*\. Open that repository\?$/,
 		);
+	});
+
+	it("opens a newer Welcome choice while an older folder lookup is returning", async () => {
+		const app = await setup({ repo: NESTED_FILE });
+		await app.settled();
+		app.dialog.chooses(`${app.repo.path}/src`);
+		app.dialog.confirms();
+		const lookup = app.holdNextCommandReply("enclosing_repository");
+
+		await pressButton("Open Repository");
+		await lookup.entered;
+		await app.repo.open();
+		lookup.release();
+		await app.settled();
+
+		expect(app.repo.commitRows()).toContain("First");
+		expect(app.dialog.questions).toEqual([]);
 	});
 });

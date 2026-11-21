@@ -1,9 +1,6 @@
 <script lang="ts">
 import X from "@lucide/svelte/icons/x";
-import { open } from "../lib/dialog.js";
-import { errorMessage } from "../lib/error-report.js";
 import { displayPath, repositoryName } from "../lib/path.js";
-import { repositoryToOpen } from "../lib/repository-to-open.js";
 import {
 	getRecentRepos,
 	type RecentRepo,
@@ -13,17 +10,22 @@ import Button from "../lib/ui/Button.svelte";
 import Row from "../lib/ui/Row.svelte";
 
 interface Props {
-	/** Opens the repository, rejecting with the reason when it will not open. */
-	onopen: (path: string, name: string) => Promise<void>;
+	/** A missing choice opens the native folder chooser. */
+	onopen: (choice?: RecentRepo) => void;
+	opening?: boolean;
+	error?: string | null;
 	isFullscreen?: boolean;
 }
 
-let { onopen, isFullscreen = false }: Props = $props();
+let {
+	onopen,
+	opening = false,
+	error = null,
+	isFullscreen = false,
+}: Props = $props();
 
 let recentRepos = $state<RecentRepo[]>([]);
 let resolvedPaths: Record<string, string> = $state({});
-let loading = $state(false);
-let error = $state<string | null>(null);
 
 // Storage is uncapped (the picker shows full history); the dashboard intentionally
 // shows only the most recent few to keep the welcome screen compact.
@@ -45,35 +47,6 @@ $effect(() => {
 		}
 	}
 });
-
-async function openRepository() {
-	error = null;
-	const selected = await open({ directory: true, multiple: false });
-	if (typeof selected !== "string") return;
-
-	await reportingFailure(async () => {
-		const repository = await repositoryToOpen(selected);
-		if (repository !== null)
-			await onopen(repository, repositoryName(repository));
-	});
-}
-
-function openPath(path: string) {
-	return reportingFailure(() => onopen(path, repositoryName(path)));
-}
-
-async function reportingFailure(opening: () => Promise<void>) {
-	if (loading) return;
-	error = null;
-	loading = true;
-	try {
-		await opening();
-	} catch (e: unknown) {
-		error = errorMessage(e, "Failed to open repository");
-	} finally {
-		loading = false;
-	}
-}
 
 async function handleRemoveRecent(path: string) {
 	await removeRecentRepo(path);
@@ -102,15 +75,15 @@ async function handleRemoveRecent(path: string) {
 			{/if}
 
 			<div class="grid w-full">
-				<Button
-					variant="primary"
-					size="lg"
-					onclick={openRepository}
-					disabled={loading}
-				>
-					{loading ? "Opening..." : "Open Repository"}
+				<Button variant="primary" size="lg" onclick={() => onopen()}>
+					Open Repository
 				</Button>
 			</div>
+			{#if opening}
+				<p role="status" class="text-callout text-text-muted"
+					>Opening repository…</p
+				>
+			{/if}
 		</div>
 
 		{#if displayedRepos.length > 0}
@@ -126,7 +99,8 @@ async function handleRemoveRecent(path: string) {
 							<Row
 								variant="entry"
 								reveal="fade"
-								onclick={() => openPath(repo.path)}
+								onclick={() =>
+									onopen({ path: repo.path, name: repositoryName(repo.path) })}
 							>
 								<span class="text-body truncate min-w-0 flex-1">
 									<span class="text-text-muted"

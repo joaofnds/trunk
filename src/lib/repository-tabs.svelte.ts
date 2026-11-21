@@ -5,6 +5,12 @@ import type { PersistedTab } from "./tab-types.js";
 type RepositoryTab = Pick<PersistedTab, "id" | "repoPath">;
 type OpenRepositoryTab = RepositoryTab & { repoPath: string };
 
+export function repositoryPathKey(path: string): string;
+export function repositoryPathKey(path: string | null): string | null;
+export function repositoryPathKey(path: string | null): string | null {
+	return path?.replace(/\/+$/, "") ?? null;
+}
+
 class RepositorySession {
 	ready = $state(false);
 	visited = $state(false);
@@ -24,12 +30,19 @@ interface RepositoryLifecycle {
 	open(path: string): Promise<void>;
 	close(path: string): Promise<void>;
 	loadUnvisitedBadge(tab: OpenRepositoryTab): Promise<void>;
-	failed(id: string, error: unknown): void;
+	failed(tab: OpenRepositoryTab, error: unknown): void;
+}
+
+interface OpeningRepository {
+	readonly path: string;
+	readonly ready: Promise<void>;
+	users: number;
 }
 
 /** Restore the foreground first; prepare other backends without mounting their views. */
 export class RepositoryTabs {
 	private readonly sessions = new SvelteMap<string, RepositorySession>();
+	private readonly requestedOpens = new Map<string, OpeningRepository>();
 	private activeId = "";
 	private backgroundRunning = false;
 	private opening?: RepositorySession;
@@ -53,9 +66,45 @@ export class RepositoryTabs {
 
 	/** The welcome screen and picker have already opened this repository. */
 	opened(tab: OpenRepositoryTab): void {
+		const current = this.sessions.get(tab.id);
+		if (current?.path === tab.repoPath) {
+			current.ready = true;
+			return;
+		}
 		const session = new RepositorySession(tab);
 		session.ready = true;
 		this.sessions.set(tab.id, session);
+	}
+
+	/** Share a backend until all choices for it have had a chance to attach a tab. */
+	async openForTab(
+		path: string,
+		attach: (openedPath: string) => void,
+	): Promise<void> {
+		const key = repositoryPathKey(path);
+		let opening = this.requestedOpens.get(key);
+		if (!opening) {
+			opening = { path, ready: this.lifecycle.open(path), users: 0 };
+			this.requestedOpens.set(key, opening);
+		}
+		opening.users += 1;
+		let ready = false;
+		try {
+			await opening.ready;
+			ready = true;
+			attach(opening.path);
+		} finally {
+			opening.users -= 1;
+			if (opening.users === 0) {
+				this.requestedOpens.delete(key);
+				if (ready) void this.closeUnused(opening.path);
+			}
+		}
+	}
+
+	async closeUnused(path: string): Promise<void> {
+		if (this.requestedOpens.get(repositoryPathKey(path))?.path === path) return;
+		await this.lifecycle.close(path);
 	}
 
 	update(tabs: readonly RepositoryTab[], activeId: string): void {
@@ -107,14 +156,8 @@ export class RepositoryTabs {
 		this.opening = session;
 		session.preparation = (async () => {
 			try {
-				if (!(await this.openSession(session))) return;
-
-				if (this.disposed || this.sessions.get(session.id) !== session) {
-					await this.lifecycle.close(session.path);
-					return;
-				}
-				session.ready = true;
-				if (session.id === this.activeId) session.visited = true;
+				await this.openSession(session);
+				if (!session.ready || this.sessions.get(session.id) !== session) return;
 				this.releaseOpen(session);
 				if (!session.visited)
 					await this.lifecycle.loadUnvisitedBadge({
@@ -128,16 +171,23 @@ export class RepositoryTabs {
 		return session.preparation;
 	}
 
-	private async openSession(session: RepositorySession): Promise<boolean> {
+	private async openSession(session: RepositorySession): Promise<void> {
+		const isCurrent = () =>
+			!this.disposed && this.sessions.get(session.id) === session;
 		try {
-			await this.lifecycle.open(session.path);
-			return true;
+			await this.openForTab(session.path, () => {
+				if (!isCurrent()) return;
+				session.ready = true;
+				if (session.id === this.activeId) session.visited = true;
+			});
 		} catch (error) {
-			if (!this.disposed && this.sessions.get(session.id) === session) {
+			if (isCurrent()) {
 				this.sessions.delete(session.id);
-				this.lifecycle.failed(session.id, error);
+				this.lifecycle.failed(
+					{ id: session.id, repoPath: session.path },
+					error,
+				);
 			}
-			return false;
 		}
 	}
 

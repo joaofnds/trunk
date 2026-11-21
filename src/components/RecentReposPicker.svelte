@@ -1,27 +1,24 @@
 <script lang="ts">
 import { tick } from "svelte";
-import { open } from "../lib/dialog.js";
-import { errorMessage } from "../lib/error-report.js";
-import { displayPath, repositoryName } from "../lib/path.js";
+import { displayPath } from "../lib/path.js";
 import { filterRecents } from "../lib/recent-filter.js";
 import {
 	clampHighlightedIdx,
 	nextHighlightedIdx,
 	pickerKeyAction,
 } from "../lib/recent-picker-keys.js";
-import { repositoryToOpen } from "../lib/repository-to-open.js";
 import { getRecentRepos, type RecentRepo } from "../lib/store.js";
-import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
 	open: boolean;
-	onpick: (path: string, name: string) => void;
+	openingName?: string;
+	onpick: (choice?: RecentRepo) => void;
 	onclose: () => void;
 }
 
-let { open: visible, onpick, onclose }: Props = $props();
+let { open: visible, openingName, onpick, onclose }: Props = $props();
 
 let query = $state("");
 let recents = $state<RecentRepo[]>([]);
@@ -97,7 +94,7 @@ function handleKeydown(e: KeyboardEvent) {
 			return;
 		case "pick": {
 			const target = filtered[highlightedIdx];
-			if (target) onpick(target.path, target.name);
+			if (target) onpick(target);
 			return;
 		}
 		case "close":
@@ -106,25 +103,6 @@ function handleKeydown(e: KeyboardEvent) {
 		case "ignore":
 			return;
 	}
-}
-
-async function handleOpenDialog() {
-	const selected = await open({ directory: true, multiple: false });
-	if (typeof selected !== "string") return;
-
-	let repository: string | null;
-	try {
-		repository = await repositoryToOpen(selected);
-	} catch (e: unknown) {
-		showToast(
-			`Could not open ${repositoryName(selected)}: ${errorMessage(e, "unknown error")}`,
-			"error",
-		);
-		return;
-	}
-	if (repository === null) return;
-
-	onpick(repository, repositoryName(repository));
 }
 
 $effect(() => {
@@ -150,13 +128,18 @@ $effect(() => {
 			placeholder="Search recent repositories"
 			class="w-full px-3 py-2 text-body outline-none bg-transparent text-text border-b border-border"
 		>
+		<div role="status" class="text-callout text-text-subtle">
+			{#if openingName}
+				<p class="truncate px-3 py-2">Opening {openingName}…</p>
+			{/if}
+		</div>
 
 		{#if loading}
 			<!-- intentionally empty body while pruning -->
 		{:else if recents.length === 0}
 			<div class="flex flex-col items-center gap-3 px-4 py-6">
 				<p class="text-body text-text-muted">No recent repositories</p>
-				<Button variant="primary" size="lg" onclick={handleOpenDialog}>
+				<Button variant="primary" size="lg" onclick={() => onpick()}>
 					Open Repository
 				</Button>
 			</div>
@@ -178,7 +161,7 @@ $effect(() => {
 						highlight="hover"
 						selected={idx === highlightedIdx}
 						onmousemove={() => (highlightedIdx = idx)}
-						onclick={() => onpick(repo.path, repo.name)}
+						onclick={() => onpick(repo)}
 					>
 						<span class="text-body font-semibold truncate text-text"
 							>{repo.name}</span

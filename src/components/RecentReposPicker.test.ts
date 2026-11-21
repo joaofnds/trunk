@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { getRecentRepos } from "../lib/store.js";
-import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import RecentReposPicker from "./RecentReposPicker.svelte";
 import "../__tests__/helpers/tauri-mock";
 
@@ -80,50 +79,17 @@ describe("RecentReposPicker", () => {
 			await screen.findByRole("option", { name: /dotfiles/ }),
 		);
 
-		expect(onpick).toHaveBeenCalledWith(
-			"/Users/test/code/dotfiles",
-			"dotfiles",
-		);
+		expect(onpick).toHaveBeenCalledWith(twoRepos[1]);
 	});
 
-	it("picks the repository a chosen folder lies inside once the user agrees", async () => {
+	it("requests a folder choice when its Open Repository button is clicked", async () => {
 		vi.mocked(getRecentRepos).mockResolvedValue([]);
-		const dialog = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
-		vi.mocked(dialog.ask).mockResolvedValueOnce(true);
-		vi.mocked(invoke).mockImplementation((cmd: string) =>
-			Promise.resolve(
-				cmd === "enclosing_repository" ? "/Users/test/code/trunk" : undefined,
-			),
-		);
 		const onpick = vi.fn();
 		mount({ onpick });
 
 		await fireEvent.click(await screen.findByText("Open Repository"));
 
-		await vi.waitFor(() => {
-			expect(onpick).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
-		});
-	});
-
-	it("says why a chosen folder could not be opened when looking it up fails", async () => {
-		_resetToasts();
-		vi.mocked(getRecentRepos).mockResolvedValue([]);
-		const dialog = await import("@tauri-apps/plugin-dialog");
-		vi.mocked(dialog.open).mockResolvedValueOnce("/Users/test/code/trunk/src");
-		vi.mocked(invoke).mockRejectedValue({
-			code: "spawn_error",
-			message: "the lookup stopped",
-		});
-		mount();
-
-		await fireEvent.click(await screen.findByText("Open Repository"));
-
-		await vi.waitFor(() =>
-			expect(toasts.items.map((toast) => toast.message)).toEqual([
-				"Could not open src: the lookup stopped",
-			]),
-		);
+		expect(onpick).toHaveBeenCalledWith();
 	});
 
 	it("closes when the dialog is cancelled", async () => {

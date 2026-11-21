@@ -150,6 +150,14 @@ export class AppDriver {
 		return this.internals.holdCommand(command);
 	}
 
+	/** Pauses delivery of the next successful reply after the real host returns. */
+	holdNextCommandReply(command: string): {
+		entered: Promise<void>;
+		release: () => void;
+	} {
+		return this.internals.holdNextCommandReply(command);
+	}
+
 	/** How many times the application has refetched the commit graph. What a
 	 *  scheduled refresh is observable as when the graph it produces is
 	 *  unchanged. */

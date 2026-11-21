@@ -20,6 +20,7 @@ import {
 	type CoalescedTask,
 	createCoalescedTask,
 } from "./lib/coalesced-task.js";
+import { open } from "./lib/dialog.js";
 import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
 import { invokesSettled, safeInvoke, trackPending } from "./lib/invoke.js";
@@ -37,7 +38,11 @@ import {
 	type RepoChanged,
 	requestRepoChange,
 } from "./lib/repo-change-subscription.js";
-import { RepositoryTabs } from "./lib/repository-tabs.svelte.js";
+import {
+	RepositoryTabs,
+	repositoryPathKey,
+} from "./lib/repository-tabs.svelte.js";
+import { repositoryToOpen } from "./lib/repository-to-open.js";
 import { ALL_THREADS } from "./lib/review-filter.js";
 import { getScheduler } from "./lib/scheduler.js";
 import {
@@ -59,6 +64,7 @@ import {
 	getRightPaneWidth,
 	getZoomLevel,
 	preferenceGeneration,
+	type RecentRepo,
 	refVisibilityWritesSettled,
 	setActiveTabId,
 	setDiffContentMode,
@@ -315,8 +321,11 @@ let reviewLeftPaneCollapsed = $state(false);
 let isFullscreen = $state(false);
 let windowFocused = $state(false);
 
-// Recent-projects picker (quick-260514-356)
-let pickerOpen = $state(false);
+interface RepositoryPicker {
+	readonly tabId: string;
+}
+
+let picker = $state.raw<RepositoryPicker | null>(null);
 
 // Review panel toggle (Phase 65, D-12 throwaway stub) — flipped by the View-menu
 // "Start/End Code Review" item via the review-toggle event.
@@ -400,6 +409,15 @@ const autofetch = new AutofetchScheduler(scheduler, runAutofetch);
 let repositoryTabsDisposed = false;
 const dirtyCountRefreshes = new Map<string, CoalescedTask>();
 const closingRepositories = new Map<string, Promise<void>>();
+interface PendingOpen {
+	readonly name: string;
+	readonly fromPicker?: RepositoryPicker;
+	// The tab can still recover if this choice replaces the failed repository.
+	restoreFailure?: { path: string; error: unknown };
+	cancel(): void;
+}
+const pendingOpens = new SvelteMap<string, PendingOpen>();
+let recentRepositoryWrites = Promise.resolve();
 const repositories = new RepositoryTabs(scheduler, {
 	open: openRepositoryBackend,
 	close: closeUnusedRepository,
@@ -415,16 +433,10 @@ const repositories = new RepositoryTabs(scheduler, {
 			// Keep the previous marker if the initial status read fails.
 		}
 	},
-	failed: (id, error) => {
-		const name = tabs.find((tab) => tab.id === id)?.repoName;
-		if (name)
-			showToast(
-				`Closed the tab for ${name} because it could not be opened: ${errorMessage(error, "unknown error")}`,
-				"error",
-			);
-		if (activeTabId === id && initialActiveId === id)
-			activeTabId = tabs.find((tab) => tab.id !== id)?.id ?? "";
-		closeTab(id);
+	failed: ({ id, repoPath }, error) => {
+		const request = pendingOpens.get(id);
+		if (request) request.restoreFailure = { path: repoPath, error };
+		else closeFailedRestore(id, repoPath, error);
 	},
 });
 
@@ -435,7 +447,20 @@ $effect(() => {
 	}));
 	const active = activeTabId;
 	if (initialActiveId !== active) initialActiveId = null;
-	untrack(() => repositories.update(currentTabs, active));
+	untrack(() => {
+		for (const [id, request] of pendingOpens) {
+			if (currentTabs.some((tab) => tab.id === id)) continue;
+			request.cancel();
+			pendingOpens.delete(id);
+		}
+		const currentPicker = picker;
+		if (
+			currentPicker &&
+			!currentTabs.some((tab) => tab.id === currentPicker.tabId)
+		)
+			closePicker(currentPicker);
+		repositories.update(currentTabs, active);
+	});
 });
 
 async function runAutofetch(path: string, intervalMs: number): Promise<void> {
@@ -540,6 +565,7 @@ interface TabState {
 	remoteState: RemoteState;
 	// The commit the tab's graph shows as HEAD, which the toolbar aims Undo at.
 	shownHead: { oid: string | null };
+	welcome: { error: string | null };
 }
 
 const tabStates = new SvelteMap<string, TabState>();
@@ -550,9 +576,11 @@ function createTabState(tabId: string, repoPath: string | null = null): void {
 	const remoteState = adoptRemoteState(repoPath) ?? createTabRemoteState();
 
 	const shownHead = $state<TabState["shownHead"]>({ oid: null });
+	const welcome = $state<TabState["welcome"]>({ error: null });
 	tabStates.set(tabId, {
 		remoteState,
 		shownHead,
+		welcome,
 	});
 }
 
@@ -624,7 +652,7 @@ function closeOtherTabs(keepTabId: string) {
 	tabs = tabs.filter((t) => t.id === keepTabId);
 	for (const t of toClose) {
 		if (t.repoPath) {
-			void closeUnusedRepository(t.repoPath);
+			void repositories.closeUnused(t.repoPath);
 		}
 		dropTabState(t);
 	}
@@ -638,7 +666,7 @@ function closeAllTabs() {
 	tabs = [];
 	for (const t of toClose) {
 		if (t.repoPath) {
-			void closeUnusedRepository(t.repoPath);
+			void repositories.closeUnused(t.repoPath);
 		}
 		dropTabState(t);
 	}
@@ -677,71 +705,156 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 	await menu.popup();
 }
 
-function openRepoInTab(tabId: string, path: string, name: string) {
-	// TAB-10: Duplicate detection — switch to existing tab instead of creating duplicate
-	const normalizedPath = repositoryPathKey(path);
-	const existing = tabs.find(
-		(t) => t.repoPath && repositoryPathKey(t.repoPath) === normalizedPath,
-	);
-	if (existing) {
-		activeTabId = existing.id;
-		// Close the transient empty tab that triggered the open
-		const triggerTab = tabs.find((t) => t.id === tabId);
-		if (triggerTab && !triggerTab.repoPath) {
-			tabs = tabs.filter((t) => t.id !== tabId);
-			tabStates.delete(tabId);
-		}
-		persistTabs();
-		return;
-	}
-
-	const tab = tabs.find((t) => t.id === tabId);
-	if (tab) {
-		const previousPath = tab.repoPath;
-		// Every field of a tab's state describes the repository it was gathered
-		// in: an in-flight pull, its progress line, its failure, the undone
-		// commit. Dropping the whole thing is what keeps a stale field from
-		// following the tab to a repository it says nothing about — a pull still
-		// marked running would leave the incoming repository's Pull and Push
-		// disabled with no way back.
-		dropTabState(tab);
-		createTabState(tabId, path);
-		repositories.opened({ id: tabId, repoPath: path });
-		tab.repoPath = path;
-		tab.repoName = name;
-		persistTabs();
-		if (previousPath) {
-			void closeUnusedRepository(previousPath);
-		}
-	}
-}
-
-/** Shows `path` from tab `tabId`. A repository another tab already shows is not
- *  opened again, since opening it resets that tab's backend state. Rejects with
- *  the reason when the repository will not open. */
-async function openRepository(tabId: string, path: string, name: string) {
+function repositoryTab(path: string): TabInfo | undefined {
 	const key = repositoryPathKey(path);
-	if (!tabs.some((tab) => repositoryPathKey(tab.repoPath) === key))
-		await openRepositoryBackend(path);
-	await addRecentRepo({ name, path });
-	openRepoInTab(tabId, path, name);
+	return tabs.find((tab) => repositoryPathKey(tab.repoPath) === key);
 }
 
-async function handlePickerPick(path: string, name: string) {
-	// No-op if the active tab already shows this repo (CONTEXT.md decision).
-	if (activeTab?.repoPath === path) {
-		pickerOpen = false;
+function openRepoInTab(tab: TabInfo, path: string, name: string) {
+	const existing = repositoryTab(path);
+	if (existing) {
+		if (existing.repoPath)
+			repositories.opened({ id: existing.id, repoPath: existing.repoPath });
+		if (activeTabId === tab.id) activeTabId = existing.id;
+		// Close the transient empty tab that triggered the open
+		if (!tab.repoPath) {
+			tabs = tabs.filter((t) => t.id !== tab.id);
+			tabStates.delete(tab.id);
+		}
+		persistTabs();
 		return;
 	}
+
+	const previousPath = tab.repoPath;
+	// The state describes the previous repository, including its remote operation.
+	dropTabState(tab);
+	createTabState(tab.id, path);
+	repositories.opened({ id: tab.id, repoPath: path });
+	tab.repoPath = path;
+	tab.repoName = name;
+	persistTabs();
+	if (previousPath) void repositories.closeUnused(previousPath);
+}
+
+function rememberRepositoryInOrder(result: Promise<RecentRepo | null>): void {
+	recentRepositoryWrites = trackPending(
+		recentRepositoryWrites.then(async () => {
+			const repo = await result;
+			if (!repo || repositoryTabsDisposed) return;
+			try {
+				await addRecentRepo(repo);
+			} catch (error) {
+				if (!repositoryTabsDisposed)
+					showToast(
+						`Opened ${repo.name}, but could not save it in Recent: ${errorMessage(error, "unknown error")}`,
+						"error",
+					);
+			}
+		}),
+	);
+}
+
+/** Only a tab's latest choice can publish a repository or report an open error. */
+async function openRepository(
+	tabId: string,
+	choice?: RecentRepo,
+	fromPicker?: RepositoryPicker,
+) {
+	const tab = tabs.find(({ id }) => id === tabId);
+	if (!tab || updateFrozen || (fromPicker && picker !== fromPicker)) return;
+
+	const previous = pendingOpens.get(tabId);
+	previous?.cancel();
+	const welcome = fromPicker ? undefined : getTabState(tabId).welcome;
+	if (welcome) welcome.error = null;
+	let name = choice?.name ?? "repository";
+	let remember!: (repo: RecentRepo | null) => void;
+	const result = new Promise<RecentRepo | null>((resolve) => {
+		remember = resolve;
+	});
+	const request: PendingOpen = {
+		name,
+		fromPicker,
+		restoreFailure: previous?.restoreFailure,
+		cancel: () => remember(null),
+	};
+	pendingOpens.set(tabId, request);
+	rememberRepositoryInOrder(result);
+	const isCurrent = () =>
+		!repositoryTabsDisposed &&
+		pendingOpens.get(tabId) === request &&
+		tabs.includes(tab);
+	const attach = (openedPath: string) => {
+		if (!isCurrent()) return;
+		openRepoInTab(tab, openedPath, name);
+		remember({ name, path: openedPath });
+	};
+
+	let closeAfterChoice = !!choice;
 	try {
-		await openRepository(activeTabId, path, name);
-	} catch (e) {
-		showToast(
-			`Could not open ${name}: ${errorMessage(e, "unknown error")}`,
-			"error",
-		);
+		let path = choice?.path;
+		if (path === undefined) {
+			const folder = await open({ directory: true, multiple: false });
+			if (typeof folder !== "string" || !isCurrent()) return;
+			name = repositoryName(folder);
+			const resolved = await repositoryToOpen(folder, isCurrent);
+			if (resolved === null || !isCurrent()) return;
+			path = resolved;
+			name = repositoryName(path);
+			closeAfterChoice = true;
+		}
+
+		const target = repositoryTab(path);
+		if (target && repositories.isReady(target)) {
+			if (target.id !== tabId) attach(target.repoPath ?? path);
+		} else {
+			await repositories.openForTab(target?.repoPath ?? path, attach);
+		}
+	} catch (error) {
+		if (!isCurrent()) return;
+		if (welcome)
+			welcome.error = errorMessage(error, "Failed to open repository");
+		else
+			showToast(
+				`Could not open ${name}: ${errorMessage(error, "unknown error")}`,
+				"error",
+			);
+	} finally {
+		finishOpen(tabId, request, closeAfterChoice);
 	}
-	pickerOpen = false;
+}
+
+function finishOpen(
+	tabId: string,
+	request: PendingOpen,
+	closeAfterChoice: boolean,
+) {
+	request.cancel();
+	if (pendingOpens.get(tabId) !== request) return;
+	pendingOpens.delete(tabId);
+	if (closeAfterChoice && picker === request.fromPicker) picker = null;
+	const failed = request.restoreFailure;
+	if (failed) closeFailedRestore(tabId, failed.path, failed.error);
+}
+
+function closeFailedRestore(id: string, path: string, error: unknown) {
+	const tab = tabs.find((tab) => tab.id === id && tab.repoPath === path);
+	if (!tab || repositories.isReady(tab)) return;
+	showToast(
+		`Closed the tab for ${tab.repoName} because it could not be opened: ${errorMessage(error, "unknown error")}`,
+		"error",
+	);
+	if (activeTabId === id && initialActiveId === id)
+		activeTabId = tabs.find((tab) => tab.id !== id)?.id ?? "";
+	closeTab(id);
+}
+
+function closePicker(current: RepositoryPicker) {
+	if (picker !== current) return;
+	picker = null;
+	const request = pendingOpens.get(current.tabId);
+	if (request?.fromPicker !== current) return;
+	finishOpen(current.tabId, request, false);
 }
 
 function closeTab(tabId: string) {
@@ -766,7 +879,7 @@ function closeTab(tabId: string) {
 
 	// Close repo on backend (after removing from DOM to prevent stale effects)
 	if (repoPath) {
-		void closeUnusedRepository(repoPath);
+		void repositories.closeUnused(repoPath);
 	}
 
 	persistTabs();
@@ -891,6 +1004,7 @@ $effect(() => {
 	return () => {
 		disposed = true;
 		repositoryTabsDisposed = true;
+		for (const request of pendingOpens.values()) request.cancel();
 		repositories.dispose();
 	};
 });
@@ -1095,9 +1209,9 @@ $effect(() => {
 				return;
 			case "Meta+r":
 			case "Ctrl+r":
-				if (focusInEditable(document.activeElement)) return;
+				if (!activeTabId || focusInEditable(document.activeElement)) return;
 				e.preventDefault();
-				pickerOpen = true;
+				picker ??= { tabId: activeTabId };
 				return;
 			case "Meta+=":
 			case "Meta++":
@@ -1135,12 +1249,6 @@ $effect(() => {
 	window.addEventListener("keydown", handleKeydown);
 	return () => window.removeEventListener("keydown", handleKeydown);
 });
-
-function repositoryPathKey(path: string): string;
-function repositoryPathKey(path: string | null): string | null;
-function repositoryPathKey(path: string | null): string | null {
-	return path?.replace(/\/+$/, "") ?? null;
-}
 
 async function closeUnusedRepository(path: string): Promise<void> {
 	if (!repositoryTabsDisposed && tabs.some((tab) => tab.repoPath === path))
@@ -1492,18 +1600,26 @@ $effect(() => {
 				{:else}
 					<WelcomeScreen
 						{isFullscreen}
-						onopen={(path, name) => openRepository(tab.id, path, name)}
+						opening={pendingOpens.has(tab.id)}
+						error={getTabState(tab.id).welcome.error}
+						onopen={(choice) => openRepository(tab.id, choice)}
 					/>
 				{/if}
 			</div>
 		{/each}
 	</div>
 
-	<RecentReposPicker
-		open={pickerOpen}
-		onpick={handlePickerPick}
-		onclose={() => (pickerOpen = false)}
-	/>
+	{#key picker}
+		{#if picker}
+			{@const current = picker}
+			<RecentReposPicker
+				open={true}
+				openingName={pendingOpens.get(current.tabId)?.name}
+				onpick={(choice) => openRepository(current.tabId, choice, current)}
+				onclose={() => closePicker(current)}
+			/>
+		{/if}
+	{/key}
 
 	<Toast />
 </div>

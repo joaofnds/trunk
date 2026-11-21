@@ -6,17 +6,24 @@ import { displayPath } from "./path.js";
 /** The repository to open for a folder the user chose: the folder itself, or the
  *  repository it lies inside once the user agrees to open that instead, or null
  *  when they decline. */
-export async function repositoryToOpen(folder: string): Promise<string | null> {
+export async function repositoryToOpen(
+	folder: string,
+	isCurrent = () => true,
+): Promise<string | null> {
 	const enclosing = await safeInvoke<string | null>("enclosing_repository", {
 		path: folder,
 	});
+	if (!isCurrent()) return null;
 	if (enclosing === null) return folder;
 
-	const agreed = await ask(
-		`${await shownPath(folder)} is a folder inside the repository ${await shownPath(enclosing)}. Open that repository?`,
-		{ title: "Open Repository", kind: "info", okLabel: "Open Repository" },
-	);
-	return agreed ? enclosing : null;
+	const question = `${await shownPath(folder)} is a folder inside the repository ${await shownPath(enclosing)}. Open that repository?`;
+	if (!isCurrent()) return null;
+	const agreed = await ask(question, {
+		title: "Open Repository",
+		kind: "info",
+		okLabel: "Open Repository",
+	});
+	return agreed && isCurrent() ? enclosing : null;
 }
 
 async function shownPath(path: string): Promise<string> {
