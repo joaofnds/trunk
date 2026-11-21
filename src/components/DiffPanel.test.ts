@@ -410,6 +410,42 @@ describe("DiffPanel", () => {
 		).toBeInTheDocument();
 	});
 
+	it("offers no line view controls for a binary file it shows on its own", async () => {
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [binaryDiff],
+				commitDetail: null,
+				selectedPath: binaryDiff.path,
+				onclose: vi.fn(),
+			},
+		});
+		await flushPrefs();
+		for (const name of [
+			"Show full file",
+			"Side-by-side view",
+			"Ignore whitespace changes",
+			"Show invisible characters",
+			/word wrap/i,
+		])
+			expect(screen.queryByTitle(name)).toBeNull();
+	});
+
+	it("keeps the line view controls for a text file", async () => {
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				selectedPath: testDiff.path,
+				onclose: vi.fn(),
+			},
+		});
+		await flushPrefs();
+		expect(screen.getByTitle("Side-by-side view")).toBeInTheDocument();
+		expect(screen.getByTitle("Ignore whitespace changes")).toBeInTheDocument();
+	});
+
 	it("calls onclose when close button clicked", async () => {
 		const onclose = vi.fn();
 		render(DiffPanel, {

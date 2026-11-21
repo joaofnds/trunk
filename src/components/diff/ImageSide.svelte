@@ -62,7 +62,7 @@ function measures(source: string) {
 		<span class="text-text-muted">{details}</span>
 	</figcaption>
 	<div
-		class="flex items-center justify-center rounded border border-border bg-surface-raised p-4"
+		class="flex flex-1 items-center justify-center rounded border border-border bg-surface-raised p-4"
 	>
 		<img
 			src={url}

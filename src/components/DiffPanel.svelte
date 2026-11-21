@@ -1429,6 +1429,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		oncommentfile={handleCommentFile}
 		{onclose}
 		{backLabel}
+		showsLines={!selectedFile?.is_binary}
 	/>
 	<DiffViewer
 		{folds}

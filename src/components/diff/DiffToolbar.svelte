@@ -63,6 +63,9 @@ interface Props {
 	onclose: () => void;
 	/** Names the view the diff covers, where closing it returns to. */
 	backLabel?: string | null;
+	/** Whether the pane shows lines. A binary file shows none, so the controls
+	 *  that shape lines would do nothing there. */
+	showsLines?: boolean;
 }
 
 let {
@@ -91,6 +94,7 @@ let {
 	oncommentfile,
 	onclose,
 	backLabel = null,
+	showsLines = true,
 }: Props = $props();
 
 // Rendered prose collapses whitespace by nature, so the invisibles toggle
@@ -244,74 +248,76 @@ const compact = $derived(
 		</Button>
 	{/if}
 
-	{#if diffKind !== "current_file"}
+	{#if showsLines}
+		{#if diffKind !== "current_file"}
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
+				title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
+				onclick={() =>
+					oncontentmodechange(contentMode === "hunk" ? "full" : "hunk")}
+			>
+				{#if contentMode === "hunk"}
+					<UnfoldVertical size={14} />
+				{:else}
+					<FoldVertical size={14} />
+				{/if}
+			</Button>
+		{/if}
+
 		<Button
 			icon
 			size="sm"
 			variant="ghost"
-			title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
+			title={layoutMode === "inline" ? "Side-by-side view" : "Inline view"}
 			onclick={() =>
-				oncontentmodechange(contentMode === "hunk" ? "full" : "hunk")}
+				onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
 		>
-			{#if contentMode === "hunk"}
-				<UnfoldVertical size={14} />
+			{#if layoutMode === "inline"}
+				<Columns2 size={14} />
 			{:else}
-				<FoldVertical size={14} />
+				<Rows2 size={14} />
 			{/if}
 		</Button>
+
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
+			aria-pressed={ignoreWhitespace}
+			title="Ignore whitespace changes"
+			onclick={() => onignorewhitespacechange(!ignoreWhitespace)}
+		>
+			<Space size={14} />
+		</Button>
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
+			aria-pressed={showInvisibles}
+			disabled={renderedActive}
+			title={renderedActive
+				? "Invisible characters aren't rendered in preview"
+				: "Show invisible characters"}
+			onclick={() => onshowinvisibleschange(!showInvisibles)}
+		>
+			<Pilcrow size={14} />
+		</Button>
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
+			aria-pressed={wordWrap}
+			disabled={!fixedPitch}
+			title={fixedPitch
+				? "Toggle word wrap"
+				: "Word wrap needs a fixed-pitch diff font"}
+			onclick={() => onwordwrapchange(!wordWrap)}
+		>
+			<TextWrap size={14} />
+		</Button>
 	{/if}
-
-	<Button
-		icon
-		size="sm"
-		variant="ghost"
-		title={layoutMode === "inline" ? "Side-by-side view" : "Inline view"}
-		onclick={() =>
-			onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
-	>
-		{#if layoutMode === "inline"}
-			<Columns2 size={14} />
-		{:else}
-			<Rows2 size={14} />
-		{/if}
-	</Button>
-
-	<Button
-		icon
-		size="sm"
-		variant="ghost"
-		aria-pressed={ignoreWhitespace}
-		title="Ignore whitespace changes"
-		onclick={() => onignorewhitespacechange(!ignoreWhitespace)}
-	>
-		<Space size={14} />
-	</Button>
-	<Button
-		icon
-		size="sm"
-		variant="ghost"
-		aria-pressed={showInvisibles}
-		disabled={renderedActive}
-		title={renderedActive
-			? "Invisible characters aren't rendered in preview"
-			: "Show invisible characters"}
-		onclick={() => onshowinvisibleschange(!showInvisibles)}
-	>
-		<Pilcrow size={14} />
-	</Button>
-	<Button
-		icon
-		size="sm"
-		variant="ghost"
-		aria-pressed={wordWrap}
-		disabled={!fixedPitch}
-		title={fixedPitch
-			? "Toggle word wrap"
-			: "Word wrap needs a fixed-pitch diff font"}
-		onclick={() => onwordwrapchange(!wordWrap)}
-	>
-		<TextWrap size={14} />
-	</Button>
 	<span
 		class="font-probe"
 		bind:this={fontProbe}
