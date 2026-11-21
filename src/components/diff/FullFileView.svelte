@@ -6,7 +6,6 @@ import {
 	type DiffComposer,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
-	type ReadingLine,
 } from "../../lib/diff-rows.js";
 import {
 	gripLabel,
@@ -30,6 +29,7 @@ import GutterGrip from "../../lib/ui/GutterGrip.svelte";
 import {
 	createVirtualizedDiff,
 	type DiffListHandle,
+	type ReadingAnchor,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
 import ExactVirtualList from "./ExactVirtualList.svelte";
@@ -61,8 +61,8 @@ interface Props {
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	/** The open comment composer, drawn under the line its comment ends on. */
 	composer?: DiffComposer | null;
-	/** The line the view this one replaced was at, which this one opens at. */
-	startAt?: ReadingLine | null;
+	/** Where the viewport opens after a subject or mode change. */
+	startAt?: ReadingAnchor | null;
 	/** Which threads are folded, shared with the views the diff switches to. */
 	folds: ThreadFolds;
 }
@@ -251,16 +251,21 @@ function extendDrag(e: MouseEvent) {
 }
 
 export const readingLine = vd.readingLine;
-export const hunkCount = vd.hunkCount;
+export const isReady = vd.isReady;
 export const ordinalOf = vd.ordinalOf;
 export const scrollToHunk = vd.scrollToHunk;
 export const scrollToLine = vd.scrollToLine;
 export const scrollToThread = vd.scrollToThread;
 export const step = vd.step;
 
+export function hasSelection(): boolean {
+	return anchorIndex !== null;
+}
+
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape
 // so the selection never goes stale.
 export function clearSelection() {
+	stopDrag();
 	selectedPath = null;
 	anchorIndex = null;
 	focusIndex = null;

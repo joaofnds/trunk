@@ -424,6 +424,7 @@ describe("createVirtualizedDiff", () => {
 
 		const wrapped = {
 			topIndex: () => 7,
+			verticalScrollRevision: () => 0,
 			anchorTo: vi.fn(),
 			revealIndex: vi.fn(),
 			scrollToIndex: vi.fn(),
@@ -431,6 +432,7 @@ describe("createVirtualizedDiff", () => {
 		mount({ wordWrap: true, list: wrapped });
 		const unwrapped = {
 			topIndex: () => 7,
+			verticalScrollRevision: () => 0,
 			anchorTo: vi.fn(),
 			revealIndex: vi.fn(),
 			scrollToIndex: vi.fn(),

@@ -3,11 +3,7 @@ import { untrack } from "svelte";
 import { isImagePath } from "../../lib/binary-file.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
-import {
-	type DiffComposer,
-	diffHoldsComposer,
-	type ReadingLine,
-} from "../../lib/diff-rows.js";
+import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { afterRev, beforeRev } from "../../lib/rev-spec.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
@@ -24,6 +20,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
+import type { ReadingAnchor } from "../../lib/virtualized-diff.svelte.js";
 import ReviewEmpty from "../review/ReviewEmpty.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
@@ -67,7 +64,6 @@ interface Props {
 	/** Whether the mounted view's window keys act, as for the panel holding it. */
 	keysActive: boolean;
 	collapsedFiles: Set<string>;
-	hunkElements: Record<string, HTMLDivElement>;
 	onfilecollapsetoggle: (path: string) => void;
 	onlineclick: (
 		filePath: string,
@@ -109,6 +105,7 @@ interface Props {
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
 	diffNav?: DiffNav | null;
+	renderedView?: RenderedDiff | null;
 	refreshToken?: number;
 }
 
@@ -139,7 +136,6 @@ let {
 	isMerge,
 	keysActive,
 	collapsedFiles,
-	hunkElements,
 	onfilecollapsetoggle,
 	onlineclick,
 	onlinemousedown,
@@ -165,6 +161,7 @@ let {
 	oncommentselection,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
+	renderedView = $bindable(null),
 	refreshToken = 0,
 }: Props = $props();
 
@@ -222,27 +219,30 @@ const pane = $derived.by(() => {
 	return "split";
 });
 
-// The line the reader was at when a line view gave way to another, by layout,
-// content mode or a refetch between them, so the next one opens there rather
-// than at the top. Captured before the outgoing view unmounts, which is what
-// the pre effect is for, so it is then the only view mounted, and handed over only once the new view's content
-// answers what was asked, since a stale payload holds the old mode's rows.
-// Another file or commit starts at its top. Both are compared by value, since
-// a prop can notify without changing.
-let keptLine = $state<ReadingLine | null>(null);
+// Read the outgoing view before it updates or unmounts. A mode change carries
+// its reading line over once the new rows arrive. A subject change explicitly
+// starts at the top, since cached rows can reuse the same viewport.
+let readingAnchor = $state.raw<ReadingAnchor | null>(null);
 let shownView: string | null = null;
 let shownSubject: string | null = null;
 $effect.pre(() => {
-	const subject = `${commitOid}:${selectedPath}`;
+	const subject = JSON.stringify([
+		repoPath,
+		diffKind,
+		diffKind === "commit" ? commitOid : null,
+		compareBaseOid,
+		selectedPath,
+	]);
 	const view =
 		pane === "hunk" || pane === "full" || pane === "split"
 			? `${pane}:${contentMode}`
 			: null;
 	untrack(() => {
-		if (subject !== shownSubject) {
-			keptLine = null;
+		if (shownSubject !== null && subject !== shownSubject) {
+			readingAnchor = { line: null };
 		} else if (view !== shownView && shownView !== null) {
-			keptLine = (diffNav ?? fullFileView)?.readingLine() ?? keptLine;
+			const line = (diffNav ?? fullFileView)?.readingLine();
+			if (line) readingAnchor = { line };
 		}
 		shownSubject = subject;
 		shownView = view;
@@ -255,7 +255,7 @@ const imageBefore = $derived(
 		: beforeRev(diffKind, commitDetail?.parent_oids[0] ?? null, compareBaseOid),
 );
 
-const startAt = $derived(loading || payloadStale ? null : keptLine);
+const startAt = $derived(hasContent ? readingAnchor : null);
 
 // The selected file's threads, drawn under the no-changes note since no line
 // of a diff is there to hang them on.
@@ -318,6 +318,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if pane === "rendered" && selectedPath && selectedFileDiff}
 		<RenderedDiff
+			bind:this={renderedView}
 			{layoutMode}
 			{selectedPath}
 			oldPath={selectedFileDiff.old_path}
@@ -331,7 +332,6 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{ignoreWhitespace}
 			{wordWrap}
 			{refreshToken}
-			{hunkElements}
 		/>
 	{:else if pane === "image" && selectedFileDiff}
 		<ImageDiff

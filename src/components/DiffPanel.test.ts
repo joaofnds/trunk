@@ -25,6 +25,7 @@ import {
 	trailingWhitespaceStart,
 } from "../lib/diff-utils.js";
 import { safeInvoke } from "../lib/invoke.js";
+import type { DiffRow as MarkdownRow } from "../lib/markdown.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import type {
@@ -2603,6 +2604,22 @@ describe("DiffPanel drag-to-select", () => {
 		expect(selectedCount()).toBe(1);
 	});
 
+	it("ends the hunk drag when Escape clears its selection before release", async () => {
+		await renderCommit();
+		const first = screen.getByText("const x = 2;");
+		const next = screen.getByText("const y = 3;");
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"), { buttons: 1 });
+		await fireEvent.mouseOver(next, { buttons: 1 });
+		expect(next.closest("[data-line-index]")).toHaveClass("in-selection");
+		await fireEvent.keyDown(document.body, { key: "Escape" });
+		expect(next.closest("[data-line-index]")).not.toHaveClass("in-selection");
+		await fireEvent.mouseOver(first, { buttons: 1 });
+		await fireEvent.mouseUp(window);
+
+		expect(selectedCount()).toBe(0);
+	});
+
 	it("deselects the range when the drag starts on an already-selected line", async () => {
 		await renderCommit();
 
@@ -4693,6 +4710,42 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewport.scrollTop).toBe(64);
 	});
 
+	it("steps from the source viewport after it scrolls away and back to a clamped jump", async () => {
+		vi.useFakeTimers();
+		onTestFinished(() => {
+			vi.useRealTimers();
+		});
+		stubLayout({ width: 900, height: 116, replace: true });
+		const { container, ready } = renderNav();
+		await ready;
+		const viewport = viewportOf(container);
+		const content = viewport.querySelector<HTMLElement>(
+			".exact-virtual-content",
+		);
+		const lastHeader = screen
+			.getByText("@@ -10,3 +10,2 @@")
+			.closest(".hunk-toolbar");
+		const contentHeight = Number.parseFloat(content?.style.height ?? "");
+		clampScrollTop(viewport, contentHeight);
+		const bottom = contentHeight - viewport.clientHeight;
+		expect(bottom).toBeGreaterThan(0);
+		expect(bottom).toBeLessThan(64);
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await fireEvent.scroll(viewport);
+		expect(viewport.scrollTop).toBe(bottom);
+		expect(lastHeader).toHaveClass("hunk-highlight");
+		vi.advanceTimersByTime(600);
+		await tick();
+		expect(lastHeader).not.toHaveClass("hunk-highlight");
+		await fireEvent.scroll(viewport, { target: { scrollTop: bottom - 1 } });
+		await fireEvent.scroll(viewport, { target: { scrollTop: bottom } });
+
+		await fireEvent.keyDown(window, { key: "]" });
+
+		expect(lastHeader).toHaveClass("hunk-highlight");
+	});
+
 	// A refetch moves the hunks under a scroll position the reader left alone,
 	// so the step goes from the rows now on screen. Two more lines in the first
 	// hunk put the second hunk's header at 100.
@@ -4903,70 +4956,273 @@ describe("DiffPanel hunk navigation", () => {
 		expect(viewportOf(container).scrollTop).toBe(0);
 	});
 
-	// RenderedDiff is not virtualized: it registers one element per changed row
-	// into the host's record, and three of its own cases pin that. Navigation has
-	// to keep reaching it, because a virtualized view publishes a handle and this
-	// one publishes nothing.
-	it("navigates through the element record when rendered markdown is showing", async () => {
-		const storeMock = await import("../lib/store.js");
-		vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
-			Promise.resolve("rendered"),
+	const changeLines = [3, 9, 17, 23];
+	const paragraph = (text: string, top: number, height: number) =>
+		`<p data-test-top="${top}" data-test-height="${height}">${text}</p>`;
+	const renderedContentHeight = 330;
+	const twoSidedChange = (line: number, nextTop: number): MarkdownRow => ({
+		kind: "changed",
+		beforeHtml: paragraph(`before ${line}`, line * 10, 10),
+		afterHtml: paragraph(
+			`after ${line}`,
+			line * 10 + 10,
+			nextTop - (line * 10 + 10),
+		),
+		afterStart: line,
+		afterEnd: line,
+	});
+	const inlineChanges: MarkdownRow[] = [
+		twoSidedChange(3, 90),
+		twoSidedChange(9, 130),
+		{
+			kind: "unchanged",
+			blockKind: "paragraph",
+			html: paragraph("folded text", 130, 40),
+			afterStart: 13,
+			afterEnd: 13,
+		},
+		twoSidedChange(17, 230),
+		twoSidedChange(23, renderedContentHeight),
+	];
+	function addedOrRemovedBlock(
+		side: "added" | "removed",
+		line: number,
+		index: number,
+	) {
+		const nextLine = changeLines[index + 1];
+		const nextTop =
+			nextLine === undefined ? renderedContentHeight : nextLine * 10;
+		return paragraph(`${side} ${line}`, line * 10, nextTop - line * 10);
+	}
+
+	const addedBlocks = changeLines.map(
+		(line, index): MarkdownRow => ({
+			kind: "added",
+			html: addedOrRemovedBlock("added", line, index),
+			afterStart: line,
+			afterEnd: line,
+		}),
+	);
+	const removedBlocks = changeLines.map(
+		(line, index): MarkdownRow => ({
+			kind: "removed",
+			html: addedOrRemovedBlock("removed", line, index),
+			beforeStart: line,
+			beforeEnd: line,
+			afterAnchor: 0,
+		}),
+	);
+
+	async function openRendered(
+		layoutMode: "inline" | "split",
+		rows: MarkdownRow[],
+		block: string,
+		geometry = { contentHeight: renderedContentHeight, viewportHeight: 100 },
+	) {
+		vi.mocked(safeInvoke).mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: changeLines,
+		});
+		const paneTop = 160;
+		stubLayout({
+			width: 900,
+			height: 400,
+			replace: true,
+			measure(el) {
+				if (el.matches(".rendered-diff")) {
+					return { top: paneTop, height: geometry.viewportHeight };
+				}
+				if (!el.matches(".rendered-block")) return;
+				const block = el.querySelector<HTMLElement>("[data-test-top]");
+				const viewport = el.closest<HTMLElement>(".rendered-diff");
+				if (!block || !viewport) return;
+
+				return {
+					top: paneTop + Number(block.dataset.testTop) - viewport.scrollTop,
+					height: Number(block.dataset.testHeight),
+				};
+			},
+		});
+		render(DiffPanel, {
+			props: {
+				...commentingDiff,
+				diffPreferences: new DiffPreferences({
+					layoutMode,
+					renderMode: "rendered",
+					contextLines: 3,
+					ignoreWhitespace: false,
+					showInvisibles: false,
+					wordWrap: false,
+				}),
+				fileDiffs: [{ ...navDiff, path: "README.md" }],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/repo",
+				selectedPath: "README.md",
+			},
+		});
+		const viewport = (await screen.findByText(block)).closest<HTMLElement>(
+			".rendered-diff",
 		);
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-			cmd === "render_markdown_diff"
-				? Promise.resolve({
-						rows: [
-							{
-								kind: "changed",
-								beforeHtml: "<p>was</p>",
-								afterHtml: "<p>now</p>",
-								mergedHtml: "<p>now</p>",
-								afterStart: 1,
-								afterEnd: 1,
-							},
-							{
-								kind: "changed",
-								beforeHtml: "<p>also was</p>",
-								afterHtml: "<p>also now</p>",
-								mergedHtml: "<p>also now</p>",
-								afterStart: 2,
-								afterEnd: 2,
-							},
-						],
-						whitespaceOnly: false,
-						changedLines: [1, 2],
-					})
-				: Promise.resolve(undefined),
+		if (!viewport) throw new Error("rendered diff viewport missing");
+		clampScrollTop(viewport, geometry.contentHeight);
+
+		return viewport;
+	}
+
+	function clampScrollTop(viewport: HTMLElement, contentHeight: number) {
+		let top = 0;
+		Object.defineProperty(viewport, "scrollTop", {
+			get: () => top,
+			set(next: number) {
+				top = Math.max(
+					0,
+					Math.min(next, contentHeight - viewport.clientHeight),
+				);
+			},
+		});
+	}
+
+	function openRenderedWithClampedTail() {
+		const blockHeight = 40;
+		const rows = Array.from(
+			{ length: 6 },
+			(_, index): MarkdownRow => ({
+				kind: "added",
+				html: paragraph(`block ${index + 1}`, index * blockHeight, blockHeight),
+				afterStart: index * 2 + 1,
+				afterEnd: index * 2 + 1,
+			}),
 		);
-		const scrolled = vi.fn();
-		const original = Element.prototype.scrollIntoView;
-		Element.prototype.scrollIntoView = scrolled;
 
-		try {
-			render(DiffPanel, {
-				props: {
-					...commentingDiff,
-					fileDiffs: [{ ...navDiff, path: "README.md" }],
-					commitDetail: null,
-					onclose: vi.fn(),
-					diffKind: "unstaged",
-					repoPath: "/repo",
-					selectedPath: "README.md",
-				},
-			});
-			await flushPrefs();
-			await screen.findByText("now");
+		return openRendered("inline", rows, "block 1", {
+			contentHeight: rows.length * blockHeight,
+			viewportHeight: 110,
+		});
+	}
 
-			await fireEvent.keyDown(window, { key: "]" });
-			await tick();
+	it("continues through rendered changes that share a clamped scroll offset", async () => {
+		const viewport = await openRenderedWithClampedTail();
+		await fireEvent.scroll(viewport, { target: { scrollTop: 125 } });
 
-			expect(scrolled).toHaveBeenCalled();
-		} finally {
-			Element.prototype.scrollIntoView = original;
-			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
-				Promise.resolve("source"),
-			);
-		}
+		await fireEvent.keyDown(window, { key: "]" });
+		await fireEvent.scroll(viewport);
+		expect(viewport.scrollTop).toBe(130);
+		expect(viewport.querySelector(".hunk-highlight")).toHaveTextContent(
+			"block 5",
+		);
+
+		await fireEvent.keyDown(window, { key: "]" });
+
+		expect(viewport.scrollTop).toBe(130);
+		const landing = viewport.querySelector(".hunk-highlight");
+		expect(landing).toHaveTextContent("block 6");
+		expect(getComputedStyle(landing as Element).animation).toContain(
+			"hunk-flash",
+		);
+	});
+
+	it("steps from the rendered viewport after it scrolls away and back to a clamped jump", async () => {
+		const viewport = await openRenderedWithClampedTail();
+		await fireEvent.scroll(viewport, { target: { scrollTop: 125 } });
+		await fireEvent.keyDown(window, { key: "]" });
+		await fireEvent.scroll(viewport);
+		await fireEvent.keyDown(window, { key: "]" });
+		expect(viewport.querySelector(".hunk-highlight")).toHaveTextContent(
+			"block 6",
+		);
+		await fireEvent.scroll(viewport, { target: { scrollTop: 110 } });
+		await fireEvent.scroll(viewport, { target: { scrollTop: 130 } });
+
+		await fireEvent.keyDown(window, { key: "]" });
+
+		expect(viewport.scrollTop).toBe(130);
+		expect(viewport.querySelector(".hunk-highlight")).toHaveTextContent(
+			"block 5",
+		);
+	});
+
+	it.each([
+		{ key: "]", expected: 230 },
+		{ key: "[", expected: 170 },
+	])("steps from the rendered viewport on $key", async ({ key, expected }) => {
+		const viewport = await openRendered("inline", inlineChanges, "before 3");
+		await fireEvent.scroll(viewport, { target: { scrollTop: 200 } });
+
+		await fireEvent.keyDown(window, { key });
+
+		expect(viewport.scrollTop).toBe(expected);
+	});
+
+	it.each([
+		{ side: "added", rows: addedBlocks, key: "]", expected: 230 },
+		{ side: "removed", rows: removedBlocks, key: "[", expected: 170 },
+	])(
+		"steps through a split diff with only $side blocks on $key",
+		async ({ side, rows, key, expected }) => {
+			const viewport = await openRendered("split", rows, `${side} 3`);
+			await fireEvent.scroll(viewport, { target: { scrollTop: 200 } });
+
+			await fireEvent.keyDown(window, { key });
+
+			expect(viewport.scrollTop).toBe(expected);
+		},
+	);
+
+	it("scrolls to a later review anchor when rendered markdown was open", async () => {
+		vi.mocked(safeInvoke).mockResolvedValue({
+			rows: inlineChanges,
+			whitespaceOnly: false,
+			changedLines: changeLines,
+		});
+		const preferences = new DiffPreferences({
+			layoutMode: "inline",
+			renderMode: "rendered",
+			contextLines: 3,
+			ignoreWhitespace: false,
+			showInvisibles: false,
+			wordWrap: false,
+		});
+		const thread = aThread({
+			id: "later-markdown-thread",
+			state: "done",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "README.md",
+				source: "Diff",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+		const props = {
+			...commentingDiff,
+			diffPreferences: preferences,
+			fileDiffs: [{ ...navDiff, path: "README.md" }],
+			commitDetail: { ...nonMergeCommit, oid: "abc123" },
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+			selectedPath: "README.md",
+			viewComments: [thread],
+		};
+		const { component, container, rerender } = render(DiffPanel, {
+			props: { ...props, loading: true, payloadStale: true },
+		});
+		await screen.findByText("before 3");
+
+		component.jumpToThread(thread, 11, 11, "New");
+		await tick();
+		expect(screen.getByText("Loading diff…")).toBeVisible();
+		await rerender({ ...props, loading: false, payloadStale: false });
+
+		expect(viewportOf(container)?.scrollTop).toBe(128);
+		expect(
+			screen.getByRole("button", { name: "Collapse thread" }),
+		).toBeVisible();
+		expect(preferences.renderMode).toBe("rendered");
 	});
 
 	it("reprojects rendered markdown immediately while Source is loading", async () => {

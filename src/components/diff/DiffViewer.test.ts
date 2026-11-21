@@ -72,7 +72,6 @@ const baseProps = {
 	isMerge: false,
 	keysActive: true,
 	collapsedFiles: new Set<string>(),
-	hunkElements: {},
 	onfilecollapsetoggle: noop,
 	onlineclick: noop,
 	onlinemousedown: noop,
@@ -770,6 +769,46 @@ describe("DiffViewer when the reader switches view", () => {
 		expect(screen.queryAllByText("line 3003")).toHaveLength(0);
 	});
 
+	it("opens each cached file at the top of the reused viewport", async () => {
+		const inBeta = {
+			...props,
+			diffKind: "commit" as const,
+			commitOid: "aaaa",
+			selectedPath: "beta.txt",
+			fileDiffs: [{ ...hunks, path: "beta.txt" }],
+		};
+		const inAlpha = {
+			...inBeta,
+			selectedPath: "alpha.txt",
+			fileDiffs: [{ ...hunks, path: "alpha.txt" }],
+		};
+		const { container, rerender } = render(DiffViewer, { props: inBeta });
+		const viewport = viewportOf(container);
+		await fireEvent.scroll(viewport, { target: { scrollTop: 4_800 } });
+
+		await rerender(inAlpha);
+
+		expect(viewportOf(container)).toBe(viewport);
+		expect(viewport.scrollTop).toBe(0);
+
+		await fireEvent.scroll(viewport, { target: { scrollTop: 2_400 } });
+		await rerender(inBeta);
+
+		expect(viewport.scrollTop).toBe(0);
+	});
+
+	it("keeps the viewport in place when the same file's payload is refreshed", async () => {
+		const { container, rerender } = render(DiffViewer, { props });
+		const viewport = viewportOf(container);
+		await fireEvent.scroll(viewport, { target: { scrollTop: 2_400 } });
+
+		await rerender({ ...props, loading: true });
+		await rerender({ ...props, fileDiffs: [{ ...hunks }] });
+
+		expect(viewportOf(container)).toBe(viewport);
+		expect(viewport.scrollTop).toBe(2_400);
+	});
+
 	// The side-by-side view takes the content mode itself, so it sees the new
 	// mode one render before the stale payload unmounts it.
 	it.each([
@@ -821,6 +860,30 @@ describe("DiffViewer when the reader switches view", () => {
 
 		expect(await screen.findAllByText("line 3003")).not.toHaveLength(0);
 		expect(viewportOf(container).scrollTop).toBe(3002 * 18);
+	});
+
+	it("opens hunks at the last displayed context when reading the unchanged tail", async () => {
+		const whole = {
+			...props,
+			contentMode: "full" as const,
+			fileDiffs: [wholeFile],
+		};
+		const changes = bigFile([
+			hunkOf(97, 103),
+			hunkOf(197, 203),
+			hunkOf(297, 303),
+		]);
+		const { container, rerender } = render(DiffViewer, { props: whole });
+		await fireEvent.scroll(viewportOf(container), {
+			target: { scrollTop: 349 * 18 },
+		});
+		expect(screen.getByText("line 350")).toBeInTheDocument();
+
+		await rerender({ ...props, fileDiffs: [changes] });
+
+		expect(viewportOf(container).scrollTop).toBe(
+			3 * FIXED_ROW_HEIGHTS.hunkHeader + 20 * 18,
+		);
 	});
 
 	describe("when the reader turns word wrap on and off", () => {

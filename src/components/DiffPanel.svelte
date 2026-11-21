@@ -9,6 +9,7 @@ interface StagingActionCompletion {
 </script>
 
 <script lang="ts">
+import { untrack } from "svelte";
 import type { PanelDiffKind } from "../lib/comment-matching.js";
 import { ask } from "../lib/dialog.js";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../lib/full-file-anchor.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import { isMarkdownPath } from "../lib/markdown.js";
 import {
 	askToDiscardComment,
 	deleteDraft,
@@ -51,6 +53,7 @@ import type {
 	FileDiff,
 	LayoutMode,
 	LineActionOutcome,
+	RenderMode,
 	Review,
 	ReviewFilter,
 	ShownHunk,
@@ -61,6 +64,7 @@ import CommentComposer from "./diff/CommentComposer.svelte";
 import DiffToolbar from "./diff/DiffToolbar.svelte";
 import DiffViewer from "./diff/DiffViewer.svelte";
 import type FullFileView from "./diff/FullFileView.svelte";
+import type RenderedDiff from "./diff/RenderedDiff.svelte";
 
 interface Props {
 	fileDiffs: FileDiff[];
@@ -141,13 +145,8 @@ let {
 
 let hunkOperationInFlight = $state(false);
 
-let focusedHunkIndex = $state(0);
-// Two navigation paths, because only some views are virtualized. A virtualized
-// view publishes a handle and owns the scroll; RenderedDiff still binds one
-// element per hunk, and navigation goes through those. The whole-file inline
-// view publishes the same handle under the binding its selection uses, below.
 let diffNav = $state<DiffNav | null>(null);
-let hunkElements = $state<Record<string, HTMLDivElement>>({});
+let renderedView = $state<RenderedDiff | null>(null);
 
 // One fold state for as long as the diff stays open, so a thread the reader
 // folded, or a jump opened, stays that way across layouts, content modes and
@@ -288,6 +287,24 @@ let composer = $state<CommentComposer | null>(null);
 let fullFileView = $state<FullFileView | null>(null);
 // Navigation's handle, from whichever virtualized view is mounted.
 const nav = $derived<DiffNav | null>(diffNav ?? fullFileView);
+const sourceSubject = $derived(
+	JSON.stringify([
+		repoPath,
+		diffKind,
+		selectedPath,
+		diffKind === "commit" ? commitDetail?.oid : null,
+		compareBaseOid,
+	]),
+);
+let sourceJump = $derived.by(
+	(): {
+		pending: { startLine: number; side: Side } | null;
+	} | null => {
+		void sourceSubject;
+		return null;
+	},
+);
+const renderMode = $derived(sourceJump ? "source" : diffPreferences.renderMode);
 const fullFileComposerOpen = $derived(
 	activeComposerSession.mode === "full-file" && composerTargetMatches,
 );
@@ -686,41 +703,20 @@ function handleLayoutModeChange(mode: LayoutMode) {
 	diffPreferences.changeLayoutMode(mode);
 }
 
+function handleRenderModeChange(mode: RenderMode) {
+	sourceJump = null;
+	if (mode !== diffPreferences.renderMode)
+		diffPreferences.changeRenderMode(mode);
+}
+
 function clearSelection() {
+	stopDrag();
 	selectedHunkKey = null;
 	selectedLineIndices = new Set();
 	lastClickedIndex = null;
 	// Reset the full-file view's own selection state so it never goes stale across
 	// mode/layout toggles or Escape (null when not mounted in full-file mode).
 	fullFileView?.clearSelection();
-}
-
-// A virtualized view steps from what the reader has on screen. The rendered
-// view has no rows to read a position from, so it steps from the last hunk.
-function stepHunk(direction: 1 | -1) {
-	if (nav) {
-		nav.step(direction);
-		return;
-	}
-
-	scrollToHunk(focusedHunkIndex + direction);
-}
-
-function scrollToHunk(index: number) {
-	if (nav) {
-		if (index < 0 || index >= nav.hunkCount()) return;
-		focusedHunkIndex = index;
-		nav.scrollToHunk(index);
-		return;
-	}
-
-	const keys = Object.keys(hunkElements);
-	if (index < 0 || index >= keys.length) return;
-	focusedHunkIndex = index;
-	const el = hunkElements[keys[index]];
-	el?.scrollIntoView({ behavior: "smooth", block: "start" });
-	el?.classList.add("hunk-highlight");
-	setTimeout(() => el?.classList.remove("hunk-highlight"), 600);
 }
 
 // The hunk whose old- or new-side span covers `startLine`, branching on `side`
@@ -764,31 +760,43 @@ export function scrollToLine(
 	_endLine: number,
 	side: Side = "New",
 ) {
-	const target = hunkContaining(startLine, side);
-
-	if (nav) {
-		const ordinal = target ? nav.ordinalOf(target.path, target.hunkIdx) : -1;
-		if (!target || ordinal < 0) {
-			const drawn = fileDiffs.some((fd) =>
-				nav?.scrollToThread(fd.path, side, startLine),
-			);
-			if (!drawn) scrollToHunk(0);
-			return;
-		}
-
-		focusedHunkIndex = ordinal;
-		nav.scrollToLine(
-			target.path,
-			target.hunkIdx,
-			lineIndexIn(target.lines, startLine, side),
-		);
+	if (
+		diffPreferences.renderMode === "rendered" &&
+		selectedPath &&
+		isMarkdownPath(selectedPath)
+	) {
+		sourceJump = { pending: { startLine, side } };
 		return;
 	}
 
-	const keys = Object.keys(hunkElements);
-	if (keys.length === 0) return;
-	const index = target ? keys.indexOf(`${target.path}-${target.hunkIdx}`) : 0;
-	scrollToHunk(Math.max(index, 0));
+	if (nav) scrollInSource(nav, startLine, side);
+}
+
+$effect(() => {
+	const request = sourceJump?.pending;
+	const source = nav;
+	if (!request || !source?.isReady()) return;
+
+	sourceJump = { pending: null };
+	untrack(() => scrollInSource(source, request.startLine, request.side));
+});
+
+function scrollInSource(source: DiffNav, startLine: number, side: Side) {
+	const target = hunkContaining(startLine, side);
+	const ordinal = target ? source.ordinalOf(target.path, target.hunkIdx) : -1;
+	if (!target || ordinal < 0) {
+		const drawn = fileDiffs.some((fd) =>
+			source.scrollToThread(fd.path, side, startLine),
+		);
+		if (!drawn) source.scrollToHunk(0);
+		return;
+	}
+
+	source.scrollToLine(
+		target.path,
+		target.hunkIdx,
+		lineIndexIn(target.lines, startLine, side),
+	);
 }
 
 // A jump lands on a thread the reader asked to read, so it opens the thread too.
@@ -815,9 +823,10 @@ $effect(() => {
 	// first and before the view's own Escape on the window, which closes the
 	// diff unless the event arrives already handled.
 	function clearSelectionOnEscape(e: KeyboardEvent) {
-		if (!keysActive || selectedCount === 0) return;
+		if (!keysActive || e.defaultPrevented) return;
 		if (keyChord(e) !== "Escape") return;
 		if (focusInEditable(document.activeElement)) return;
+		if (selectedCount === 0 && !fullFileView?.hasSelection()) return;
 
 		e.preventDefault();
 		clearSelection();
@@ -836,10 +845,10 @@ $effect(() => {
 
 		if (chord === "]") {
 			e.preventDefault();
-			stepHunk(1);
+			(nav ?? renderedView)?.step(1);
 		} else if (chord === "[") {
 			e.preventDefault();
-			stepHunk(-1);
+			(nav ?? renderedView)?.step(-1);
 		}
 	}
 	document.addEventListener("keydown", clearSelectionOnEscape);
@@ -855,8 +864,6 @@ $effect(() => {
 
 $effect(() => {
 	fileDiffs;
-	focusedHunkIndex = 0;
-	hunkElements = {};
 	fullFileView?.clearSelection();
 	collapsedFiles = new Set();
 });
@@ -1303,10 +1310,10 @@ function extendDrag(e: MouseEvent) {
 	<DiffToolbar
 		{contentMode}
 		layoutMode={diffPreferences.layoutMode}
-		renderMode={diffPreferences.renderMode}
+		{renderMode}
 		oncontentmodechange={handleContentModeChange}
 		onlayoutmodechange={handleLayoutModeChange}
-		onrendermodechange={(mode) => diffPreferences.changeRenderMode(mode)}
+		onrendermodechange={handleRenderModeChange}
 		{selectedPath}
 		{selectedStatus}
 		selectedOldPath={selectedFile?.old_path ?? null}
@@ -1336,7 +1343,7 @@ function extendDrag(e: MouseEvent) {
 		contentMode={effectiveContentMode}
 		contextLines={diffPreferences.contextLines}
 		layoutMode={diffPreferences.layoutMode}
-		renderMode={diffPreferences.renderMode}
+		{renderMode}
 		{fileDiffs}
 		{commitDetail}
 		{compareBaseOid}
@@ -1359,8 +1366,8 @@ function extendDrag(e: MouseEvent) {
 		selectedChangeCount={selectedChanges.length}
 		{isMerge}
 		{collapsedFiles}
-		{hunkElements}
 		bind:diffNav
+		bind:renderedView
 		onfilecollapsetoggle={toggleFileCollapsed}
 		onlineclick={handleLineClick}
 		onlinemousedown={handleLineMouseDown}

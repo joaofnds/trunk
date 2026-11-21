@@ -812,6 +812,28 @@ describe("rowIndexForReadingLine", () => {
 		expect(row.kind === "line" && row.line.content).toBe("old b");
 	});
 
+	it.each([
+		{ side: "new", newLine: 6, expected: 2 },
+		{ side: "old", newLine: null, expected: 3 },
+	])(
+		"uses the last line on the $side side of the reading file",
+		({ newLine, expected }) => {
+			const otherFile = { ...pairable, path: "src/other.ts" };
+			const model = buildSplitRows([pairable, otherFile], {
+				...fullMode,
+				content: "hunk",
+			});
+
+			const index = rowIndexForReadingLine(model, {
+				path: pairable.path,
+				oldLine: 7,
+				newLine,
+			});
+
+			expect(index).toBe(expected);
+		},
+	);
+
 	it("reports no row for a file the rows do not hold", () => {
 		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
 

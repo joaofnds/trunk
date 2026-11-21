@@ -2626,7 +2626,7 @@ describe("RepoView", () => {
 		});
 
 		describe("when Escape lands on a line selection", () => {
-			async function openReadmeWithALineSelected() {
+			async function openReadmeWithALineSelected(mode: "hunk" | "full") {
 				const base = mockInvoke.getMockImplementation();
 				if (!base) throw new Error("base invoke implementation missing");
 				mockInvoke.mockImplementation((cmd, args) => {
@@ -2644,40 +2644,55 @@ describe("RepoView", () => {
 				});
 				render(RepoView, { props: baseProps(createMockRemoteState()) });
 				await fireEvent.click(await screen.findByText("README.md"));
+				if (mode === "full") {
+					await fireEvent.click(
+						await screen.findByRole("button", { name: "Show full file" }),
+					);
+				}
 				const line = await screen.findByText("UNSTAGED CONTENT");
-				const grip = line
-					.closest(".diff-line")
-					?.querySelector("[data-gutter-grip]");
+				const row = line.closest(".diff-line");
+				const grip = row?.querySelector("[data-gutter-grip]");
 				if (!grip) throw new Error("no gutter grip on the changed line");
 				await fireEvent.mouseDown(grip);
 				await fireEvent.mouseUp(window);
-				expect(
-					screen.getByRole("button", { name: /^Stage Lines/ }),
-				).toBeTruthy();
+				expect(row).toHaveClass("in-selection");
 			}
 
-			it("clears the selection and keeps the diff open", async () => {
-				await openReadmeWithALineSelected();
+			it.each(["hunk", "full"] as const)(
+				"clears the %s selection and keeps the diff open on the first Escape",
+				async (mode) => {
+					await openReadmeWithALineSelected(mode);
 
-				await fireEvent.keyDown(document.body, { key: "Escape" });
+					await fireEvent.keyDown(document.body, { key: "Escape" });
 
-				await vi.waitFor(() =>
 					expect(
-						screen.queryByRole("button", { name: /^Stage Lines/ }),
-					).toBeNull(),
-				);
-				expect(screen.queryByText("UNSTAGED CONTENT")).toBeTruthy();
-			});
+						screen.getByText("UNSTAGED CONTENT").closest(".diff-line"),
+					).not.toHaveClass("in-selection");
+				},
+			);
 
-			it("closes the diff on the next Escape", async () => {
-				await openReadmeWithALineSelected();
-				await fireEvent.keyDown(document.body, { key: "Escape" });
+			it.each(["hunk", "full"] as const)(
+				"closes the %s diff on the next Escape",
+				async (mode) => {
+					await openReadmeWithALineSelected(mode);
+					await fireEvent.keyDown(document.body, { key: "Escape" });
 
-				await fireEvent.keyDown(document.body, { key: "Escape" });
+					await fireEvent.keyDown(document.body, { key: "Escape" });
 
-				await vi.waitFor(() =>
-					expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull(),
-				);
+					expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull();
+				},
+			);
+
+			it("keeps the full file selection while an editable field has focus", async () => {
+				await openReadmeWithALineSelected("full");
+				const field = screen.getByPlaceholderText("Filter branches…");
+				field.focus();
+
+				await fireEvent.keyDown(field, { key: "Escape" });
+
+				expect(
+					screen.getByText("UNSTAGED CONTENT").closest(".diff-line"),
+				).toHaveClass("in-selection");
 			});
 		});
 

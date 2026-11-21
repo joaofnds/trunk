@@ -522,27 +522,29 @@ export function readingLineAt(
 	return null;
 }
 
-/** The row showing `reading`'s line, or the next line the rows show when they
- *  leave it out, or -1 when they hold no line of its file at or after it. A
- *  line with a new number is matched on that side, and a removed line, which
- *  has none, on the old side. */
+/** The matching line or the next displayed line on the same file and side.
+ *  When the reading line is past the displayed tail, use the last line on
+ *  that side. A removed line is matched on the old side. */
 export function rowIndexForReadingLine(
 	model: DiffRowModel,
 	reading: ReadingLine,
 ): number {
-	return model.rows.findIndex((row) => {
-		const numbers = lineNumbersOf(row);
-		if (!numbers || numbers.path !== reading.path) return false;
+	const side = reading.newLine === null ? "oldLine" : "newLine";
+	const line = reading[side];
+	if (line === null) return -1;
 
-		if (reading.newLine !== null) {
-			return numbers.newLine !== null && numbers.newLine >= reading.newLine;
-		}
-		return (
-			reading.oldLine !== null &&
-			numbers.oldLine !== null &&
-			numbers.oldLine >= reading.oldLine
-		);
-	});
+	let last = -1;
+	for (let index = 0; index < model.rows.length; index++) {
+		const numbers = lineNumbersOf(model.rows[index]);
+		if (!numbers || numbers.path !== reading.path) continue;
+		const number = numbers[side];
+		if (number === null) continue;
+
+		if (number >= line) return index;
+		last = index;
+	}
+
+	return last;
 }
 
 /** The comment row drawing a thread that starts on `startLine` of `side`, or -1

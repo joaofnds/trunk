@@ -3,10 +3,12 @@ import { onDestroy, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { createCoalescedTask } from "../../lib/coalesced-task.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
+import { adjacentStop, type StopJump } from "../../lib/diff-nav.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
 import { type DiffRow, renderMarkdownDiff } from "../../lib/markdown.js";
 import { afterRev, beforeRev } from "../../lib/rev-spec.js";
+import { FLASH_DURATION, RowFlash } from "../../lib/row-flash.svelte.js";
 import { getScheduler } from "../../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type { CommitDetail } from "../../lib/types.js";
@@ -47,9 +49,6 @@ interface Props {
 	// repo-changed handler) so a stale preview refetches. Optional: the rebase-
 	// mode DiffPanel doesn't thread it (rebase-preview staleness is out of scope).
 	refreshToken?: number;
-	// DiffPanel's jump-target record: registering each changed row here makes
-	// its existing ]/[ navigation (scrollToHunk) work over rendered rows.
-	hunkElements?: Record<string, HTMLDivElement>;
 }
 
 let {
@@ -66,14 +65,19 @@ let {
 	ignoreWhitespace,
 	wordWrap,
 	refreshToken = 0,
-	hunkElements,
 }: Props = $props();
 const scheduler = getScheduler();
 
-// Each changed row's first content block, keyed by its document-order change
-// index. An action feeds this; the effect below projects it into the host's
-// `hunkElements` record.
+// Split columns mount independently, so the DOM order need not be the
+// document order of the changes.
 const changeRegistry = new SvelteMap<number, HTMLDivElement>();
+const changeTargets = $derived(
+	[...changeRegistry.entries()].sort(([a], [b]) => a - b),
+);
+let viewport = $state<HTMLDivElement | null>(null);
+let lastJump: StopJump | null = null;
+const flash = new RowFlash(scheduler);
+onDestroy(() => flash.stop());
 
 function registerChange(node: HTMLDivElement, index: number | null) {
 	const put = (i: number | null) => {
@@ -97,25 +101,30 @@ function registerChange(node: HTMLDivElement, index: number | null) {
 	};
 }
 
-// Rebuild the host record in document order on every registry change, and
-// clear this view's entries on unmount so a switch back to Source starts
-// clean. Writes are untracked: the effect must not depend on the record's
-// own keys (read-and-write of the same state loops).
-$effect(() => {
-	const record = hunkElements;
-	if (!record) return;
-	const ordered = [...changeRegistry.entries()].sort(([a], [b]) => a - b);
-	untrack(() => {
-		for (const key of Object.keys(record)) delete record[key];
-		ordered.forEach(([, el], i) => {
-			record[`change-${i}`] = el;
-		});
-	});
-	return () =>
-		untrack(() => {
-			for (const key of Object.keys(record)) delete record[key];
-		});
-});
+function viewportOrigin(pane: HTMLDivElement): number {
+	return pane.getBoundingClientRect().top + pane.clientTop - pane.scrollTop;
+}
+
+function onscroll(e: Event & { currentTarget: HTMLDivElement }) {
+	if (lastJump && lastJump.top !== e.currentTarget.scrollTop) lastJump = null;
+}
+
+export function step(direction: 1 | -1) {
+	const pane = viewport;
+	if (!pane) return;
+
+	const origin = viewportOrigin(pane);
+	const stops = changeTargets.map(
+		([, el]) => el.getBoundingClientRect().top - origin,
+	);
+	const ordinal = adjacentStop(stops, pane.scrollTop, direction, lastJump);
+	if (ordinal < 0) return;
+
+	const [changeIndex] = changeTargets[ordinal];
+	pane.scrollTop = stops[ordinal];
+	flash.show(changeIndex, changeIndex + 1);
+	lastJump = { ordinal, top: pane.scrollTop };
+}
 
 type LoadState =
 	| { kind: "loading" }
@@ -383,6 +392,14 @@ const projected = $derived.by((): ProjectedRow[] => {
 				? { ...p, changeIndex: change++ }
 				: p,
 	);
+});
+
+$effect.pre(() => {
+	void projected;
+	void layoutMode;
+	void wordWrap;
+	lastJump = null;
+	flash.stop();
 });
 
 // One inline stream item: a tinted block or a collapsed-run separator. Only a
@@ -655,6 +672,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 		class:md-added={tint === "added"}
 		class:md-removed={tint === "removed"}
 		class:no-wash={!wash}
+		class:hunk-highlight={changeIndex !== null && flash.lit(changeIndex)}
 		use:externalLinks
 		use:registerChange={changeIndex}
 		><div class="markdown-body">{@html html}</div></div
@@ -705,7 +723,13 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	</div>
 {/snippet}
 
-<div class="rendered-diff" class:wrap={wordWrap}>
+<div
+	class="rendered-diff"
+	class:wrap={wordWrap}
+	style:--diff-flash-duration={FLASH_DURATION}
+	bind:this={viewport}
+	{onscroll}
+>
 	<!-- ONE shared content wrapper sized by the wrap toggle (Source's HunkView
        pattern): at max-content every inline block, tint, and separator spans the
        same scrolled width. In split the outer wrapper never widens — panning
@@ -734,8 +758,8 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 						class:w-full={wordWrap}
 						class:w-max={!wordWrap}
 					>
-						{#each presentHtmls as markup}
-							{@render block("added", markup)}
+						{#each presentHtmls as markup, changeIndex}
+							{@render block("added", markup, changeIndex)}
 						{/each}
 					</div>
 				</div>
@@ -748,8 +772,8 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 						class:w-full={wordWrap}
 						class:w-max={!wordWrap}
 					>
-						{#each presentHtmls as markup}
-							{@render block("removed", markup)}
+						{#each presentHtmls as markup, changeIndex}
+							{@render block("removed", markup, changeIndex)}
 						{/each}
 					</div>
 				</div>
@@ -827,6 +851,19 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	--md-prose-inset: var(--space-4);
 	padding: var(--space-2) var(--md-prose-inset);
 	min-width: 0;
+}
+.hunk-highlight {
+	animation: hunk-flash var(--diff-flash-duration) ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	.hunk-highlight {
+		animation-timing-function: step-end;
+	}
+}
+@keyframes hunk-flash {
+	from {
+		background-color: var(--color-hunk-flash);
+	}
 }
 /* The 16px browser default reads oversized against the app's chrome.
      Heading/code sizes are em-based and scale with it. */

@@ -54,9 +54,14 @@ const SPLIT_ROW_CHROME_PX = 28;
 
 export interface DiffListHandle {
 	topIndex(): number;
+	verticalScrollRevision(): number;
 	anchorTo(index: number): void;
 	revealIndex(index: number): void;
 	scrollToIndex(index: number): void;
+}
+
+export interface ReadingAnchor {
+	readonly line: ReadingLine | null;
 }
 
 export interface VirtualizedDiffDeps {
@@ -64,9 +69,8 @@ export interface VirtualizedDiffDeps {
 	wordWrap: () => boolean;
 	composer: () => ComposerPlace | undefined;
 	list: () => DiffListHandle | null;
-	/** The line the reader was at in the view this one replaced, which the list
-	 *  opens at instead of the top. Applied once per value. */
-	startAt: () => ReadingLine | null;
+	/** Where the list opens: a reading line or the top. Applied once per value. */
+	startAt: () => ReadingAnchor | null;
 	/** Whether the rows show hunks or the file whole, which decides what `]`
 	 *  and `[` step between. */
 	content: () => ContentMode;
@@ -318,14 +322,15 @@ export function createVirtualizedDiff(
 	// Keyed on the value's identity: the host hands over a new one each time a
 	// view replaces another, and a list that reaches readiness late still opens
 	// where the reader was rather than wherever it was scrolled since.
-	let appliedStart: ReadingLine | null = null;
+	let appliedStart: ReadingAnchor | null = null;
 	$effect(() => {
 		const start = deps.startAt();
 		const list = deps.list();
 		if (!start || start === appliedStart || !list || !ready) return;
 
 		appliedStart = start;
-		const index = untrack(() => rowIndexForReadingLine(model, start));
+		const line = start.line;
+		const index = line ? untrack(() => rowIndexForReadingLine(model, line)) : 0;
 		if (index >= 0) list.anchorTo(index);
 	});
 
@@ -356,7 +361,13 @@ export function createVirtualizedDiff(
 
 	// Tied to the rows it was taken over: a refetch rebuilds them, and the step
 	// at an ordinal of the old rows is not the step at that ordinal now.
-	let lastJump: (StopJump & { model: DiffRowModel }) | null = null;
+	let lastJump:
+		| (StopJump & {
+				model: DiffRowModel;
+				list: DiffListHandle;
+				scrollRevision: number;
+		  })
+		| null = null;
 
 	// A jump lights a hunk's header while the rows show hunks. A file shown
 	// whole has no headers, so a step there lights the run of changed lines it
@@ -386,11 +397,11 @@ export function createVirtualizedDiff(
 	}
 
 	return {
+		isReady() {
+			return ready && deps.list() !== null;
+		},
 		readingLine() {
 			return drawnLine;
-		},
-		hunkCount() {
-			return model.hunkNav.length;
 		},
 		ordinalOf,
 		scrollToHunk,
@@ -414,11 +425,18 @@ export function createVirtualizedDiff(
 		step(direction) {
 			const list = deps.list();
 			if (!list) return;
+
+			const precedingJump =
+				lastJump?.model === model &&
+				lastJump.list === list &&
+				lastJump.scrollRevision === list.verticalScrollRevision()
+					? lastJump
+					: null;
 			const ordinal = adjacentStop(
 				steps,
 				list.topIndex(),
 				direction,
-				lastJump?.model === model ? lastJump : null,
+				precedingJump,
 			);
 			if (ordinal < 0) return;
 
@@ -428,7 +446,13 @@ export function createVirtualizedDiff(
 				start,
 				deps.content() === "hunk" ? start + 1 : changeRunEnd(model, start),
 			);
-			lastJump = { ordinal, top: list.topIndex(), model };
+			lastJump = {
+				ordinal,
+				top: list.topIndex(),
+				model,
+				list,
+				scrollRevision: list.verticalScrollRevision(),
+			};
 		},
 		flashLit(index) {
 			return flash.lit(index);

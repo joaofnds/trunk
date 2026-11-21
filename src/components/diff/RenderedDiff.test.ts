@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/svelte";
 import { flushSync, mount, tick, unmount } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FakeScheduler } from "../../../tests/app/fakes/scheduler.js";
+import {
+	restoreLayout,
+	setLayout,
+	stubLayout,
+} from "../../__tests__/helpers/layout-stub.js";
 import type { DiffRow, MarkdownDiff } from "../../lib/markdown.js";
 import { reactiveProps } from "../../lib/reactive-props.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
@@ -1636,7 +1641,7 @@ describe("RenderedDiff", () => {
 		}
 	});
 
-	it("registers one element per changed row into hunkElements in document order (inline)", async () => {
+	it("jumps to the first block of a two-block inline change", async () => {
 		const rows: DiffRow[] = [
 			{
 				kind: "unchanged",
@@ -1678,28 +1683,31 @@ describe("RenderedDiff", () => {
 			},
 		];
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
-		const hunkElements: Record<string, HTMLDivElement> = {};
-
-		render(RenderedDiff, {
-			props: { ...baseProps, layoutMode: "inline", hunkElements },
+		const { component, container } = render(RenderedDiff, {
+			props: baseProps,
 		});
 		await screen.findByText("intro");
+		stubLayout();
+		onTestFinished(restoreLayout);
+		const viewport = container.querySelector<HTMLDivElement>(".rendered-diff");
+		if (!viewport) throw new Error("rendered diff viewport missing");
+		viewport.scrollTop = 140;
+		viewport.querySelectorAll(".rendered-block").forEach((block, index) => {
+			setLayout(block, { top: index * 40 - viewport.scrollTop, height: 40 });
+		});
 
-		// One jump target per changed row — a changed row with no merged copy renders two
-		// blocks but registers only its first — keyed in document order.
-		expect(Object.keys(hunkElements)).toEqual([
-			"change-0",
-			"change-1",
-			"change-2",
-			"change-3",
-		]);
-		expect(hunkElements["change-0"].textContent).toContain("fox");
-		expect(hunkElements["change-1"].textContent).toContain("gone");
-		expect(hunkElements["change-2"].textContent).toContain("fresh");
-		expect(hunkElements["change-3"].textContent).toContain("old block");
+		component.step(1);
+		await tick();
+
+		expect(viewport.scrollTop).toBe(160);
+		const landing = container.querySelector(".hunk-highlight");
+		expect(landing).toHaveTextContent("old block");
+		expect(getComputedStyle(landing as Element).animation).toContain(
+			"hunk-flash",
+		);
 	});
 
-	it("registers the content-bearing cell per changed row in split", async () => {
+	it("jumps in document order after switching to split columns", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "added", html: "<p>addition</p>", afterStart: 1, afterEnd: 1 },
 			{
@@ -1718,43 +1726,25 @@ describe("RenderedDiff", () => {
 			},
 		];
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
-		const hunkElements: Record<string, HTMLDivElement> = {};
-
-		render(RenderedDiff, {
-			props: { ...baseProps, layoutMode: "split", hunkElements },
+		const { component, container, rerender } = render(RenderedDiff, {
+			props: baseProps,
 		});
-		await screen.findAllByText("same");
+		await screen.findByText("addition");
+		await rerender({ ...baseProps, layoutMode: "split" });
+		stubLayout();
+		onTestFinished(restoreLayout);
+		const addition = screen.getByText("addition").closest(".rendered-block");
+		const deletion = screen.getByText("deletion").closest(".rendered-block");
+		if (!addition || !deletion) throw new Error("split blocks missing");
+		setLayout(addition, { top: 40, height: 40 });
+		setLayout(deletion, { top: 80, height: 40 });
 
-		expect(Object.keys(hunkElements)).toEqual(["change-0", "change-1"]);
-		expect(hunkElements["change-0"].textContent).toContain("addition");
-		expect(hunkElements["change-1"].textContent).toContain("deletion");
-	});
+		component.step(1);
+		await tick();
 
-	it("removes its hunkElements entries on unmount so Source navigation starts clean", async () => {
-		safeInvoke.mockResolvedValue({
-			whitespaceOnly: false,
-			rows: [
-				{ kind: "added", html: "<p>fresh</p>", afterStart: 1, afterEnd: 1 },
-				{
-					kind: "unchanged",
-					blockKind: "paragraph",
-					html: "<p>ctx</p>",
-					afterStart: 3,
-					afterEnd: 3,
-				},
-			] satisfies DiffRow[],
-		});
-		const hunkElements: Record<string, HTMLDivElement> = {};
-
-		const { unmount: unmountView } = render(RenderedDiff, {
-			props: { ...baseProps, layoutMode: "inline", hunkElements },
-		});
-		await screen.findByText("fresh");
-		expect(Object.keys(hunkElements)).toEqual(["change-0"]);
-
-		unmountView();
-
-		expect(Object.keys(hunkElements)).toEqual([]);
+		expect(
+			container.querySelector('[data-side="right"] .hunk-highlight'),
+		).toHaveTextContent("addition");
 	});
 
 	it("reads the before side at the compare base, not the target's parent, in a compare selection", async () => {

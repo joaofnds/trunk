@@ -28,6 +28,7 @@ let {
 
 let viewport = $state<HTMLDivElement | null>(null);
 let scrollTop = $state(0);
+let scrollRevision = 0;
 // Published once, on the rows container, as the `--pan-x` every row's own
 // transform reads, so a horizontal scroll re-renders no row.
 let panLeft = $state(0);
@@ -67,12 +68,23 @@ export function topIndex(): number {
 	return windowFor(offsets, scrollTop, viewportHeight, 0).start;
 }
 
+export function verticalScrollRevision(): number {
+	return scrollRevision;
+}
+
+function recordScrollTop(top: number): void {
+	if (top === scrollTop) return;
+
+	scrollTop = top;
+	scrollRevision++;
+}
+
 export function scrollToIndex(index: number): void {
 	if (!viewport) return;
 
 	const clamped = Math.max(0, Math.min(index, items.length - 1));
 	viewport.scrollTop = offsets[clamped];
-	scrollTop = viewport.scrollTop;
+	recordScrollTop(viewport.scrollTop);
 }
 
 /** Scrolls the least distance that shows the whole row, and not at all when it
@@ -88,7 +100,7 @@ export function revealIndex(index: number): void {
 		viewport.scrollTop = bottom - viewportHeight;
 	}
 
-	scrollTop = viewport.scrollTop;
+	recordScrollTop(viewport.scrollTop);
 }
 
 export function anchorTo(index: number): void {
@@ -96,7 +108,7 @@ export function anchorTo(index: number): void {
 }
 
 function onscroll() {
-	scrollTop = viewport?.scrollTop ?? 0;
+	recordScrollTop(viewport?.scrollTop ?? 0);
 	panLeft = viewport?.scrollLeft ?? 0;
 }
 </script>
