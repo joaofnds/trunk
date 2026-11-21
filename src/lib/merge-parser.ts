@@ -19,6 +19,18 @@ export function outputRegions(
 	});
 }
 
+/** The line ending most of the file's lines carry, which typed output is saved
+ *  with because a textarea hands back every line ending as a bare newline. */
+export function lineEndingOf(regions: readonly MergeRegion[]): "\r\n" | "\n" {
+	const lines = regions.flatMap((region) => [
+		...region.oursLines,
+		...region.theirsLines,
+	]);
+	const crlf = lines.filter((line) => line.endsWith("\r")).length;
+
+	return crlf * 2 > lines.length ? "\r\n" : "\n";
+}
+
 /** The merged output text from regions and selection state. */
 export function computeOutput(
 	regions: readonly MergeRegion[],

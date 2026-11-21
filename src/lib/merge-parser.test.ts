@@ -7,6 +7,7 @@ import {
 import {
 	computeOutput,
 	getConflictIndices,
+	lineEndingOf,
 	outputRegions,
 	takeAllCurrent,
 	takeAllIncoming,
@@ -129,4 +130,17 @@ describe("getConflictIndices", () => {
 
 		expect(getConflictIndices(regions)).toEqual([1, 3]);
 	});
+});
+
+describe("lineEndingOf", () => {
+	it.each([
+		["\r\n", [merged("a\r", "b\r"), conflict(["c\r"], ["d\r"])]],
+		["\n", [merged("a", "b"), conflict(["c"], ["d"])]],
+		["\n", [merged("a\r", "b", "c"), conflict(["d"], ["e\r"])]],
+	])(
+		"reads %j as the ending most of the file's lines carry",
+		(ending, regions) => {
+			expect(lineEndingOf(regions)).toBe(ending);
+		},
+	);
 });

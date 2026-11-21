@@ -8,11 +8,13 @@ import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
 import X from "@lucide/svelte/icons/x";
 import { tick } from "svelte";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
+import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	countUnresolved,
 	getConflictIndices,
+	lineEndingOf,
 	outputRegions,
 	sideKeys,
 	takeAllCurrent,
@@ -388,16 +390,41 @@ function holdScrollEvents() {
 }
 
 // ---------- Event handlers ----------
+function afterDiscardingTypedOutput(action: () => void) {
+	if (!manualEdit) {
+		action();
+		return;
+	}
+
+	void ask("Discard the text you typed into the output?", {
+		title: "Discard Typed Output",
+		kind: "warning",
+		okLabel: "Discard",
+	}).then((discard) => {
+		if (!discard) return;
+
+		manualEdit = false;
+		manualText = "";
+		action();
+	});
+}
+
 function handleTakeAllCurrent() {
-	takenLines = takeAllCurrent(regions);
+	afterDiscardingTypedOutput(() => {
+		takenLines = takeAllCurrent(regions);
+	});
 }
 
 function handleTakeAllIncoming() {
-	takenLines = takeAllIncoming(regions);
+	afterDiscardingTypedOutput(() => {
+		takenLines = takeAllIncoming(regions);
+	});
 }
 
 function handleToggleHunk(side: "ours" | "theirs", regionIdx: number) {
-	takenLines = toggleHunk(side, regionIdx, regions, takenLines);
+	afterDiscardingTypedOutput(() => {
+		takenLines = toggleHunk(side, regionIdx, regions, takenLines);
+	});
 }
 
 let lastClickedKey = $state<string | null>(null);
@@ -407,7 +434,12 @@ function isPointerClick(event: MouseEvent) {
 }
 
 function handleToggleLine(key: string, event: MouseEvent) {
-	if (isPointerClick(event) && event.shiftKey && lastClickedKey) {
+	const extending = isPointerClick(event) && event.shiftKey;
+	afterDiscardingTypedOutput(() => toggleLineFrom(key, extending));
+}
+
+function toggleLineFrom(key: string, extending: boolean) {
+	if (extending && lastClickedKey) {
 		// Parse keys: "side-regionIdx-lineIdx"
 		const [side, regStr, lineStr] = key.split("-");
 		const [lastSide, lastRegStr, lastLineStr] = lastClickedKey.split("-");
@@ -437,9 +469,9 @@ function handleOutputEdit(e: Event) {
 }
 
 function handleReset() {
-	takenLines = new Set();
-	manualEdit = false;
-	manualText = "";
+	afterDiscardingTypedOutput(() => {
+		takenLines = new Set();
+	});
 }
 
 function handlePrevConflict() {
@@ -470,7 +502,9 @@ async function handleSaveAndResolve() {
 		await safeInvoke("save_merge_result", {
 			path: repoPath,
 			filePath,
-			content: outputText,
+			content: manualEdit
+				? manualText.replace(/\r?\n/g, lineEndingOf(regions))
+				: outputText,
 		});
 		// File resolved — staging panel updates automatically
 		onresolved();

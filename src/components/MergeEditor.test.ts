@@ -6,7 +6,14 @@ import {
 	waitFor,
 	within,
 } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	beforeEach,
+	describe,
+	expect,
+	it,
+	type MockedFunction,
+	vi,
+} from "vitest";
 import {
 	conflictRegion as conflict,
 	gitMergedRegion,
@@ -25,6 +32,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const mockInvoke = vi.mocked(invoke);
+
+type Dialog = typeof import("@tauri-apps/plugin-dialog");
 
 function sidesOf(...regions: MergeRegion[]): MergeSides {
 	return { regions };
@@ -426,6 +435,113 @@ describe("MergeEditor", () => {
 
 			expect(line("theirs two")).toHaveAttribute("aria-pressed", "true");
 			expect(line("theirs one")).toHaveAttribute("aria-pressed", "false");
+		});
+
+		describe("when the output was typed", () => {
+			const typed = "first\nmine\nlast\n";
+
+			let ask: MockedFunction<Dialog["ask"]>;
+
+			beforeEach(async () => {
+				ask = vi.mocked((await import("@tauri-apps/plugin-dialog")).ask);
+				ask.mockReset();
+			});
+
+			async function typeOutput(): Promise<HTMLTextAreaElement> {
+				const result = await output();
+				await fireEvent.input(result, { target: { value: typed } });
+				return result;
+			}
+
+			it("replaces the typed output with a take the user confirms", async () => {
+				ask.mockResolvedValue(true);
+				render(MergeEditor, { props });
+				const result = await typeOutput();
+
+				await fireEvent.click(header("Incoming (Theirs)"));
+
+				await waitFor(() =>
+					expect(result.value).toBe(
+						"first\ntheirs one\ntheirs two\ntheirs three\nlast\n",
+					),
+				);
+			});
+
+			it("keeps the typed output when the user declines a take", async () => {
+				ask.mockResolvedValue(false);
+				render(MergeEditor, { props });
+				const result = await typeOutput();
+
+				await fireEvent.click(line("theirs two"));
+
+				await waitFor(() => expect(ask).toHaveBeenCalled());
+				expect(result.value).toBe(typed);
+				expect(line("theirs two")).toHaveAttribute("aria-pressed", "false");
+			});
+
+			it("keeps the typed output when the user declines a reset", async () => {
+				ask.mockResolvedValue(false);
+				render(MergeEditor, { props });
+				const result = await typeOutput();
+
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Reset merge selections" }),
+				);
+
+				await waitFor(() => expect(ask).toHaveBeenCalled());
+				expect(result.value).toBe(typed);
+			});
+
+			it("takes without asking once nothing is typed", async () => {
+				render(MergeEditor, { props });
+				await output();
+
+				await fireEvent.click(header("Incoming (Theirs)"));
+
+				expect(ask).not.toHaveBeenCalled();
+			});
+		});
+	});
+
+	describe("when the file ends its lines with CRLF", () => {
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd !== "get_merge_sides") return Promise.resolve(undefined);
+				return Promise.resolve(
+					sidesOf(
+						merged("first\r"),
+						conflict(["ours\r"], ["theirs\r"]),
+						merged("last\r", ""),
+					),
+				);
+			});
+		});
+
+		it("saves typed output with the file's own line endings", async () => {
+			render(MergeEditor, {
+				props: {
+					repoPath: "/test/repo",
+					filePath: "src/main.ts",
+					onclose: () => {},
+					onresolved: () => {},
+				},
+			});
+			const result = (await screen.findByRole(
+				"textbox",
+			)) as HTMLTextAreaElement;
+
+			await fireEvent.input(result, {
+				target: { value: "first\nmine\nlast\n" },
+			});
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			);
+
+			expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
+				path: "/test/repo",
+				filePath: "src/main.ts",
+				content: "first\r\nmine\r\nlast\r\n",
+			});
 		});
 	});
 
