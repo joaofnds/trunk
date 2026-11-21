@@ -22,6 +22,7 @@ import {
 	toggleHunk,
 	toggleLine,
 } from "../lib/merge-parser.js";
+import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
 import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
@@ -33,9 +34,16 @@ interface Props {
 	filePath: string;
 	onclose: () => void;
 	onresolved: () => void;
+	picks?: MergePicksStore;
 }
 
-let { repoPath, filePath, onclose, onresolved }: Props = $props();
+let {
+	repoPath,
+	filePath,
+	onclose,
+	onresolved,
+	picks = createMergePicks(),
+}: Props = $props();
 
 // ---------- Constants ----------
 const LINE_HEIGHT = 18;
@@ -55,6 +63,8 @@ let regions = $state<readonly MergeRegion[]>([]);
 let takenLines = $state<Set<string>>(new Set());
 let manualEdit = $state(false);
 let manualText = $state("");
+// The file and sides the picks on screen were made against.
+let pickedIn = $state.raw<{ path: string; sides: string } | null>(null);
 let loading = $state(true);
 let error = $state<string | null>(null);
 let retryable = $state(true);
@@ -294,22 +304,31 @@ $effect(() => {
 	loadSides(filePath);
 });
 
+$effect(() => {
+	const picked = { taken: takenLines, typed: manualEdit ? manualText : null };
+	if (pickedIn) picks.set(repoPath, pickedIn.path, pickedIn.sides, picked);
+});
+
 // A reply for a file the editor has since moved off is dropped. A file that is
 // no longer conflicted (a reset, or a resolve from elsewhere) closes the editor;
 // any other failure, a binary side among them, stays on screen with its reason.
 function loadSides(path: string) {
 	loading = true;
 	error = null;
+	pickedIn = null;
 
 	safeInvoke<MergeSides>("get_merge_sides", { path: repoPath, filePath: path })
 		.then((result) => {
 			if (path !== filePath) return;
 
+			const sides = JSON.stringify(result.regions);
+			const kept = picks.get(repoPath, path, sides);
 			regions = result.regions;
-			takenLines = new Set();
+			takenLines = new Set(kept?.taken);
 			lastClickedKey = null;
-			manualEdit = false;
-			manualText = "";
+			manualEdit = kept?.typed != null;
+			manualText = kept?.typed ?? "";
+			pickedIn = { path, sides };
 			focusedConflictIdx = 0;
 			panelScrollTop = 0;
 			loading = false;
@@ -508,6 +527,7 @@ async function handleSaveAndResolve() {
 				? manualText.replace(/\r?\n/g, lineEndingOf(regions))
 				: outputText,
 		});
+		picks.forget(repoPath, filePath);
 		// File resolved — staging panel updates automatically
 		onresolved();
 	} catch (e) {

@@ -20,6 +20,7 @@ import {
 	makeMergeSides,
 	mergedRegion as merged,
 } from "../__tests__/helpers/factories.js";
+import { createMergePicks } from "../lib/merge-picks.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
 import MergeEditor from "./MergeEditor.svelte";
 
@@ -330,6 +331,102 @@ describe("MergeEditor", () => {
 
 			expect(result.value).toContain("theirs three");
 			expect(result.value).not.toContain("theirs two");
+		});
+
+		it("keeps the lines taken in a file while another file is open", async () => {
+			const view = render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(line("theirs two"));
+			await view.rerender({ filePath: "src/other.ts" });
+			await waitFor(async () =>
+				expect((await output()).value).not.toContain("theirs two"),
+			);
+
+			await view.rerender({ filePath: "src/main.ts" });
+
+			await waitFor(async () =>
+				expect((await output()).value).toContain("theirs two"),
+			);
+		});
+
+		it("keeps the output typed in a file while another file is open", async () => {
+			const view = render(MergeEditor, { props });
+			await fireEvent.input(await output(), {
+				target: { value: "typed by hand" },
+			});
+			await view.rerender({ filePath: "src/other.ts" });
+			await waitFor(async () =>
+				expect((await output()).value).not.toContain("typed by hand"),
+			);
+
+			await view.rerender({ filePath: "src/main.ts" });
+
+			await waitFor(async () =>
+				expect((await output()).value).toBe("typed by hand"),
+			);
+		});
+
+		it("starts afresh in a file whose sides changed while another file was open", async () => {
+			const view = render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(line("theirs two"));
+			await view.rerender({ filePath: "src/other.ts" });
+			await waitFor(async () =>
+				expect((await output()).value).not.toContain("theirs two"),
+			);
+			mockInvoke.mockImplementation((cmd: string) =>
+				Promise.resolve(
+					cmd === "get_merge_sides"
+						? sidesOf(
+								merged("changed first"),
+								conflict(["ours one"], ["theirs one", "theirs two"]),
+								merged("last", ""),
+							)
+						: undefined,
+				),
+			);
+
+			await view.rerender({ filePath: "src/main.ts" });
+
+			await waitFor(async () =>
+				expect((await output()).value).toContain("changed first"),
+			);
+			expect((await output()).value).not.toContain("theirs two");
+		});
+
+		it("keeps the lines taken in a file after the editor closes on it", async () => {
+			const picks = createMergePicks();
+			const first = render(MergeEditor, { props: { ...props, picks } });
+			await output();
+			await fireEvent.click(line("theirs two"));
+			first.unmount();
+
+			render(MergeEditor, { props: { ...props, picks } });
+
+			await waitFor(async () =>
+				expect((await output()).value).toContain("theirs two"),
+			);
+		});
+
+		it("forgets the lines taken in a file once it is resolved", async () => {
+			const picks = createMergePicks();
+			const first = render(MergeEditor, { props: { ...props, picks } });
+			await output();
+			await fireEvent.click(line("theirs two"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			);
+			await waitFor(() =>
+				expect(mockInvoke).toHaveBeenCalledWith(
+					"save_merge_result",
+					expect.anything(),
+				),
+			);
+			first.unmount();
+
+			render(MergeEditor, { props: { ...props, picks } });
+
+			expect((await output()).value).not.toContain("theirs two");
 		});
 
 		it("takes one line when a key press with Shift held activates it", async () => {

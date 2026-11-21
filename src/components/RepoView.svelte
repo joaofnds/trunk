@@ -39,6 +39,7 @@ import {
 	shownDiff,
 	withLoadedDiff,
 } from "../lib/loaded-diffs.js";
+import { createMergePicks } from "../lib/merge-picks.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -612,6 +613,7 @@ let commitRead: {
 	landed: Promise<void>;
 } | null = null;
 let navigationIntent = 0;
+const mergePicks = createMergePicks();
 
 // Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
 // Detail/file state loads per pair; a stale response is dropped by generation.
@@ -2802,6 +2804,7 @@ async function handleRebaseStart(
 									filePath={conflictedFile.path}
 									onclose={handleDiffClose}
 									onresolved={handleFileResolved}
+									picks={mergePicks}
 								/>
 							{/snippet}
 						</LazyView>

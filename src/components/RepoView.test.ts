@@ -2203,6 +2203,30 @@ describe("RepoView", () => {
 				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 			}
 
+			it("keeps the picks in a conflicted file after its merge editor closes", async () => {
+				stubConflicts(["a.txt", "b.txt"]);
+				await openConflict("a.txt");
+				const takeOurs = () =>
+					screen.getByRole("button", {
+						name: "Take conflict 1 from Current (Ours)",
+					});
+				await fireEvent.click(takeOurs());
+				await fireEvent.click(
+					screen.getByRole("button", { name: "Close merge editor" }),
+				);
+				await vi.waitFor(() =>
+					expect(
+						screen.queryByRole("button", { name: "Close merge editor" }),
+					).toBeNull(),
+				);
+
+				await fireEvent.click(screen.getByText("a.txt"));
+
+				await vi.waitFor(() =>
+					expect(takeOurs()).toHaveAttribute("aria-pressed", "true"),
+				);
+			});
+
 			it("keeps the merge editor on the file it shows", async () => {
 				stubConflicts(["a.txt", "b.txt", "c.txt"]);
 				await openConflict("b.txt");
