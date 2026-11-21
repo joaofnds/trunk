@@ -7,7 +7,7 @@ use crate::commands::remote_tracking::Remotes;
 use crate::remote_ops::{self, RemoteProcess, RemoteReservation, RemoteTarget};
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp};
 use crate::user_git::{UserConfig, UserGit, refusal};
-use crate::watcher::RepoChanged;
+use crate::watcher::{RepoChanged, WatcherState};
 use trunk_git::error::TrunkError;
 use trunk_git::pull_safety::PullSafetyCopy;
 
@@ -469,9 +469,8 @@ pub async fn git_pull_inner<R: Runtime>(
     let completion = reserve_remote(activity, &path_buf, app, path, running).await?;
     // Held from the copy to its settling, so no other writer in the app stages over the
     // merge git writes, or moves the stash list between finding the copy and dropping
-    // it. Freed before the graph is rebuilt, since the git actions wait for the gate
-    // while they hold the rebuild. A cancel ends the pull while it still waits, and the
-    // abandoned wait frees the turn the moment it takes it.
+    // it. A cancel ends the pull while it still waits, and the abandoned wait frees
+    // the turn the moment it takes it.
     let turn = tokio::select! {
         turn = wait_for_write_turn(activity, path_buf.clone()) => turn?,
         () = completion.reservation.until_cancelled() => {
@@ -481,11 +480,11 @@ pub async fn git_pull_inner<R: Runtime>(
     let copy = save_pull_safety_copy(activity, path_buf.clone()).await;
     let ran = run_reserved(&args, &path_buf, &completion.reservation).await;
     let kept = settle_pull_safety_copy(activity, copy, path_buf.clone()).await;
-    drop(turn);
 
     let finished = finish_pull(
         activity,
         ran,
+        turn,
         path,
         repository,
         cache,
@@ -613,6 +612,7 @@ async fn settle_pull_safety_copy(
 async fn finish_pull<R: Runtime>(
     activity: &crate::activity::Activity,
     ran: Result<(), TrunkError>,
+    turn: trunk_git::write_gate::Turn,
     path: &str,
     repository: crate::state::OpenRepo,
     cache: &CommitCache,
@@ -633,6 +633,13 @@ async fn finish_pull<R: Runtime>(
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
+    let watch_refresh = match app.try_state::<WatcherState>() {
+        Some(watcher) => watcher.cover_pending(path, session, cache, &turn).await,
+        None => None,
+    };
+    // Other Git actions may wait for the write turn while holding the graph rebuild lock.
+    drop(turn);
+
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
     refresh_graph(
@@ -645,6 +652,9 @@ async fn finish_pull<R: Runtime>(
         session,
     )
     .await?;
+    if let Some(watch_refresh) = watch_refresh {
+        watch_refresh.complete();
+    }
 
     if conflicted {
         return Err(TrunkError::new(

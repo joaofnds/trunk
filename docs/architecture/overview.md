@@ -196,9 +196,10 @@ needs no drag handler.
    starts no interval. While Git holds the worktree's `index.lock` a due batch waits, for up to
    a second, so an operation run in a terminal shows its result rather than a state halfway
    through it. While a writer in the app holds the repository's write gate, such as a pull
-   running git, a due batch waits until the gate is free, with no time limit, and then goes
-   out with every change gathered meanwhile, so the app's own git run is never shown halfway
-   through. A rescan or a backend error, where events may be lost, is unscoped
+   running git, a due batch waits until the gate is free, with no time limit. When Git exits
+   successfully after a pull, Trunk can cover the queued batch with the completion refresh
+   before it reads the graph. The watcher still reports changes it receives after that
+   handoff. A rescan or a backend error, where events may be lost, is unscoped
 2. The watch `watcher.rs` starts emits Tauri event `"repo-changed"` with a `RepoChanged`
    payload: the repo path plus the changed paths relative to it. The write sites in
    `commands/` emit the same event with an empty path list, meaning the extent is

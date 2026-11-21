@@ -7,6 +7,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tokio::sync::oneshot;
 use trunk_git::error::TrunkError;
 use trunk_git::write_gate::GateKey;
 
@@ -464,6 +465,9 @@ const LOCK_PATIENCE: Duration = Duration::from_secs(1);
 /// already have been reported.
 const APP_WRITE_RECHECK: Duration = Duration::from_millis(20);
 
+/// Upper bound on how long pull waits for a busy watcher before refreshing on its own.
+const COVER_PENDING_TIMEOUT: Duration = Duration::from_millis(50);
+
 /// Who is midway through writing the repository when a batch falls due.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Writer {
@@ -648,7 +652,44 @@ impl Writers {
 enum Message {
     Event(notify::Result<Event>),
     CatchUp,
+    CoverPending(oneshot::Sender<bool>),
     Stop,
+}
+
+/// A full refresh can cover changes already queued by this watch. If the refresh
+/// fails or is cancelled, ask the same watch to report the repository as changed.
+pub(crate) struct WatchRefresh {
+    outbox: Sender<Message>,
+    restore_on_drop: bool,
+}
+
+impl WatchRefresh {
+    async fn request(outbox: Sender<Message>) -> Option<Self> {
+        let (covered, receipt) = oneshot::channel();
+        outbox.send(Message::CoverPending(covered)).ok()?;
+        let mut refresh = Self {
+            outbox,
+            restore_on_drop: true,
+        };
+        // An acknowledgement can cross the timeout. Keep the fallback armed until the
+        // full refresh succeeds if the caller cannot tell whether the batch was covered.
+        if let Ok(receipt) = tokio::time::timeout(COVER_PENDING_TIMEOUT, receipt).await {
+            refresh.restore_on_drop = receipt.unwrap_or(false);
+        }
+        Some(refresh)
+    }
+
+    pub(crate) fn complete(mut self) {
+        self.restore_on_drop = false;
+    }
+}
+
+impl Drop for WatchRefresh {
+    fn drop(&mut self) {
+        if self.restore_on_drop {
+            drop(self.outbox.send(Message::CatchUp));
+        }
+    }
 }
 
 /// A value that drops on a thread of its own, so dropping its owner returns at once.
@@ -760,6 +801,11 @@ fn pace(
                 }
             }
             Ok(Message::CatchUp) => pacer.record(Instant::now(), Changes::Unscoped),
+            Ok(Message::CoverPending(covered)) => {
+                if covered.send(pacer.held.is_some()).is_ok() {
+                    pacer.held = None;
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Ok(Message::Stop) | Err(RecvTimeoutError::Disconnected) => return,
         }
@@ -831,6 +877,22 @@ impl Default for WatcherState {
 }
 
 impl WatcherState {
+    /// Cover queued changes before reading the refreshed graph. Borrow the write
+    /// turn so the batch stays held until the watcher acknowledges the request.
+    pub(crate) async fn cover_pending(
+        &self,
+        repo: &str,
+        session: u64,
+        cache: &crate::state::CommitCache,
+        _turn: &trunk_git::write_gate::Turn,
+    ) -> Option<WatchRefresh> {
+        let outbox = self.watches.lock().unwrap().live.get(repo)?.outbox.clone();
+        if cache.session_id(repo) != Some(session) {
+            return None;
+        }
+        WatchRefresh::request(outbox).await
+    }
+
     /// A state that refuses to watch. The application test harness manages one of
     /// these, so `open_repo` runs unchanged while no filesystem watch is created.
     #[must_use]
@@ -1753,6 +1815,52 @@ mod tests {
 
         fn batch(names: &[&str]) -> Vec<PathBuf> {
             names.iter().map(PathBuf::from).collect()
+        }
+
+        #[test]
+        fn a_full_refresh_covers_queued_changes_and_leaves_later_ones() {
+            let directory = tempfile::tempdir().unwrap();
+            let repo = git2::Repository::init(directory.path()).unwrap();
+            let (_, writers) = open_for_watching(directory.path()).unwrap();
+            let turn = trunk_git::write_gate::wait_for_turn(&repo);
+            let (outbox, inbox) = mpsc::channel();
+            let (covered, receipt) = oneshot::channel();
+            let (delivered, changes) = mpsc::channel();
+            outbox.send(Message::CatchUp).unwrap();
+            outbox.send(Message::CoverPending(covered)).unwrap();
+            outbox
+                .send(Message::Event(Ok(
+                    Event::new(EventKind::Any).add_path("later.txt".into())
+                )))
+                .unwrap();
+
+            let watcher = std::thread::spawn(move || {
+                pace(&inbox, Some(&writers), |batch| {
+                    delivered.send(batch).is_ok()
+                });
+            });
+            let covered = receipt.blocking_recv().unwrap();
+            drop(turn);
+            let released = changes.recv_timeout(Duration::from_secs(5));
+            outbox.send(Message::Stop).unwrap();
+            watcher.join().unwrap();
+
+            assert_eq!((covered, released.unwrap()), (true, batch(&["later.txt"])));
+        }
+
+        #[tokio::test]
+        async fn an_abandoned_full_refresh_requests_a_catch_up() {
+            let (outbox, inbox) = mpsc::channel();
+            let (refresh, ()) = tokio::join!(WatchRefresh::request(outbox), async {
+                let Message::CoverPending(covered) = inbox.try_recv().unwrap() else {
+                    panic!("the watcher should receive a request to cover its pending batch");
+                };
+                covered.send(true).unwrap();
+            });
+
+            drop(refresh.unwrap());
+
+            assert!(matches!(inbox.try_recv(), Ok(Message::CatchUp)));
         }
 
         fn millis(count: u64) -> Duration {
