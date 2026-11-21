@@ -25,6 +25,7 @@ interface MenuResource {
 	id: string;
 	text: string;
 	enabled: boolean;
+	checked: boolean | undefined;
 	items: number[];
 	channel: number | null;
 	fired: number;
@@ -51,6 +52,10 @@ export class FakeMenu implements TauriFake {
 			label: item.text,
 			enabled: item.enabled,
 		}));
+	}
+
+	checked(label: string): boolean | undefined {
+		return this.showingItems().find((item) => item.text === label)?.checked;
 	}
 
 	/** Picks an item the way a user does: by the label they read on it. */
@@ -103,6 +108,10 @@ export class FakeMenu implements TauriFake {
 			id,
 			text: (options.text as string) ?? "",
 			enabled: options.enabled !== false,
+			checked:
+				wire.kind === "Check" && typeof options.checked === "boolean"
+					? options.checked
+					: undefined,
 			items: items.map(([itemRid]) => itemRid),
 			channel: channelId(wire.handler),
 			fired: 0,

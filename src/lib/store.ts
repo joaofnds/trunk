@@ -1,3 +1,4 @@
+import { writable } from "svelte/store";
 import {
 	type ColumnFloors,
 	type ColumnWidths,
@@ -62,6 +63,10 @@ export async function flushPreferencesForUpdate(
 	activeTabId: string,
 ): Promise<void> {
 	await columnLayoutQueue;
+	await Promise.all([
+		sharedColumnVisibility.settled(),
+		sharedTreeView.settled(),
+	]);
 	await Promise.allSettled([...pendingPreferences]);
 	const values = new Map(requestedPreferences);
 	values.delete(COMMIT_DRAFTS_KEY);
@@ -318,6 +323,24 @@ export async function setColumnVisibility(
 	await setPref(COLUMN_VISIBILITY_KEY, visibility);
 }
 
+const sharedColumnVisibility = sharedPreference({
+	defaultValue: DEFAULT_VISIBILITY,
+	read: getColumnVisibility,
+	write: setColumnVisibility,
+});
+
+export const columnVisibilityPreference = sharedColumnVisibility.store;
+
+export function changeColumnVisibility(
+	column: Exclude<keyof ColumnVisibility, "message">,
+	visible: boolean,
+): Promise<void> {
+	return sharedColumnVisibility.update((value) => ({
+		...value,
+		[column]: visible,
+	}));
+}
+
 // Rebase editor column widths
 export interface RebaseColumnWidths {
 	sha: number;
@@ -404,6 +427,113 @@ export async function getTreeViewEnabled(): Promise<boolean> {
 
 export async function setTreeViewEnabled(enabled: boolean): Promise<void> {
 	await setPref(TREE_VIEW_KEY, enabled);
+}
+
+const sharedTreeView = sharedPreference({
+	defaultValue: false,
+	read: getTreeViewEnabled,
+	write: setTreeViewEnabled,
+});
+
+export const treeViewPreference = sharedTreeView.store;
+
+export function changeTreeViewEnabled(enabled: boolean): Promise<void> {
+	return sharedTreeView.update(() => enabled);
+}
+
+/**
+ * All mounted views see edits immediately. Until a read succeeds, keep edits
+ * as changes to replay over the saved value. A later edit or mount retries a
+ * failed read, so a fallback displayed in the meantime never becomes the
+ * basis for a write.
+ */
+function sharedPreference<T>({
+	defaultValue,
+	read,
+	write,
+}: {
+	defaultValue: T;
+	read: () => Promise<T>;
+	write: (value: T) => Promise<void>;
+}) {
+	type Change = (value: T) => T;
+	type Snapshot = { readonly value: T; readonly resolved: boolean };
+	type ReadStatus = "loading" | "loaded" | "failed";
+	let value = defaultValue;
+	let status: ReadStatus = "loading";
+	let mounted = false;
+	let changes: Change[] = [];
+	let restoring: Promise<void> | undefined;
+	let writes: Promise<void> | undefined;
+	const store = writable<Snapshot>(
+		{ value: defaultValue, resolved: false },
+		() => {
+			mounted = true;
+			if (!restoring) {
+				publish(changes.length ? value : defaultValue, "loading");
+			}
+			void restore().catch(() => {});
+			return () => {
+				mounted = false;
+			};
+		},
+	);
+
+	function publish(next: T, nextStatus: ReadStatus): void {
+		value = next;
+		status = nextStatus;
+		store.set({ value, resolved: status !== "loading" });
+	}
+
+	function enqueueWrite(next: T): Promise<void> {
+		const done = (writes ?? Promise.resolve()).then(() => write(next));
+		const settled = done
+			.catch(() => {})
+			.finally(() => {
+				if (writes === settled) writes = undefined;
+			});
+		writes = settled;
+		return done;
+	}
+
+	function restore(): Promise<void> {
+		if (restoring) return restoring;
+		const reading = writes ? writes.then(read) : read();
+		restoring = reading.then(
+			(saved) => {
+				restoring = undefined;
+				const restored = changes.reduce(
+					(value, change) => change(value),
+					saved,
+				);
+				const done = changes.length ? enqueueWrite(restored) : undefined;
+				changes = [];
+				publish(restored, "loaded");
+				return done;
+			},
+			(error: unknown) => {
+				restoring = undefined;
+				publish(value, "failed");
+				throw error;
+			},
+		);
+		return restoring;
+	}
+
+	function update(change: Change): Promise<void> {
+		if (!mounted) return Promise.resolve();
+		const next = change(value);
+		if (status !== "loaded") changes.push(change);
+		const done = status === "loaded" ? enqueueWrite(next) : restore();
+		publish(next, status);
+		return done;
+	}
+
+	return {
+		store: { subscribe: store.subscribe },
+		update,
+		settled: () => (changes.length ? restoring?.catch(() => {}) : writes),
+	};
 }
 
 // Whether review threads are hidden. Which of them show is not kept, since

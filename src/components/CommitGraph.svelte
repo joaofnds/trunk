@@ -95,12 +95,11 @@ import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
 import { announcePan, type Pan } from "../lib/scrollbar-activity.js";
 import { applyStash, dropStash, popStash } from "../lib/stash-actions.js";
 import {
-	type ColumnVisibility,
 	type ColumnWidths,
-	getColumnVisibility,
+	changeColumnVisibility,
+	columnVisibilityPreference,
 	loadUserWidths,
 	saveUserWidths,
-	setColumnVisibility,
 } from "../lib/store.js";
 import { popupTagMenu, tagMenuEntriesOf } from "../lib/tag-menu.js";
 import { measureTextWidth } from "../lib/text-measure.js";
@@ -347,7 +346,7 @@ let wipDiffStat = $state<DiffStat | undefined>(undefined);
 // don't know the real visibility, so no stat fetch fires — otherwise a user who
 // persisted diff:false pays a full page + WIP diff computation on every load for
 // a column they turned off.
-let columnVisibilityResolved = $state(false);
+const columnVisibilityResolved = $derived($columnVisibilityPreference.resolved);
 let statsWereActive = false;
 let renderedStart = $state(0);
 let renderedEnd = $state(0);
@@ -375,15 +374,7 @@ function markGraphReady(response: GraphResponse): void {
 const awaitingFirstGraph = $derived(!graphReady && error === null);
 
 let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
-let columnVisibility = $state<ColumnVisibility>({
-	ref: true,
-	graph: true,
-	message: true,
-	diff: true,
-	author: true,
-	date: true,
-	sha: true,
-});
+const columnVisibility = $derived($columnVisibilityPreference.value);
 
 $effect(() => {
 	userWidthsRestored = loadUserWidths(repoPath, floors).then((stored) => {
@@ -395,13 +386,6 @@ $effect(() => {
 			widths[column] = stored[column] ?? widths[column];
 		columnWidths = widths;
 		userSizedColumns = new Set([...userSizedColumns, ...restored]);
-	});
-});
-
-$effect(() => {
-	getColumnVisibility().then((v) => {
-		columnVisibility = v;
-		columnVisibilityResolved = true;
 	});
 });
 
@@ -1590,21 +1574,20 @@ async function showHeaderContextMenu(e: MouseEvent) {
 	e.preventDefault();
 	const { Menu, CheckMenuItem } = await nativeMenu();
 	const items = await Promise.all(
-		columnLabels.map((col) =>
-			CheckMenuItem.new({
+		columnLabels.map((col) => {
+			const checked = columnVisibility[col.key];
+			return CheckMenuItem.new({
 				text: col.label,
-				checked: columnVisibility[col.key],
+				checked,
 				enabled: col.key !== "message",
 				action: () => {
-					if (col.key === "message") return;
-					columnVisibility = {
-						...columnVisibility,
-						[col.key]: !columnVisibility[col.key],
-					};
-					setColumnVisibility(columnVisibility);
+					if (!graphActive || col.key === "message") return;
+					void changeColumnVisibility(col.key, !checked).catch(() => {
+						showToast("Could not save column visibility", "error");
+					});
 				},
-			}),
-		),
+			});
+		}),
 	);
 	const menu = await Menu.new({ items });
 	await menu.popup();

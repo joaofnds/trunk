@@ -68,17 +68,17 @@ import { getScheduler } from "../lib/scheduler.js";
 import { createSidePanes } from "../lib/side-panes.svelte.js";
 import {
 	type CommitDraft,
+	changeTreeViewEnabled,
 	clearCommitDraft,
 	clearReviewUpdateSnapshot,
 	flushCommitDraftForUpdate,
 	flushReviewComposerForUpdate,
 	getCommitDraft,
 	getReviewUpdateSnapshot,
-	getTreeViewEnabled,
 	setCommitDraft,
 	setLeftPaneWidth,
 	setRightPaneWidth,
-	setTreeViewEnabled,
+	treeViewPreference,
 } from "../lib/store.js";
 import { diffTakesComments } from "../lib/takes-comments.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -427,7 +427,7 @@ let headBranch = $state<string | undefined>(undefined);
 const commitFormSession = new CommitFormSession();
 let draftSummaryFocused = $state(false);
 let draftLoaded = $state(false);
-let treeViewEnabled = $state(false);
+const treeViewEnabled = $derived($treeViewPreference.value);
 
 // Staging file selection (from StagingPanel)
 interface StagingFileSelection {
@@ -2132,17 +2132,15 @@ async function refetchFileDiff(
 }
 
 function handleTreeViewToggle() {
-	treeViewEnabled = !treeViewEnabled;
-	setTreeViewEnabled(treeViewEnabled);
+	void changeTreeViewEnabled(!treeViewEnabled).catch(() => {
+		showToast("Could not save the file view setting", "error");
+	});
 }
 
 // Load initial data
 $effect(() => {
 	void repoPath;
 	void dirtyCountsRefresh.run();
-	getTreeViewEnabled().then((v) => {
-		if (repoViewActive) treeViewEnabled = v;
-	});
 });
 
 // Rehydrate the persisted WIP commit draft once, before the first StagingPanel
