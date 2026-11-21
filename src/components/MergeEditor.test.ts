@@ -298,6 +298,40 @@ describe("MergeEditor", () => {
 			expect(result.value).toContain("theirs one\ntheirs two\ntheirs three");
 		});
 
+		it("takes one line for a shift click in a file opened after the click", async () => {
+			const view = render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(line("theirs one"));
+			await view.rerender({ filePath: "src/other.ts" });
+			const result = await output();
+			await waitFor(() => expect(result.value).not.toContain("theirs one"));
+
+			await fireEvent.click(line("theirs three"), {
+				shiftKey: true,
+				detail: 1,
+			});
+
+			expect(result.value).toContain("theirs three");
+			expect(result.value).not.toContain("theirs two");
+		});
+
+		it("takes one line for a shift click after Reset", async () => {
+			render(MergeEditor, { props });
+			const result = await output();
+			await fireEvent.click(line("theirs one"));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Reset merge selections" }),
+			);
+
+			await fireEvent.click(line("theirs three"), {
+				shiftKey: true,
+				detail: 1,
+			});
+
+			expect(result.value).toContain("theirs three");
+			expect(result.value).not.toContain("theirs two");
+		});
+
 		it("takes one line when a key press with Shift held activates it", async () => {
 			render(MergeEditor, { props });
 			const result = await output();

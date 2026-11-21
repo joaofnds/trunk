@@ -307,6 +307,7 @@ function loadSides(path: string) {
 
 			regions = result.regions;
 			takenLines = new Set();
+			lastClickedKey = null;
 			manualEdit = false;
 			manualText = "";
 			focusedConflictIdx = 0;
@@ -471,6 +472,7 @@ function handleOutputEdit(e: Event) {
 function handleReset() {
 	afterDiscardingTypedOutput(() => {
 		takenLines = new Set();
+		lastClickedKey = null;
 	});
 }
 
