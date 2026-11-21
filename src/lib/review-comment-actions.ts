@@ -16,14 +16,6 @@ import type { Anchor, Delivery, Draft, ThreadState } from "./types.js";
 // rune's listener round-trips the update. `add_commit_thread` creates the active
 // review when the repo has none, so no caller has to establish one first.
 
-export function editThread(
-	repoPath: string,
-	commentId: string,
-	text: string,
-): Promise<void> {
-	return safeInvoke("edit_thread", { path: repoPath, id: commentId, text });
-}
-
 export function deleteThread(
 	repoPath: string,
 	commentId: string,
@@ -45,7 +37,7 @@ export function addCommitThread(
 	});
 }
 
-// Unlike the wrappers above, these four catch their own refusal instead of
+// Unlike the wrappers above, these five catch their own refusal instead of
 // rethrowing: their callers are bare arrow functions at five call sites
 // (ReviewPanel, CommitDetail, and the three diff hosts), none of which await
 // or catch the promise. A store failure, an agent-text edit, or an illegal
@@ -79,6 +71,17 @@ export function addReply(
 				delivery,
 			}),
 		"Failed to add reply",
+	);
+}
+
+export function editThread(
+	repoPath: string,
+	commentId: string,
+	text: string,
+): Promise<boolean> {
+	return reportRefusal(
+		() => safeInvoke("edit_thread", { path: repoPath, id: commentId, text }),
+		"Failed to edit comment",
 	);
 }
 

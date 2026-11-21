@@ -49,7 +49,7 @@ import ThreadReplies from "./ThreadReplies.svelte";
 interface Props {
 	thread: Thread;
 	repoPath: string;
-	onedit: (id: string, text: string) => void;
+	onedit: (id: string, text: string) => Promise<boolean>;
 	ondelete: (id: string) => void;
 	// When true (default) confirm before deleting (mirrors the panel); when false
 	// delete immediately (inline hosts).
@@ -120,6 +120,7 @@ const peek = $derived(
 const lastChange = $derived(thread.history?.at(-1) ?? null);
 const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
+const rootEditSaving = $derived(editor.rootEditSaving);
 const replySaving = $derived(editor.replySaving);
 
 // Where the comment points, whichever shape it holds. A current-file thread
@@ -385,11 +386,22 @@ function cancelEdit() {
 	draft.close();
 }
 
-function saveEdit() {
-	if (!draft.valid) return;
-	const text = draft.text;
-	draft.close();
-	onedit(thread.id, text);
+async function saveEdit() {
+	const submittedEditor = editor;
+	const submittedDraft = draft;
+	if (!submittedDraft.valid) return;
+
+	const text = submittedDraft.text;
+	const submittedRevision = submittedDraft.revision;
+	submittedEditor.setRootEditSaving(true);
+	try {
+		const saved = await onedit(thread.id, text);
+		if (saved && submittedDraft.revision === submittedRevision) {
+			submittedDraft.close();
+		}
+	} finally {
+		submittedEditor.setRootEditSaving(false);
+	}
 }
 
 async function submitReply(delivery: Delivery) {
@@ -588,7 +600,8 @@ async function requestDeleteReply(replyId: string) {
 					label="Edit comment"
 					placeholder="Leave a comment"
 					submitLabel="Save"
-					submitDisabled={!draft.valid}
+					submitDisabled={!draft.valid || rootEditSaving}
+					busy={rootEditSaving}
 					onsubmit={saveEdit}
 					oncancel={cancelEdit}
 					onescape={cancelEdit}

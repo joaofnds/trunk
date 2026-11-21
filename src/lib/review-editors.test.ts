@@ -387,6 +387,19 @@ describe("review update capture", () => {
 		expect(editors.captureUpdate().blocker).toContain("reply");
 	});
 
+	it.each([
+		"setRootEditSaving",
+		"setReplySaving",
+		"setReplyEditSaving",
+	] as const)("waits for a thread save in flight through %s", (setSaving) => {
+		const editors = createReviewEditorStore();
+		editors.thread("review-a", "review-panel", "thread-1")[setSaving](true);
+
+		expect(editors.captureUpdate().blocker).toContain(
+			"Wait for the review save",
+		);
+	});
+
 	it("captures one normal composer with its generation and location", () => {
 		const editors = createReviewEditorStore();
 		const target = {

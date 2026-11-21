@@ -4,6 +4,7 @@ import {
 	addReply,
 	deleteReply,
 	editReply,
+	editThread,
 	setThreadState,
 } from "./review-comment-actions.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
@@ -49,6 +50,30 @@ describe("addReply", () => {
 		await expect(
 			addReply("/repo", "thread-1", "too late", "send"),
 		).resolves.toBe(false);
+		expect(errorMessages()).toEqual(["database is locked"]);
+	});
+});
+
+describe("editThread", () => {
+	it("sends the repo path, comment id and text to edit_thread", async () => {
+		await editThread("/repo", "thread-1", "sharper");
+
+		expect(mockInvoke).toHaveBeenCalledWith("edit_thread", {
+			path: "/repo",
+			id: "thread-1",
+			text: "sharper",
+		});
+	});
+
+	it("raises a toast and returns false when the backend refuses", async () => {
+		mockInvoke.mockRejectedValue({
+			code: "sqlite",
+			message: "database is locked",
+		});
+
+		await expect(editThread("/repo", "thread-1", "too late")).resolves.toBe(
+			false,
+		);
 		expect(errorMessages()).toEqual(["database is locked"]);
 	});
 });

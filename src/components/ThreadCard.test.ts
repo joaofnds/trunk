@@ -98,7 +98,7 @@ describe("ThreadCard", () => {
 			props: {
 				thread: comment,
 				repoPath: "/repo",
-				onedit: () => {},
+				onedit: async () => true,
 				ondelete: () => {},
 				...overrides,
 			},
@@ -294,7 +294,7 @@ describe("ThreadCard", () => {
 			await view.rerender({
 				thread: { ...comment, state, stale: true },
 				repoPath: "/repo",
-				onedit: () => {},
+				onedit: async () => true,
 				ondelete: () => {},
 			});
 			expect(screen.getByText("Stale")).toBeInTheDocument();
@@ -305,7 +305,7 @@ describe("ThreadCard", () => {
 			await view.rerender({
 				thread: { ...comment, state, stale: false },
 				repoPath: "/repo",
-				onedit: () => {},
+				onedit: async () => true,
 				ondelete: () => {},
 			});
 			expect(screen.queryByText("Stale")).not.toBeInTheDocument();
@@ -1452,7 +1452,7 @@ describe("ThreadCard", () => {
 		await view.rerender({
 			thread: comment,
 			repoPath: "/repo",
-			onedit: () => {},
+			onedit: async () => true,
 			ondelete: () => {},
 			editorSession: replacementSession,
 		});
@@ -1469,7 +1469,7 @@ describe("ThreadCard", () => {
 		await view.rerender({
 			thread: comment,
 			repoPath: "/repo",
-			onedit: () => {},
+			onedit: async () => true,
 			ondelete: () => {},
 			editorSession: firstSession,
 		});
@@ -1606,7 +1606,12 @@ describe("ThreadCard", () => {
 	describe("editing the comment", () => {
 		it("saves on Cmd-Enter", async () => {
 			const edits: [string, string][] = [];
-			renderCard({ onedit: (id, text) => edits.push([id, text]) });
+			renderCard({
+				onedit: async (id, text) => {
+					edits.push([id, text]);
+					return true;
+				},
+			});
 
 			await fireEvent.click(
 				screen.getByRole("button", { name: "Edit comment" }),
@@ -1618,9 +1623,72 @@ describe("ThreadCard", () => {
 			expect(edits).toEqual([["c1", "a sharper note"]]);
 		});
 
+		it("keeps the edited text when the save is refused", async () => {
+			renderCard({ onedit: async () => false });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
+			await fireEvent.input(screen.getByLabelText("Edit comment"), {
+				target: { value: "keep this edit" },
+			});
+			await fireEvent.click(screen.getByText("Save"));
+			await flush();
+
+			expect(screen.getByRole("textbox", { name: "Edit comment" })).toHaveValue(
+				"keep this edit",
+			);
+		});
+
+		it("sends one save while the first is in flight", async () => {
+			const edits: string[] = [];
+			renderCard({
+				onedit: (_id, text) => {
+					edits.push(text);
+					return new Promise<boolean>(() => {});
+				},
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
+			await fireEvent.input(screen.getByLabelText("Edit comment"), {
+				target: { value: "a sharper note" },
+			});
+			await fireEvent.click(screen.getByText("Save"));
+			await fireEvent.keyDown(screen.getByLabelText("Edit comment"), {
+				key: "Enter",
+				metaKey: true,
+			});
+
+			expect(edits).toEqual(["a sharper note"]);
+		});
+
+		it("closes the editor once the save lands", async () => {
+			renderCard({ onedit: async () => true });
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Edit comment" }),
+			);
+			await fireEvent.input(screen.getByLabelText("Edit comment"), {
+				target: { value: "a sharper note" },
+			});
+			await fireEvent.click(screen.getByText("Save"));
+			await flush();
+
+			expect(
+				screen.queryByRole("textbox", { name: "Edit comment" }),
+			).toBeNull();
+		});
+
 		it("cancels on Escape", async () => {
 			const edits: [string, string][] = [];
-			renderCard({ onedit: (id, text) => edits.push([id, text]) });
+			renderCard({
+				onedit: async (id, text) => {
+					edits.push([id, text]);
+					return true;
+				},
+			});
 
 			await fireEvent.click(
 				screen.getByRole("button", { name: "Edit comment" }),
@@ -1656,7 +1724,7 @@ describe("ThreadCard", () => {
 				props: {
 					thread: comment,
 					repoPath: "/repo",
-					onedit: () => {},
+					onedit: async () => true,
 					ondelete: () => {},
 				},
 				context: new Map([[REVIEWER, { initials: "JF" }]]),

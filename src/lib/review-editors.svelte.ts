@@ -8,9 +8,11 @@ export interface ThreadEditorSession {
 	reply: Draft;
 	replyEdit: Draft;
 	readonly editingReplyId: string | null;
+	readonly rootEditSaving: boolean;
 	readonly replySaving: boolean;
 	readonly replyEditSaving: boolean;
 	setEditingReply(id: string | null): void;
+	setRootEditSaving(saving: boolean): void;
 	setReplySaving(saving: boolean): void;
 	setReplyEditSaving(saving: boolean): void;
 }
@@ -155,6 +157,7 @@ export interface ReviewEditorStore {
 export function createThreadEditorSession(): ThreadEditorSession {
 	const state = $state({
 		editingReplyId: null as string | null,
+		rootEditSaving: false,
 		replySaving: false,
 		replyEditSaving: false,
 	});
@@ -166,6 +169,9 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		get editingReplyId() {
 			return state.editingReplyId;
 		},
+		get rootEditSaving() {
+			return state.rootEditSaving;
+		},
 		get replySaving() {
 			return state.replySaving;
 		},
@@ -174,6 +180,9 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		},
 		setEditingReply(id: string | null) {
 			state.editingReplyId = id;
+		},
+		setRootEditSaving(saving: boolean) {
+			state.rootEditSaving = saving;
 		},
 		setReplySaving(saving: boolean) {
 			state.replySaving = saving;
@@ -358,6 +367,7 @@ export function createReviewEditorStore(): ReviewEditorStore {
 		session.reply.close();
 		session.replyEdit.close();
 		session.setEditingReply(null);
+		session.setRootEditSaving(false);
 		session.setReplySaving(false);
 		session.setReplyEditSaving(false);
 	}
@@ -390,7 +400,10 @@ export function createReviewEditorStore(): ReviewEditorStore {
 				);
 			if (
 				[...threadSessions.values()].some(
-					({ session }) => session.replySaving || session.replyEditSaving,
+					({ session }) =>
+						session.rootEditSaving ||
+						session.replySaving ||
+						session.replyEditSaving,
 				) ||
 				[...noteSessions.values()].some((session) => session.saving)
 			)

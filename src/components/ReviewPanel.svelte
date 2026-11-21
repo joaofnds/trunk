@@ -33,7 +33,7 @@ import {
 	startNewReview,
 	unarchiveReview,
 } from "../lib/review-actions.js";
-import { setThreadState } from "../lib/review-comment-actions.js";
+import { editThread, setThreadState } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -713,14 +713,6 @@ async function saveAddNote(oid: string, delivery: Delivery) {
 		showToast(errorMessage(e, "Failed to add note"), "error");
 	} finally {
 		submittedSession.setSaving(false);
-	}
-}
-
-async function saveEdit(id: string, text: string) {
-	try {
-		await safeInvoke("edit_thread", { path: repoPath, id, text });
-	} catch (e) {
-		showToast(errorMessage(e, "Failed to edit comment"), "error");
 	}
 }
 
@@ -1406,7 +1398,7 @@ registerUpdateBlocker(() =>
 	<ThreadCard
 		thread={comment}
 		{repoPath}
-		onedit={(id, text) => saveEdit(id, text)}
+		onedit={(id, text) => editThread(repoPath, id, text)}
 		ondelete={(id) => deleteComment(id)}
 		confirmDelete={true}
 		variant="panel"

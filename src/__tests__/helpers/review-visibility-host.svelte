@@ -25,6 +25,6 @@ provideReviewVisibility(untrack(() => visibility));
 	{thread}
 	{variant}
 	repoPath="/repo"
-	onedit={() => {}}
+	onedit={async () => true}
 	ondelete={() => {}}
 />
