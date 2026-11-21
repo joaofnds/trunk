@@ -47,6 +47,351 @@ afterEach(() => {
 });
 
 describe("CommitGraph", () => {
+	describe("graph paging", () => {
+		it("keeps a deep jump in view when a shallower refresh lands afterward", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			const publishedDepths: number[] = [];
+			const { view, snapshot } = await openPagedGraph((rows) =>
+				publishedDepths.push(rows.length),
+			);
+			const viewport = graphViewport(view.container);
+			followViewportScroll(viewport);
+			const refresh = host.holdNextReply("refresh_commit_graph");
+			await view.rerender({ refreshSignal: 1 });
+			expect(await refresh.entered).toEqual({ path: "/repo", loaded: 200 });
+			const updated = {
+				...snapshot,
+				revision: 2,
+				commits: snapshot.commits.map((commit) => ({
+					...commit,
+					summary: `updated ${commit.summary}`,
+				})),
+			};
+
+			await view.component.scrollToOid("oid-700");
+			vi.advanceTimersToNextFrame();
+			await tick();
+			expect(screen.getByText("commit 700")).toBeInTheDocument();
+			const readingTop = viewport.scrollTop;
+			publishedDepths.length = 0;
+			host.seedGraph(updated);
+			refresh.release({ ...updated, commits: updated.commits.slice(0, 200) });
+			await setImmediate();
+
+			expect(publishedDepths).toEqual([snapshot.commits.length]);
+			expect(screen.queryByText("updated commit 700")).toBeInTheDocument();
+			expect(viewport.scrollTop).toBe(readingTop);
+		});
+
+		it("publishes the newest graph when a visibility reply overlaps a cached read", async () => {
+			const { view, snapshot } = await openPagedGraph();
+			const cached = host.holdNextReply("get_commit_graph");
+			await view.rerender({ cachedGraphRevision: 3 });
+			await cached.entered;
+			const visibility = {
+				...snapshot,
+				revision: 2,
+				commits: [makeCommit({ oid: "visible", summary: "visibility tip" })],
+			};
+			view.component.showGraph(visibility);
+			cached.release({
+				...snapshot,
+				revision: 3,
+				commits: [makeCommit({ oid: "newest", summary: "newest tip" })],
+			});
+			await setImmediate();
+			expect(screen.getByText("newest tip")).toBeInTheDocument();
+
+			view.component.showGraph(visibility);
+			await tick();
+			expect(screen.getByText("newest tip")).toBeInTheDocument();
+			expect(screen.queryByText("visibility tip")).toBeNull();
+		});
+
+		it("finishes loading the visible revision while another refresh is pending", async () => {
+			const { view, snapshot } = await openPagedGraph();
+			await view.component.scrollToOid("oid-700");
+			const visible = {
+				...snapshot,
+				revision: 2,
+				commits: snapshot.commits.slice(1),
+			};
+			const prefix = host.holdNextReply("get_commit_graph");
+			view.component.showGraph({
+				...visible,
+				commits: visible.commits.slice(0, 200),
+			});
+			await prefix.entered;
+			const refresh = host.holdNextReply("refresh_commit_graph");
+			await view.rerender({ refreshSignal: 1 });
+			await refresh.entered;
+
+			prefix.release(visible);
+			await setImmediate();
+			const loaded = view.component.loadedRows();
+			refresh.release(visible);
+			await setImmediate();
+
+			expect(loaded).toBe(visible.commits.length);
+		});
+
+		it("preserves a later scroll while a cached replacement catches up", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			const { view, snapshot } = await openPagedGraph();
+			const viewport = graphViewport(view.container);
+			followViewportScroll(viewport);
+			const cached = host.holdNextReply("get_commit_graph");
+			await view.rerender({ cachedGraphRevision: 2 });
+			expect(await cached.entered).toMatchObject({ offset: 0, loaded: 200 });
+			await view.component.scrollToOid("oid-700");
+			const replacement = {
+				...snapshot,
+				revision: 2,
+				commits: [
+					makeCommit({ oid: "new-tip", in_head_chain: true }),
+					...snapshot.commits,
+				],
+			};
+			const depth = host.holdNextReply("get_commit_graph");
+			cached.release({
+				...replacement,
+				commits: replacement.commits.slice(0, 200),
+			});
+			expect(await depth.entered).toMatchObject({ offset: 0, loaded: 840 });
+
+			const readingTop = 550 * ROW_HEIGHT + 3;
+			viewport.scrollTo({ top: readingTop });
+			vi.advanceTimersToNextFrame();
+			await tick();
+			host.seedGraph(replacement);
+			depth.release({
+				...replacement,
+				commits: replacement.commits.slice(0, 840),
+			});
+			await setImmediate();
+			vi.advanceTimersToNextFrame();
+			await tick();
+
+			expect(screen.getByText("commit 550")).toBeInTheDocument();
+			expect(viewport.scrollTop).toBe(readingTop + ROW_HEIGHT);
+		});
+
+		it("keeps a deep reading position when visibility replaces the graph", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			const { view, snapshot } = await openPagedGraph();
+			const viewport = graphViewport(view.container);
+			followViewportScroll(viewport);
+			const visibilityDepth = view.component.loadedRows();
+			await view.component.scrollToOid("oid-700");
+			const visible = {
+				...snapshot,
+				revision: 2,
+				commits: snapshot.commits.filter(({ oid }) => oid !== "oid-1"),
+			};
+
+			host.seedGraph(visible);
+			view.component.showGraph({
+				...visible,
+				commits: visible.commits.slice(0, visibilityDepth),
+			});
+			await setImmediate();
+			vi.advanceTimersToNextFrame();
+			await tick();
+
+			expect(screen.getByText("commit 700")).toBeInTheDocument();
+			expect(view.component.loadedRows()).toBe(visible.commits.length);
+		});
+
+		it("accepts a refresh that actually reaches the end of a shorter history", async () => {
+			const publishedEnds: boolean[] = [];
+			const { view, snapshot } = await openPagedGraph((_, hasMore) =>
+				publishedEnds.push(!hasMore),
+			);
+			await view.component.scrollToOid("oid-240");
+			const refresh = host.holdNextReply("refresh_commit_graph");
+			await view.rerender({ refreshSignal: 1 });
+			expect(await refresh.entered).toMatchObject({ loaded: 440 });
+			const shortened = {
+				...snapshot,
+				revision: 2,
+				commits: snapshot.commits.slice(0, 200),
+			};
+			host.seedGraph(shortened);
+
+			refresh.release(shortened);
+			await setImmediate();
+
+			expect(publishedEnds.at(-1)).toBe(true);
+			expect(view.component.loadedRows()).toBe(shortened.commits.length);
+			expect(host.count("get_commit_graph")).toBe(2);
+		});
+
+		it("opens at the HEAD row after two full pages without it", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			const headRow = 405;
+			const commits = history(420).map((commit, index) => ({
+				...commit,
+				in_head_chain: index >= headRow,
+			}));
+			const snapshot = { commits, max_columns: 1, checked: true, revision: 1 };
+			const first = host.holdNextReply("get_commit_graph");
+			const second = host.holdNextReply("get_commit_graph");
+			const view = renderPagedGraph(snapshot);
+			await first.entered;
+
+			first.release({ ...snapshot, commits: commits.slice(0, 200) });
+			await setImmediate();
+			expect(latestPageArgs()).toMatchObject({ offset: 200 });
+			followViewportScroll(graphViewport(view.container));
+			second.release({ ...snapshot, commits: commits.slice(200, 400) });
+			await setImmediate();
+			vi.advanceTimersToNextFrame();
+			await tick();
+
+			expect(screen.queryByText(`commit ${headRow}`)).toBeInTheDocument();
+		});
+
+		it("keeps the graph depth when the same hidden commit is requested twice", async () => {
+			const { view } = await openPagedGraph();
+
+			await view.component.scrollToOid("hidden-topic");
+			await view.component.scrollToOid("hidden-topic");
+
+			expect(view.component.loadedRows()).toBe(200);
+			expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+			expect(host.count("get_commit_graph")).toBe(3);
+		});
+
+		it("loads a visible target after sharing a page for a hidden target", async () => {
+			const { view } = await openPagedGraph();
+			const page = host.holdNextReply("get_commit_graph");
+			const hidden = view.component.scrollToOid("hidden-topic");
+			await page.entered;
+
+			const visible = view.component.scrollToOid("oid-240");
+			page.release(null);
+			await Promise.all([hidden, visible]);
+
+			expect(view.component.loadedRows()).toBe(440);
+			expect(latestPageArgs()).toMatchObject({
+				offset: 200,
+				revision: 1,
+				through: "oid-240",
+			});
+		});
+
+		it("resumes infinite scroll after sharing a page for a hidden target", async () => {
+			vi.useFakeTimers({
+				toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+			});
+			const { view } = await openPagedGraph();
+			const page = host.holdNextReply("get_commit_graph");
+			const jump = view.component.scrollToOid("hidden-topic");
+			await page.entered;
+
+			await fireEvent.scroll(graphViewport(view.container), {
+				target: { scrollTop: 160 * ROW_HEIGHT },
+			});
+			vi.advanceTimersToNextFrame();
+			await tick();
+			expect(screen.getByText("commit 160")).toBeInTheDocument();
+			expect(host.count("get_commit_graph")).toBe(2);
+			page.release(null);
+			await jump;
+
+			await waitFor(() => expect(view.component.loadedRows()).toBe(400));
+			expect(latestPageArgs()).toEqual({
+				path: "/repo",
+				offset: 200,
+				revision: 1,
+			});
+		});
+
+		it("retries an absent target after a replacement makes it visible", async () => {
+			const { view, snapshot } = await openPagedGraph();
+			const page = host.holdNextReply("get_commit_graph");
+			const oid = "hidden-topic";
+			const jump = view.component.scrollToOid(oid);
+			await page.entered;
+
+			const commits = snapshot.commits.slice();
+			commits.splice(240, 0, makeCommit({ oid }));
+			const revealed = { ...snapshot, commits, revision: 2 };
+			host.seedGraph(revealed);
+			view.component.showGraph({ ...revealed, commits: commits.slice(0, 200) });
+			page.release(null);
+			await jump;
+
+			expect(view.component.loadedRows()).toBe(440);
+			expect(latestPageArgs()).toMatchObject({
+				offset: 200,
+				revision: 2,
+				through: oid,
+			});
+		});
+
+		function latestPageArgs() {
+			return host.requests.findLast(({ cmd }) => cmd === "get_commit_graph")
+				?.args;
+		}
+
+		async function openPagedGraph(
+			oncommitschange?: (
+				rows: ReturnType<typeof history>,
+				hasMore: boolean,
+			) => void,
+		) {
+			const snapshot = {
+				commits: history(840),
+				max_columns: 1,
+				checked: true,
+				revision: 1,
+			};
+			const view = renderPagedGraph(snapshot, oncommitschange);
+			await screen.findByText("commit 0");
+
+			return { view, snapshot };
+		}
+
+		function renderPagedGraph(
+			snapshot: Parameters<typeof host.seedGraph>[0],
+			oncommitschange?: (
+				rows: ReturnType<typeof history>,
+				hasMore: boolean,
+			) => void,
+		) {
+			host.seedGraph(snapshot);
+			return render(CommitGraph, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					remoteState: createRemoteState(),
+					tabActive: true,
+					oncommitschange,
+				},
+				context: new Map([[SCHEDULER, clock]]),
+			});
+		}
+
+		function followViewportScroll(viewport: HTMLElement) {
+			viewport.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
+				const top = typeof options === "number" ? y : options?.top;
+				if (top === undefined) return;
+
+				viewport.scrollTop = top;
+				viewport.dispatchEvent(new Event("scroll"));
+			};
+		}
+	});
+
 	describe("search responses", () => {
 		it.each([
 			"new query",
@@ -187,6 +532,65 @@ describe("CommitGraph", () => {
 			},
 		);
 
+		it("scrolls to the next unloaded match after an earlier page lands", async () => {
+			const { view, selections } = await openSearch([
+				makeCommit({ oid: "earlier", summary: "earlier change" }),
+				...history(199),
+			]);
+			const scrolls = recordScrolls(view.container);
+			host.seedResponse("search_commits", [{ oid: "first" }, { oid: "next" }]);
+			const firstPage = host.holdNextReply("get_commit_graph");
+			const nextPage = host.holdNextReply("get_commit_graph");
+			await searchFor("change");
+			await firstPage.entered;
+
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			firstPage.release({
+				commits: [makeCommit({ oid: "first" }), ...history(398).slice(199)],
+				max_columns: 1,
+				checked: true,
+				revision: 1,
+			});
+			nextPage.release({
+				commits: [makeCommit({ oid: "next" })],
+				max_columns: 1,
+				checked: true,
+				revision: 1,
+			});
+			await drainSearchReplies();
+
+			expect(selections).toEqual(["first", "next"]);
+			expect(scrolls).toEqual([400 * ROW_HEIGHT - 100 + ROW_HEIGHT / 2]);
+			expect(host.count("get_commit_graph")).toBe(3);
+			expect(await nextPage.entered).toMatchObject({
+				offset: 400,
+				through: "next",
+			});
+		});
+
+		it("scrolls to the newer jump when the active page already contains it", async () => {
+			const { view } = await openSearch([
+				makeCommit({ oid: "earlier", summary: "earlier change" }),
+				...history(199),
+			]);
+			const scrolls = recordScrolls(view.container);
+			const page = host.holdNextReply("get_commit_graph");
+			const firstJump = view.component.scrollToOid("first");
+			await page.entered;
+
+			const nextJump = view.component.scrollToOid("next");
+			page.release({
+				commits: [makeCommit({ oid: "first" }), makeCommit({ oid: "next" })],
+				max_columns: 1,
+				checked: true,
+				revision: 1,
+			});
+			await Promise.all([firstJump, nextJump]);
+
+			expect(scrolls).toEqual([201 * ROW_HEIGHT - 100 + ROW_HEIGHT / 2]);
+			expect(host.count("get_commit_graph")).toBe(2);
+		});
+
 		it("keeps the latest query's results when an earlier reply arrives last", async () => {
 			const { selections } = await openSearch();
 			const earlier = host.holdNextReply("search_commits");
@@ -204,6 +608,132 @@ describe("CommitGraph", () => {
 			expect(selections).toEqual(["latest"]);
 			expect(screen.getByText("1 of 1")).toBeVisible();
 		});
+
+		it.each(["results", "error"] as const)(
+			"drops a stale search $0 after graph replacement and keeps selection",
+			async (outcome) => {
+				const { view, selections } = await openSearch();
+				const earlier = host.holdNextReply("search_commits");
+				const refreshed = host.holdNextReply("search_commits");
+				const settleObsolete = {
+					results: () => earlier.release([{ oid: "earlier" }]),
+					error: () =>
+						earlier.reject({
+							code: "git_error",
+							message: "old graph unavailable",
+						}),
+				};
+				await searchFor("change");
+				await earlier.entered;
+				await fireEvent.click(screen.getByText("latest change"));
+
+				const replacement = {
+					commits: [makeCommit({ oid: "latest", summary: "latest change" })],
+					max_columns: 1,
+					checked: true,
+					revision: 2,
+				};
+				view.component.showGraph(replacement);
+				view.component.showGraph(replacement);
+				settleObsolete[outcome]();
+				await drainSearchReplies();
+
+				expect(selections).toEqual(["latest"]);
+				expect(toasts.items).toEqual([]);
+				expect(
+					screen.getByRole("button", { name: "Next match" }),
+				).toBeDisabled();
+				expect(host.count("search_commits")).toBe(2);
+				expect(await refreshed.entered).toEqual({
+					path: "/repo",
+					query: "change",
+					revision: 2,
+				});
+
+				refreshed.release([{ oid: "latest" }]);
+				await drainSearchReplies();
+
+				expect(screen.getByText("1 of 1")).toBeVisible();
+				expect(selections).toEqual(["latest"]);
+			},
+		);
+
+		it("keeps the typing debounce when the graph changes before the search starts", async () => {
+			const commits = [makeCommit({ oid: "latest", summary: "latest change" })];
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [{ oid: "latest" }]);
+			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
+				target: { value: "change" },
+			});
+			await vi.advanceTimersByTimeAsync(150);
+
+			view.component.showGraph({
+				commits,
+				max_columns: 1,
+				checked: true,
+				revision: 2,
+			});
+			await drainSearchReplies();
+			expect(host.count("search_commits")).toBe(0);
+			await vi.advanceTimersByTimeAsync(50);
+
+			expect(host.count("search_commits")).toBe(1);
+			expect(selections).toEqual(["latest"]);
+		});
+
+		it("jumps to the first match when a replacement graph answers the initial query", async () => {
+			const { view, selections } = await openSearch();
+			const initial = host.holdNextReply("search_commits");
+			const replacement = host.holdNextReply("search_commits");
+			await searchFor("change");
+
+			view.component.showGraph(searchGraph(2, ["latest"]));
+			await replacement.entered;
+			initial.release([{ oid: "earlier" }]);
+			replacement.release([{ oid: "latest" }]);
+			await drainSearchReplies();
+
+			expect(screen.getByText("1 of 1")).toBeVisible();
+			expect(selections).toEqual(["latest"]);
+		});
+
+		it.each([
+			"row click",
+			"graph key",
+			"replacement before row click",
+		] as const)(
+			"keeps the selection made by a %s while the initial search is held",
+			async (gesture) => {
+				const { view, selections } = await openSearch();
+				let answer = host.holdNextReply("search_commits");
+				await searchFor("change");
+				await answer.entered;
+				const navigate = {
+					"row click": () =>
+						fireEvent.click(screen.getByText("earlier change")),
+					"graph key": async () => {
+						const graph = screen.getByRole("listbox");
+						graph.focus();
+						await fireEvent.keyDown(graph, { key: "Home" });
+					},
+					"replacement before row click": async () => {
+						const obsolete = answer;
+						answer = host.holdNextReply("search_commits");
+						view.component.showGraph(searchGraph(2, ["earlier", "latest"]));
+						await answer.entered;
+						obsolete.release([{ oid: "latest" }]);
+						await fireEvent.click(screen.getByText("earlier change"));
+					},
+				};
+
+				await navigate[gesture]();
+				answer.release([{ oid: "latest" }]);
+				await drainSearchReplies();
+
+				expect(screen.getByText("1 of 1")).toBeVisible();
+				expect(selections).toEqual(["earlier"]);
+			},
+		);
 
 		it("drops a reply when the query changes before its next debounce", async () => {
 			const { selections } = await openSearch();
@@ -446,12 +976,174 @@ describe("CommitGraph", () => {
 			});
 			await refreshed.entered;
 
+			expect(screen.queryByText("1 of 2")).toBeNull();
+			expect(view.container.querySelector(".bg-search-current")).toBeNull();
 			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			expect(selections).toEqual(["latest"]);
 			refreshed.release([{ oid: "latest" }, { oid: "earlier" }]);
 			await drainSearchReplies();
 
 			expect(screen.getByText("2 of 2")).toBeVisible();
 			expect(selections).toEqual(["latest", "earlier"]);
+		});
+
+		it("drops a queued Next whose target disappears from the fresh matches", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			const replacement = host.holdNextReply("search_commits");
+			view.component.showGraph(searchGraph(2, ["latest"]));
+			await replacement.entered;
+
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			replacement.release([{ oid: "latest" }]);
+			await drainSearchReplies();
+
+			expect(screen.getByText("1 of 1")).toBeVisible();
+			expect(selections).toEqual(["latest"]);
+		});
+
+		it("keeps obsolete results unavailable when the replacement search fails", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			const replacement = host.holdNextReply("search_commits");
+			view.component.showGraph(searchGraph(2, ["latest"]));
+			await replacement.entered;
+
+			replacement.reject({ code: "git_error", message: "search unavailable" });
+			await drainSearchReplies();
+			await fireEvent.keyDown(screen.getByPlaceholderText("Search commits…"), {
+				key: "Enter",
+			});
+
+			expect(screen.queryByText("1 of 2")).toBeNull();
+			expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+			expect(selections).toEqual(["latest"]);
+		});
+
+		it("re-searches an answered query when the graph changes in an inactive tab", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await view.rerender({ tabActive: false });
+			view.component.showGraph(searchGraph(2, ["latest"]));
+			host.seedResponse("search_commits", [{ oid: "latest" }]);
+
+			await view.rerender({ tabActive: true });
+			await vi.advanceTimersByTimeAsync(200);
+			await drainSearchReplies();
+
+			expect(screen.getByText("1 of 1")).toBeVisible();
+			expect(selections).toEqual(["latest"]);
+			expect(host.count("search_commits")).toBe(2);
+		});
+
+		it("catches up to the cached graph when the host rejects a stale search revision", async () => {
+			const { selections } = await openSearch();
+			const obsolete = host.holdNextReply("search_commits");
+			const cached = host.holdNextReply("get_commit_graph");
+			host.seedResponse("search_commits", [{ oid: "latest" }]);
+			await searchFor("change");
+			await obsolete.entered;
+
+			obsolete.reject({
+				code: "graph_changed",
+				message: "The graph revision changed",
+			});
+			await drainSearchReplies();
+			expect(host.count("get_commit_graph")).toBe(2);
+			cached.release(searchGraph(2, ["latest"]));
+			await drainSearchReplies();
+
+			expect(screen.getByText("1 of 1")).toBeVisible();
+			expect(selections).toEqual(["latest"]);
+			expect(toasts.items).toEqual([]);
+		});
+
+		it("keeps a queued match step through a rejected revision and selects it from the next answer", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			const replacement = host.holdNextReply("search_commits");
+			const cached = host.holdNextReply("get_commit_graph");
+			view.component.showGraph(searchGraph(2, ["earlier", "latest"]));
+			await replacement.entered;
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+
+			replacement.reject({
+				code: "graph_changed",
+				message: "The graph revision changed",
+			});
+			await cached.entered;
+			cached.release(searchGraph(3, ["earlier", "latest"]));
+			await drainSearchReplies();
+
+			expect(selections).toEqual(["latest", "earlier"]);
+			expect(screen.getByText("2 of 2")).toBeVisible();
+		});
+
+		it("withholds the old matches while an inactive tab catches up to a known revision", async () => {
+			const { view, selections } = await openSearch();
+			host.seedResponse("search_commits", [
+				{ oid: "latest" },
+				{ oid: "earlier" },
+			]);
+			await searchFor("change");
+			await view.rerender({ tabActive: false });
+			await view.rerender({ cachedGraphRevision: 2 });
+			const cached = host.holdNextReply("get_commit_graph");
+			host.seedResponse("search_commits", [{ oid: "latest" }]);
+
+			await view.rerender({ tabActive: true });
+			await cached.entered;
+			await fireEvent.keyDown(screen.getByPlaceholderText("Search commits…"), {
+				key: "Enter",
+			});
+
+			expect(screen.queryByText(/of 2/)).toBeNull();
+			expect(selections).toEqual(["latest"]);
+			cached.release(searchGraph(2, ["latest"]));
+			await vi.advanceTimersByTimeAsync(200);
+			await drainSearchReplies();
+			expect(screen.getByText("1 of 1")).toBeVisible();
+		});
+
+		it("can page to a known fresh match immediately after tab return", async () => {
+			const { view } = await openSearch([
+				makeCommit({ oid: "earlier", summary: "earlier change" }),
+				...history(199),
+			]);
+			host.seedResponse("search_commits", [
+				{ oid: "earlier" },
+				{ oid: "unloaded" },
+			]);
+			await searchFor("change");
+			await view.rerender({ tabActive: false });
+			await view.rerender({ tabActive: true });
+			const page = host.holdNextReply("get_commit_graph");
+			const scrolls = recordScrolls(view.container);
+
+			await fireEvent.click(screen.getByRole("button", { name: "Next match" }));
+			await page.entered;
+			await vi.advanceTimersByTimeAsync(200);
+			page.release(searchGraph(1, ["unloaded"]));
+			await drainSearchReplies();
+
+			expect(scrolls).toEqual([200 * ROW_HEIGHT - 100 + ROW_HEIGHT / 2]);
+			expect(host.count("search_commits")).toBe(1);
 		});
 
 		it("cancels a search debounce when the tab becomes inactive", async () => {
@@ -497,6 +1189,17 @@ describe("CommitGraph", () => {
 			return { view, selections };
 		}
 
+		function searchGraph(revision: number, oids: readonly string[]) {
+			return {
+				commits: oids.map((oid) =>
+					makeCommit({ oid, summary: `${oid} change` }),
+				),
+				max_columns: 1,
+				checked: true,
+				revision,
+			};
+		}
+
 		async function searchFor(query: string): Promise<void> {
 			await fireEvent.input(screen.getByPlaceholderText("Search commits…"), {
 				target: { value: query },
@@ -507,6 +1210,16 @@ describe("CommitGraph", () => {
 		async function drainSearchReplies(): Promise<void> {
 			await setImmediate();
 			await tick();
+		}
+
+		function recordScrolls(container: HTMLElement): number[] {
+			const scrolls: number[] = [];
+			graphViewport(container).scrollTo = (
+				options?: ScrollToOptions | number,
+			) => {
+				if (typeof options !== "number") scrolls.push(options?.top ?? 0);
+			};
+			return scrolls;
 		}
 	});
 

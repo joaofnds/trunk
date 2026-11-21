@@ -2915,6 +2915,7 @@ describe("CommitGraph", () => {
 		// Page two is held open so the test decides when it lands.
 		async function mountWithPageTwoPending() {
 			const pending: ((page: unknown) => void)[] = [];
+			const oncommitschange = vi.fn<(commits: GraphCommit[]) => void>();
 			installReads({
 				override: (cmd, args) => {
 					if (cmd !== "get_commit_graph") return undefined;
@@ -2936,6 +2937,7 @@ describe("CommitGraph", () => {
 					repoPath: "/test/repo",
 					remoteState: createRemoteState(),
 					tabActive: true,
+					oncommitschange,
 				},
 			});
 			await waitFor(() => {
@@ -2946,7 +2948,7 @@ describe("CommitGraph", () => {
 			await flush();
 			expect(pending).toHaveLength(1);
 
-			return { rendered, pending };
+			return { rendered, pending, oncommitschange };
 		}
 
 		function rebuildWith(
@@ -2970,7 +2972,8 @@ describe("CommitGraph", () => {
 		}
 
 		it("drops a page that describes the graph it replaced", async () => {
-			const { rendered, pending } = await mountWithPageTwoPending();
+			const { rendered, pending, oncommitschange } =
+				await mountWithPageTwoPending();
 
 			rebuildWith(rendered);
 			await flush();
@@ -2978,7 +2981,9 @@ describe("CommitGraph", () => {
 			resolveStalePage(pending);
 			await flush();
 
-			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(false);
+			expect(oncommitschange.mock.lastCall?.[0].map(({ oid }) => oid)).toEqual(
+				page(0, "new").map(({ oid }) => oid),
+			);
 		});
 
 		it("still reaches the pages the rebuilt graph does have", async () => {
@@ -3007,6 +3012,7 @@ describe("CommitGraph", () => {
 		// not through a direct showGraph call. This pins the guard on that route.
 		it("drops a stale page when the rebuild came from a refresh", async () => {
 			const pending: ((page: unknown) => void)[] = [];
+			const oncommitschange = vi.fn<(commits: GraphCommit[]) => void>();
 			installReads({
 				override: (cmd, args) => {
 					if (cmd === "refresh_commit_graph") {
@@ -3037,6 +3043,7 @@ describe("CommitGraph", () => {
 					remoteState: createRemoteState(),
 					tabActive: true,
 					refreshSignal: 0,
+					oncommitschange,
 				},
 			});
 			await waitFor(() => {
@@ -3055,7 +3062,9 @@ describe("CommitGraph", () => {
 			resolveStalePage(pending);
 			await flush();
 
-			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(false);
+			expect(oncommitschange.mock.lastCall?.[0].map(({ oid }) => oid)).toEqual(
+				page(0, "new").map(({ oid }) => oid),
+			);
 		});
 
 		it("appends a page that no rebuild interrupted", async () => {
@@ -3258,8 +3267,7 @@ describe("CommitGraph", () => {
 			return `${row}`.padStart(40, "0");
 		}
 
-		// Answers the way get_commit_graph does: a page from the offset, or every
-		// row down to `through` and a page past it when the graph holds it.
+		// A jump gets rows through its target or null if the graph doesn't show it.
 		function installHistory() {
 			const requests: { offset: number; through?: string }[] = [];
 			installReads({
@@ -3270,6 +3278,8 @@ describe("CommitGraph", () => {
 						typeof args?.through === "string" ? args.through : undefined;
 					requests.push({ offset, through });
 					const row = through === undefined ? -1 : Number(through);
+					if (through !== undefined && row >= TOTAL)
+						return Promise.resolve(null);
 					const count =
 						row >= offset ? Math.max(BATCH, row + BATCH - offset) : BATCH;
 					const end = Math.min(TOTAL, offset + count);

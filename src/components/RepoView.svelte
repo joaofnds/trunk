@@ -2928,6 +2928,7 @@ async function handleRebaseStart(
 						oncommitselect={handleCommitSelect}
 						oncomparecommits={handleCompareCommits}
 						oncommitnavigate={selectCommitIdempotent}
+						{snapshotNavigationIntent}
 						oncommitschange={(items, hasMore) => {
 							graphDisplayItems = items;
 							graphHasMore = hasMore;

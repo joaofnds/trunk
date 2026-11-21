@@ -33,6 +33,11 @@ impl GraphResponse {
     }
 }
 
+/// Reads a page at `offset` or restores a loaded prefix from the top.
+///
+/// A targeted page extends through a later visible row with up to `PAGE - 1`
+/// following rows. A missing target returns `None` before row hydration.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -49,7 +54,7 @@ pub async fn get_commit_graph(
     through: Option<String>,
     revision: Option<u64>,
     cache: State<'_, CommitCache>,
-) -> Result<GraphResponse, String> {
+) -> Result<Option<GraphResponse>, String> {
     let through = through
         .as_deref()
         .map(git2::Oid::from_str)
@@ -57,27 +62,17 @@ pub async fn get_commit_graph(
         .map_err(|e| TrunkError::new("invalid_oid", e.to_string()).to_json())?;
     cache
         .read_versioned(&path, revision, |graph, version| {
-            loaded.map_or_else(
-                || {
-                    GraphResponse::cached(
-                        graph,
-                        offset,
-                        rows_through(graph, offset, through),
-                        version,
-                    )
-                },
-                |depth| GraphResponse::cached(graph, 0, depth.max(PAGE), version),
-            )
+            if let Some(depth) = loaded {
+                return Some(GraphResponse::cached(graph, 0, depth.max(PAGE), version));
+            }
+
+            let count = match through {
+                Some(oid) => (graph.row_of(oid)? + PAGE).saturating_sub(offset).max(PAGE),
+                None => PAGE,
+            };
+            Some(GraphResponse::cached(graph, offset, count, version))
         })
         .map_err(|e| e.to_json())
-}
-
-/// One page, or every row down to `through` and a page past it when the graph
-/// shows that commit below `offset`, so a jump to a deep commit is one request.
-fn rows_through(graph: &GraphSnapshot, offset: usize, through: Option<git2::Oid>) -> usize {
-    through
-        .and_then(|oid| graph.row_of(oid))
-        .map_or(PAGE, |row| (row + PAGE).saturating_sub(offset).max(PAGE))
 }
 
 /// # Errors
@@ -563,7 +558,7 @@ pub fn search_commits_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Rejects a query for an obsolete graph revision with `graph_changed`.
 ///
 /// # Panics
 ///
@@ -573,10 +568,17 @@ pub async fn search_commits(
     _activity: crate::activity::Activity,
     path: String,
     query: String,
+    revision: u64,
     cache: State<'_, CommitCache>,
 ) -> Result<Vec<SearchResult>, String> {
-    let graph = cache.snapshot(&path);
-    search_commits_inner(&path, &query, graph.as_ref()).map_err(|e| e.to_json())
+    let graph = cache
+        .read_versioned(&path, Some(revision), |graph, _| graph.clone())
+        .map_err(|e| e.to_json())?;
+    let results = search_commits_inner(&path, &query, Some(&graph)).map_err(|e| e.to_json())?;
+    cache
+        .require_revision(&path, revision)
+        .map_err(|e| e.to_json())?;
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -757,6 +759,7 @@ mod tests {
                 fixture.app.state(),
             ))
             .unwrap()
+            .unwrap()
         };
 
         assert_eq!(request(0, Some(400)).commits.len(), 400);
@@ -770,6 +773,7 @@ mod tests {
             activity(),
             "/repo".into(),
             root.clone(),
+            tail.revision,
             fixture.app.state(),
         ))
         .unwrap();
@@ -781,7 +785,7 @@ mod tests {
         fixture: &StatsCommandFixture,
         offset: usize,
         through: &str,
-    ) -> Result<GraphResponse, String> {
+    ) -> Result<Option<GraphResponse>, String> {
         tauri::async_runtime::block_on(super::get_commit_graph(
             activity(),
             "/repo".into(),
@@ -797,7 +801,9 @@ mod tests {
     fn a_page_through_a_deep_commit_runs_a_page_past_it() {
         let fixture = StatsCommandFixture::with_rows(1000);
 
-        let page = page_through(&fixture, 200, &fixture.oids[700]).unwrap();
+        let page = page_through(&fixture, 200, &fixture.oids[700])
+            .unwrap()
+            .unwrap();
 
         assert_eq!(page.commits.len(), 700);
         assert_eq!(page.commits[0].oid, fixture.oids[200]);
@@ -808,7 +814,9 @@ mod tests {
     fn a_page_through_a_commit_near_the_end_stops_at_the_last_row() {
         let fixture = StatsCommandFixture::with_rows(1000);
 
-        let page = page_through(&fixture, 200, &fixture.oids[950]).unwrap();
+        let page = page_through(&fixture, 200, &fixture.oids[950])
+            .unwrap()
+            .unwrap();
 
         assert_eq!(page.commits.len(), 800);
         assert_eq!(page.commits[799].oid, fixture.oids[999]);
@@ -818,19 +826,12 @@ mod tests {
     fn a_page_through_a_commit_already_loaded_is_one_page() {
         let fixture = StatsCommandFixture::with_rows(1000);
 
-        let page = page_through(&fixture, 400, &fixture.oids[100]).unwrap();
+        let page = page_through(&fixture, 400, &fixture.oids[100])
+            .unwrap()
+            .unwrap();
 
         assert_eq!(page.commits.len(), super::PAGE);
         assert_eq!(page.commits[0].oid, fixture.oids[400]);
-    }
-
-    #[test]
-    fn a_page_through_a_commit_the_graph_does_not_show_is_one_page() {
-        let fixture = StatsCommandFixture::with_rows(1000);
-
-        let page = page_through(&fixture, 0, &format!("{:040x}", 5000)).unwrap();
-
-        assert_eq!(page.commits.len(), super::PAGE);
     }
 
     #[test]

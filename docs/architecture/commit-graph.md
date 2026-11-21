@@ -69,9 +69,12 @@ pub fn snapshot(repo: &mut git2::Repository, visibility: &RefVisibility)
 Returns a `GraphSnapshot`: shared captured history, its visible source, the current
 worktree state and its clean and dirty `placement::Layout` plans, each laid out the first time
 something asks for it. `GraphSnapshot::page`
-hydrates only requested rows. `get_commit_graph` requests 200 rows at a time, or every row down to a
-commit it is given and a page past it, so a jump to a deep commit is one request; a refresh or
-visibility toggle requests the caller's loaded depth, with a one-page minimum. Full
+hydrates only requested rows. `get_commit_graph` normally reads up to 200 rows from the
+requested offset. A `through` request extends that range when needed to include the target
+and up to 199 following rows. A target before the offset leaves the ordinary page size in
+effect. A target absent from the requested revision returns `null` before hydration, so the
+jump leaves loaded depth unchanged. The viewport can still request its next page. A refresh
+or visibility toggle requests the caller's loaded depth from the top, with a one-page minimum. Full
 hydration through `GraphSnapshot::layout` is explicit, used by fixture and capture tools.
 Search reads captured facts and visible refs directly. Commit statistics read bounded OID
 slices, and review membership hydrates only selected commits in graph order.

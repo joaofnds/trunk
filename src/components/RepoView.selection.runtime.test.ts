@@ -575,6 +575,45 @@ describe("RepoView commit selection", () => {
 		expect(commitRow("second")).toHaveAttribute("aria-selected", "true");
 	});
 
+	it("keeps a ref navigation that is still resolving when the search answers", async () => {
+		seedBranch();
+		await openRepository();
+		const searchReply = host.holdNextReply("search_commits");
+		const ref = host.holdNextReply("resolve_ref");
+		await startSearch("change");
+		await searchReply.entered;
+
+		await fireEvent.click(screen.getByText("topic"));
+		await ref.entered;
+		seedCommit("second");
+		searchReply.release([{ oid: "second" }]);
+		await drainReplies();
+
+		expect(screen.getByText("1 of 1")).toBeVisible();
+		expect(commitRow("second")).toHaveAttribute("aria-selected", "false");
+		seedCommit("first");
+		ref.release("first");
+		expect(await screen.findByText("first.txt")).toBeVisible();
+	});
+
+	it("keeps the detail pane cleared when a search answers after Escape", async () => {
+		await openRepository();
+		await selectCommit("first");
+		await screen.findByText("first.txt");
+		const searchReply = host.holdNextReply("search_commits");
+		await startSearch("change");
+		await searchReply.entered;
+		seedCommit("second");
+
+		screen.getByPlaceholderText("Search commits…").blur();
+		await fireEvent.keyDown(window, { key: "Escape" });
+		searchReply.release([{ oid: "second" }]);
+		await drainReplies();
+
+		expect(screen.getByText("1 of 1")).toBeVisible();
+		expect(screen.queryByTestId("commit-detail")).toBeNull();
+	});
+
 	it.each(["Next match", "Enter"])(
 		"keeps the sole search result selected after $0",
 		async (gesture) => {
@@ -1426,6 +1465,15 @@ function seedBranch(): void {
 		stashes: [],
 	});
 	host.seedResponse("resolve_ref", "first");
+}
+
+async function startSearch(query: string): Promise<void> {
+	await host.emit("search-toggle", null);
+	const search = await screen.findByPlaceholderText("Search commits…");
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+	await fireEvent.input(search, { target: { value: query } });
+	await vi.advanceTimersByTimeAsync(200);
+	vi.useRealTimers();
 }
 
 function recordGraphScrolls(container: HTMLElement): number[] {

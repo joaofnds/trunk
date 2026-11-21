@@ -38,4 +38,47 @@ describe("history search", () => {
 				: null,
 		);
 	});
+
+	it("selects the first surviving match when a branch is hidden during the initial search", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "root.txt", content: "root" },
+					{ step: "commit", message: "root change" },
+					{ step: "branch", name: "topic" },
+					{ step: "checkout", name: "topic" },
+					{ step: "file", path: "topic.txt", content: "topic" },
+					{ step: "commit", message: "topic change" },
+					{ step: "checkout", name: "main" },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.events.searchToggle();
+		const searchReads = () =>
+			app.invokes().filter(({ cmd }) => cmd === "search_commits");
+		const release = app.holdCommand("search_commits");
+		await app.search.query("change");
+		await waitFor("the initial search to reach the host boundary", () =>
+			searchReads().length === 1 ? true : null,
+		);
+
+		await app.branches.toggleVisibility("topic");
+		await app.elapseUntil(
+			"the replacement search to reach the host boundary",
+			() => (searchReads().length === 2 ? true : null),
+		);
+		release();
+
+		await waitFor(
+			"the surviving match count and selected commit's files",
+			() =>
+				app.search.matchCount() === "1 of 1" &&
+				app.repo.commitFiles().includes("A root.txt")
+					? true
+					: null,
+		);
+		expect(app.repo.commitRows().join("\n")).not.toContain("topic change");
+		expect(app.toasts()).toEqual([]);
+	});
 });

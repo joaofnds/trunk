@@ -312,6 +312,112 @@ fn create_commit_puts_its_own_commit_in_the_graph_cache() {
     assert_eq!(summaries, vec!["Add b", "First"]);
 }
 
+#[test]
+fn paging_through_a_hidden_branch_tip_returns_null() {
+    let ctx = TestContext::builder()
+        .with_file("root.txt", "root")
+        .with_commit("root")
+        .with_branch("topic")
+        .checkout("topic")
+        .with_file("topic.txt", "topic")
+        .with_commit("topic tip")
+        .checkout("main")
+        .build();
+    let topic = ctx.repo().refname_to_id("refs/heads/topic").unwrap();
+    let root = ctx.repo().refname_to_id("refs/heads/main").unwrap();
+    let (app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
+    let filtered = invoke(
+        &webview,
+        "set_ref_visibility",
+        json!({
+            "path": ctx.path(),
+            "visibility": { "hiddenRefs": ["refs/heads/topic"] },
+            "loaded": 200
+        }),
+    )
+    .unwrap();
+    let capture = app.state::<CommitCache>().snapshot(ctx.path()).unwrap();
+    assert!(capture.captured_commits().contains_key(&topic));
+
+    let targeted = invoke(
+        &webview,
+        "get_commit_graph",
+        json!({
+            "path": ctx.path(),
+            "offset": 0,
+            "through": topic.to_string(),
+            "revision": filtered["revision"]
+        }),
+    );
+    let ordinary = invoke(
+        &webview,
+        "get_commit_graph",
+        json!({ "path": ctx.path(), "offset": 0, "revision": filtered["revision"] }),
+    );
+
+    assert_eq!(targeted, Ok(Value::Null));
+    let ordinary = ordinary.unwrap();
+    assert_eq!(ordinary["revision"], filtered["revision"]);
+    let commits = ordinary["commits"].as_array().unwrap();
+    assert_eq!(commits.len(), 1);
+    assert_eq!(commits[0]["oid"], root.to_string());
+}
+
+#[test]
+fn search_rejects_the_revision_from_before_a_branch_was_hidden() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("root")
+        .with_branch("topic")
+        .checkout("topic")
+        .with_file("topic.txt", "topic")
+        .with_commit("exclusive change")
+        .checkout("main")
+        .build();
+    let (_app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).unwrap();
+    let shown = invoke(
+        &webview,
+        "get_commit_graph",
+        json!({ "path": ctx.path(), "offset": 0 }),
+    )
+    .unwrap();
+    let search = |revision: &Value| {
+        invoke(
+            &webview,
+            "search_commits",
+            json!({ "path": ctx.path(), "query": "exclusive", "revision": revision }),
+        )
+    };
+    assert_eq!(
+        search(&shown["revision"])
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let replacement = invoke(
+        &webview,
+        "set_ref_visibility",
+        json!({
+            "path": ctx.path(),
+            "visibility": { "hiddenRefs": ["refs/heads/topic"] },
+            "loaded": 200
+        }),
+    )
+    .unwrap();
+    let obsolete = search(&shown["revision"]);
+
+    assert_ne!(shown["revision"], replacement["revision"]);
+    let error = obsolete.unwrap_err();
+    let error: Value = serde_json::from_str(error.as_str().unwrap()).unwrap();
+    assert_eq!(error["code"], "graph_changed");
+    assert_eq!(search(&replacement["revision"]), Ok(json!([])));
+}
+
 /// The compare surface end to end over IPC (TRUNK-1): camelCase args map onto
 /// the commands, the file listing crosses divergent branches with no ancestry,
 /// and the single-file diff carries hunks in Base → Target direction.

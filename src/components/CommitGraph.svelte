@@ -141,6 +141,8 @@ interface Props {
 	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncomparecommits?: (baseOid: string, targetOid: string) => void;
 	oncommitnavigate?: (oid: string) => void;
+	/** Captures parent navigation, including a ref lookup whose OID is still unknown. */
+	snapshotNavigationIntent?: () => () => boolean;
 	// Reports the WIP-inclusive display list + pagination state whenever they
 	// change, so the parent can compute commit nav (pager + child chips) itself
 	// via computeCommitNav from the rows this graph last reported.
@@ -200,6 +202,7 @@ let {
 	oncommitselect,
 	oncomparecommits,
 	oncommitnavigate,
+	snapshotNavigationIntent,
 	oncommitschange,
 	wipCount = 0,
 	wipMessage = "",
@@ -267,11 +270,12 @@ const SKELETON_COUNT = 10;
  *  quickly. */
 const PAGE_ATTEMPT_BUDGET = 3;
 
-/** What one loadMore call did, for callers that must tell its outcomes apart.
- *  "appended" is the only one that grew the list: "failed" set the error banner,
- *  "stale" was laid out against a graph a rebuild has since replaced, and "idle"
- *  means a load was already running or history is exhausted. */
-type PageResult = "appended" | "failed" | "stale" | "idle";
+type PageResult = "appended" | "target_absent" | "failed" | "stale";
+
+interface PageRequest {
+	through: string | undefined;
+	result: Promise<PageResult>;
+}
 
 /** Stands in for the session membership Set when no comments rune is supplied. */
 const EMPTY_OIDS: ReadonlySet<string> = new Set();
@@ -301,7 +305,8 @@ let svgRowHeight = $state(displaySettings.rowHeight);
 let commits = $state.raw<GraphCommit[]>([]);
 let maxColumns = $state(1);
 let hasMore = $state(true);
-let loading = $state(false);
+let pendingPage = $state.raw<PageRequest>();
+const loading = $derived(pendingPage !== undefined);
 let error = $state<string | null>(null);
 let offset = $state(0);
 let scrollSequence = 0;
@@ -356,8 +361,11 @@ let graphActive = true;
 // Whole-graph generation. showGraph can replace the page independently while a
 // refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
-let graphRevision = 0;
+let graphRevision = $state(0);
 let graphReady = $state(false);
+let depthRecovery:
+	| { revision: number; sequence: number; result: Promise<void> }
+	| undefined;
 
 /** Marks a graph as shown. The view's first graph can predate a change the
  *  watcher reported before this view's listener could hear it, so an unchecked
@@ -667,29 +675,57 @@ $effect(() => {
 
 let stashOids = $state<Set<string>>(new Set());
 
-// Search state
-let searchOpen = $state(false);
-let searchQuery = $state("");
-let searchResults = $state<SearchResult[]>([]);
-// The current query's results are in. A query still waiting, or one whose search
-// failed, shows no match count, since none is known.
-let searchAnswered = $state(false);
-let searchCurrentIndex = $state(0);
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let searchGeneration = 0;
+interface SearchQuery {
+	readonly path: string;
+	readonly text: string;
+	readonly wantsFirstMatch: () => boolean;
+}
 
-// Derived: Set of matching OIDs for O(1) lookup in CommitRow
-const searchMatchOids = $derived(new Set(searchResults.map((r) => r.oid)));
-// Derived: OID of current match for strong highlight
+interface SearchRead {
+	readonly query: SearchQuery;
+	readonly revision: number;
+}
+
+let searchOpen = $state(false);
+let searchText = $state("");
+let searchQuery = $state.raw<SearchQuery>();
+let searchActivation = $state.raw<{ readonly query: SearchQuery }>();
+let pendingSearch = $state.raw<SearchRead>();
+let searchAnswer = $state.raw<{
+	readonly read: SearchRead;
+	readonly results: readonly SearchResult[];
+}>();
+let searchCurrentIndex = $state(0);
+let pendingMatchStep: { index: number; isCurrent: () => boolean } | undefined;
+
+const lastSearchAnswer = $derived(
+	searchQuery?.path === repoPath && searchAnswer?.read.query === searchQuery
+		? searchAnswer
+		: undefined,
+);
+const graphCurrentForSearch = $derived(
+	cachedGraphRevision === undefined || cachedGraphRevision <= graphRevision,
+);
+const searchResults = $derived(
+	tabActive &&
+		graphCurrentForSearch &&
+		lastSearchAnswer?.read.revision === graphRevision
+		? lastSearchAnswer.results
+		: undefined,
+);
+// While revalidating, the old order only interprets Next and Previous. Their
+// target must appear in the new answer before it can select or scroll.
+const stepResults = $derived(
+	searchResults ??
+		(pendingSearch && tabActive && graphCurrentForSearch
+			? lastSearchAnswer?.results
+			: undefined),
+);
+const searchMatchOids = $derived(new Set(searchResults?.map((r) => r.oid)));
 const searchCurrentOid = $derived(
-	searchResults.length > 0
-		? (searchResults[searchCurrentIndex]?.oid ?? null)
-		: null,
+	searchResults?.[searchCurrentIndex]?.oid ?? null,
 );
-// Derived: whether SVG dimming should be active (search open + query + results)
-const searchDimmingActive = $derived(
-	searchOpen && searchQuery.length > 0 && searchResults.length > 0,
-);
+const searchDimmingActive = $derived(searchMatchOids.size > 0);
 
 // Review selection state. The shared rune owns the reviews: one reviews-changed
 // subscription, one membership Set for every surface. There is no session state
@@ -1813,9 +1849,9 @@ onDestroy(() => {
 	visibleStatsRefresh.dispose();
 });
 
-/** Appends the next page, or with `through` every row down to that commit and a
- *  page past it, which the backend answers in one response. */
-async function loadMore(through?: string): Promise<PageResult> {
+/** Joins the page in flight or starts one at the current offset. A visible
+ *  target below that page extends it, with up to a page of context. */
+function loadMore(through?: string): PageRequest | undefined {
 	// Blocks every caller -- the mount effect below, VirtualList's own
 	// infinite-scroll trigger (which fires immediately on an empty first render,
 	// independent of that effect), and scrollToOid -- until BranchSidebar's
@@ -1823,25 +1859,45 @@ async function loadMore(through?: string): Promise<PageResult> {
 	// registered. Otherwise this pages against open_repo's unfiltered default,
 	// which is the paint TRUNK-128 fixed, or reads a graph whose next change no
 	// listener hears (TRUNK-494).
-	if (!graphActive || !pagesReadable) return "idle";
-	if (loading || !hasMore) return "idle";
-	loading = true;
+	if (!graphActive || !pagesReadable || !hasMore) return;
+	if (pendingPage) return pendingPage;
+
 	error = null;
-	// The page is a slice of the graph as it stands now. showGraph bumps this
-	// token before it swaps the list, so a rebuild that lands first makes this
-	// response describe a layout that no longer exists.
-	const seq = refreshSeq;
+	pendingPage = { through, result: fetchPage(through) };
+	return pendingPage;
+}
+
+/** A shared jump that finds no row leaves the ordinary page still to load. */
+async function loadNextPage(): Promise<void> {
+	let page = loadMore();
+	while ((await page?.result) === "target_absent") page = loadMore();
+}
+
+async function fetchPage(through: string | undefined): Promise<PageResult> {
+	let seq = refreshSeq;
 	try {
-		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
-			path: repoPath,
-			offset,
-			...(offset > 0 ? { revision: graphRevision } : {}),
-			...(through === undefined ? {} : { through }),
-		});
+		// The replacement is already available in the cache. Wait for its prefix
+		// before choosing an offset and revision for another page.
+		while (depthRecovery) await depthRecovery.result;
+		if (!graphActive) return "stale";
+		if (!hasMore) return "target_absent";
+
+		seq = refreshSeq;
+		const response = await safeInvoke<GraphResponse | null>(
+			"get_commit_graph",
+			{
+				path: repoPath,
+				offset,
+				...(offset > 0 ? { revision: graphRevision } : {}),
+				...(through === undefined ? {} : { through }),
+			},
+		);
 		// Drop it rather than append: these rows were laid out under the old
 		// graph, and offset now indexes the new one. The viewport re-triggers a
 		// load for whatever it still needs.
 		if (!graphActive || seq !== refreshSeq) return "stale";
+		if (response === null) return "target_absent";
+
 		graphRevision = response.revision;
 		markGraphReady(response);
 		commits = commits.concat(response.commits);
@@ -1861,7 +1917,9 @@ async function loadMore(through?: string): Promise<PageResult> {
 		error = errorMessage(e, "Failed to load commits");
 		return "failed";
 	} finally {
-		if (graphActive) loading = false;
+		// Release the slot in the same turn as the append so effects observing
+		// the new rows can start another page.
+		if (graphActive) pendingPage = undefined;
 	}
 }
 
@@ -1873,28 +1931,26 @@ export async function scrollToOid(
 	isStillRequested: () => boolean = () => true,
 ): Promise<void> {
 	const sequence = ++scrollSequence;
-	const isCurrent = () => sequence === scrollSequence && isStillRequested();
+	const isCurrent = () =>
+		graphActive && sequence === scrollSequence && isStillRequested();
 	if (!isCurrent()) return;
 
 	let idx = displayItems.findIndex((c) => c.oid === oid);
 
-	// A page that lands runs through the commit whenever the graph holds it, so
-	// the search ends there. A page that did not append is either a failure or a
-	// drop by the stale-page guard, and is asked for again. The budget is not 1:
-	// the stale-page guard relies on this loop re-issuing the load a rebuild made
-	// it discard.
 	let attempts = 0;
-	while (idx < 0 && hasMore && !loading && attempts < PAGE_ATTEMPT_BUDGET) {
-		const result = await loadMore(oid);
+	while (idx < 0 && attempts < PAGE_ATTEMPT_BUDGET) {
+		const page = loadMore(oid);
+		if (!page) return;
+
+		const result = await page.result;
 		if (!isCurrent()) return;
 
 		await tick();
 		if (!isCurrent()) return;
 
 		idx = displayItems.findIndex((c) => c.oid === oid);
-		if (result === "appended") break;
-
-		attempts += 1;
+		if (result === "failed" || result === "stale") attempts += 1;
+		else if (page.through === oid) break;
 	}
 
 	if (!isCurrent() || idx < 0 || !listRef) return;
@@ -1921,17 +1977,94 @@ export function loadedRows(): number {
 	return offset;
 }
 
-/** Replaces the graph with a freshly laid-out first page, as a rebuild or a
- *  visibility change returns it. Any refresh still in flight is older than this
- *  page and is dropped when it lands. */
+/** Adopts the prefix returned by a visibility change. */
 export function showGraph(response: GraphResponse): void {
-	replaceGraph(response);
+	void applyGraph(response);
 	requestWipStats();
 }
 
-function replaceGraph(response: GraphResponse): void {
-	if (!graphActive) return;
+function applyGraph(
+	response: GraphResponse,
+	requestedDepth = BATCH,
+	readSequence = refreshSeq,
+) {
+	// A visibility command and a refresh can return in either order. The
+	// backend revision orders their snapshots, including a prefix still being
+	// expanded. The request sequence breaks ties within the same revision.
+	const newest = Math.max(graphRevision, depthRecovery?.revision ?? 0);
+	if (
+		!graphActive ||
+		response.revision < newest ||
+		(response.revision === newest && readSequence !== refreshSeq)
+	)
+		return;
 
+	const depth = offset;
+	const received = response.commits.length;
+	const reachedEnd = received < Math.max(BATCH, requestedDepth);
+	if (received >= depth || reachedEnd) {
+		replaceGraph(response, requestedDepth);
+		return;
+	}
+
+	// A page landed after the replacement's depth was chosen. Stop appending
+	// old pages and get one complete prefix from the cache before painting it.
+	const seq = ++refreshSeq;
+	const recovery = recoverGraphDepth(response, depth, seq).finally(() => {
+		if (depthRecovery?.result === recovery) depthRecovery = undefined;
+	});
+	depthRecovery = {
+		revision: response.revision,
+		sequence: seq,
+		result: recovery,
+	};
+	return recovery;
+}
+
+async function recoverGraphDepth(
+	response: GraphResponse,
+	depth: number,
+	seq: number,
+): Promise<void> {
+	let expanded: GraphResponse;
+	try {
+		expanded = await readCachedPrefix(depth);
+	} catch (e) {
+		if (!graphActive || depthRecovery?.sequence !== seq) return;
+		replaceGraph(response, BATCH);
+		error = errorMessage(e, "Failed to load commits");
+		return;
+	}
+	if (!graphActive || depthRecovery?.sequence !== seq) return;
+
+	// Sample at installation, so a scroll or jump while either read was in
+	// flight owns the viewport. The row may have moved in the new graph.
+	const viewport = listViewport();
+	const top = viewport?.scrollTop ?? 0;
+	const index = Math.floor(top / svgRowHeight);
+	const anchor = displayItems[index]?.oid;
+	const navigation = scrollSequence;
+
+	replaceGraph(expanded, depth);
+	if (!viewport || !anchor || top === 0) return;
+
+	const newIndex = displayItems.findIndex((row) => row.oid === anchor);
+	if (newIndex < 0 || newIndex === index) return;
+
+	const installed = refreshSeq;
+	await tick();
+	if (
+		graphActive &&
+		installed === refreshSeq &&
+		navigation === scrollSequence &&
+		viewport.scrollTop === top
+	) {
+		viewport.scrollTo({ top: top + (newIndex - index) * svgRowHeight });
+	}
+}
+
+function replaceGraph(response: GraphResponse, requestedDepth: number): void {
+	depthRecovery = undefined;
 	refreshSeq += 1;
 	graphRevision = response.revision;
 	markGraphReady(response);
@@ -1940,7 +2073,7 @@ function replaceGraph(response: GraphResponse): void {
 	maxColumns = response.max_columns;
 	updateContentWidths(response.commits, true);
 	offset = response.commits.length;
-	hasMore = response.commits.length >= BATCH;
+	hasMore = response.commits.length >= Math.max(BATCH, requestedDepth);
 	error = null;
 	// Keep immutable stats for rows still loaded, and read stats only for missing OIDs.
 	const loadedOids = new Set(response.commits.map((commit) => commit.oid));
@@ -1948,46 +2081,6 @@ function replaceGraph(response: GraphResponse): void {
 		[...commitStats].filter(([oid]) => loadedOids.has(oid)),
 	);
 	attemptedStats = new Set();
-	untrack(refreshAnsweredSearch);
-}
-
-/** A rebuilt graph can add or drop matches, so an answered search asks again. The
- *  match the user is on stays current, a match a rewrite replaced keeps its place,
- *  and the selection does not move. */
-function refreshAnsweredSearch() {
-	const query = searchQuery.trim();
-	if (!searchOpen || !searchAnswered || !query) return;
-	invalidateSearchRequest();
-	void currentSearchFor(query).then((results) => {
-		if (results === undefined) return;
-		const current = searchResults[searchCurrentIndex]?.oid;
-		const stillThere = results.findIndex((r) => r.oid === current);
-		searchResults = results;
-		searchCurrentIndex =
-			stillThere === -1
-				? Math.max(0, Math.min(searchCurrentIndex, results.length - 1))
-				: stillThere;
-	});
-}
-
-/** Resolves to undefined when a newer search, a closed bar or another repository
- *  made this one obsolete, and reports a failure only while it is still current. */
-async function currentSearchFor(
-	query: string,
-): Promise<SearchResult[] | undefined> {
-	const generation = searchGeneration;
-	const path = repoPath;
-	try {
-		const results = await safeInvoke<SearchResult[]>("search_commits", {
-			path,
-			query,
-		});
-		return isCurrentSearch(generation, path) ? results : undefined;
-	} catch (error) {
-		if (isCurrentSearch(generation, path))
-			reportErrorToast(error, "Could not search commits");
-		return undefined;
-	}
 }
 
 function requestRead(task: CoalescedTask) {
@@ -2000,18 +2093,22 @@ function requestRead(task: CoalescedTask) {
 
 async function readCachedGraph() {
 	const seq = ++refreshSeq;
+	const depth = offset;
 	try {
-		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
-			path: repoPath,
-			offset: 0,
-			loaded: offset,
-		});
-		if (!graphActive || seq !== refreshSeq) return;
-		replaceGraph(response);
+		const response = await readCachedPrefix(depth);
+		await applyGraph(response, depth, seq);
 	} catch (e) {
 		if (graphActive && seq === refreshSeq)
 			error = errorMessage(e, "Failed to load commits");
 	}
+}
+
+function readCachedPrefix(depth: number) {
+	return safeInvoke<GraphResponse>("get_commit_graph", {
+		path: repoPath,
+		offset: 0,
+		loaded: depth,
+	});
 }
 
 const cachedGraphRefresh = createCoalescedTask(scheduler, readCachedGraph);
@@ -2043,17 +2140,17 @@ $effect(() => {
 async function refreshGraph() {
 	const seq = ++refreshSeq;
 	const generation = refreshSignal ?? 0;
+	const depth = offset;
 	const worktree = Promise.all([wipStatsRefresh.run(), stashMapRefresh.run()]);
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
-			loaded: offset,
+			loaded: depth,
 		});
 		// The backend rejects retained captures. This success consumes only the
 		// generation it started with, even if the graph pane has since unmounted.
 		onrefreshconsumed?.(generation);
-		if (!graphActive || seq !== refreshSeq) return;
-		replaceGraph(response);
+		await applyGraph(response, depth, seq);
 	} catch (e) {
 		if (!graphActive || seq !== refreshSeq) return;
 		error = errorMessage(e, "Failed to load commits");
@@ -2075,7 +2172,7 @@ onDestroy(() => graphRefresh.dispose());
 $effect(() => {
 	if (!pagesReadable) return;
 	untrack(async () => {
-		await loadMore();
+		await loadNextPage();
 		await stashMapRefresh.run();
 		// Diff stats (visible rows + WIP) are driven by the visibility-resolution effect
 		// below, so the column does zero stat work until the persisted visibility
@@ -2168,7 +2265,7 @@ $effect(() => {
 	} else if (untrack(() => hasMore)) {
 		// HEAD not in current batch -- load the next batch so the effect re-fires with more commits.
 		// untrack prevents hasMore from creating a reactive dependency here.
-		untrack(() => loadMore());
+		untrack(() => void loadNextPage());
 	} else {
 		scrolledToHead = true;
 	}
@@ -2203,109 +2300,164 @@ $effect(() => {
 });
 
 $effect(() => {
-	const path = repoPath;
-	if (tabActive) untrack(resumeUnansweredSearch);
+	const query = searchQuery;
+	if (!tabActive || !query || query.path !== repoPath) return;
 
+	// A graph replacement only changes the revision to read. Each tab return
+	// starts a new activation so a scroll from the previous one stays canceled.
+	const activate = () => {
+		searchActivation = { query };
+	};
+	const timer = untrack(() => lastSearchAnswer)
+		? undefined
+		: setTimeout(activate, 200);
+	if (timer === undefined) activate();
 	return () => {
-		invalidateSearchRequest();
-		if (path !== repoPath) {
-			searchResults = [];
-			searchCurrentIndex = 0;
-			searchAnswered = false;
-		}
+		clearTimeout(timer);
+		searchActivation = undefined;
+		pendingMatchStep = undefined;
 	};
 });
 
-// Leaving the tab or the repository drops the search in flight, and the query it
-// was answering is still in the bar when the user comes back.
-function resumeUnansweredSearch() {
-	if (searchOpen && !searchAnswered && searchQuery.trim())
-		handleSearchQueryChange(searchQuery);
-}
+$effect(() => {
+	const query = searchActivation?.query;
+	const revision = graphRevision;
+	if (
+		!tabActive ||
+		!graphReady ||
+		!graphCurrentForSearch ||
+		!query ||
+		query !== searchQuery ||
+		query.path !== repoPath ||
+		untrack(() => searchResults !== undefined)
+	)
+		return;
 
-function invalidateSearchRequest() {
-	searchGeneration += 1;
-	if (searchDebounceTimer !== null) {
-		clearTimeout(searchDebounceTimer);
-		searchDebounceTimer = null;
-	}
-}
+	const read = { query, revision };
+	pendingSearch = read;
+	void readSearch(read);
+	return () => {
+		if (pendingSearch === read) pendingSearch = undefined;
+	};
+});
 
-function isCurrentSearch(generation: number, path: string): boolean {
+function isCurrentSearch(read: SearchRead): boolean {
 	return (
 		graphActive &&
 		tabActive &&
-		searchOpen &&
-		path === repoPath &&
-		generation === searchGeneration
+		graphCurrentForSearch &&
+		pendingSearch === read &&
+		searchQuery === read.query &&
+		repoPath === read.query.path &&
+		graphRevision === read.revision
 	);
+}
+
+async function readSearch(read: SearchRead): Promise<void> {
+	const response = await safeInvoke<readonly SearchResult[]>("search_commits", {
+		path: read.query.path,
+		query: read.query.text,
+		revision: read.revision,
+	}).then(
+		(results) => ({ results }),
+		(error: unknown) => ({ error }),
+	);
+	if (!isCurrentSearch(read)) return;
+
+	if ("error" in response) {
+		if (
+			isTrunkError(response.error) &&
+			response.error.code === "graph_changed"
+		) {
+			await cachedGraphRefresh.run();
+			if (!isCurrentSearch(read)) return;
+		} else {
+			reportErrorToast(response.error, "Could not search commits");
+		}
+		pendingSearch = undefined;
+		pendingMatchStep = undefined;
+		return;
+	}
+
+	pendingSearch = undefined;
+	const step = pendingMatchStep;
+	pendingMatchStep = undefined;
+	const previous = lastSearchAnswer;
+	const { results } = response;
+	const steppedOid = step?.isCurrent()
+		? previous?.results[step.index]?.oid
+		: undefined;
+	const steppedIndex = results.findIndex(({ oid }) => oid === steppedOid);
+	const currentOid = previous?.results[searchCurrentIndex]?.oid;
+	const currentIndex = results.findIndex(({ oid }) => oid === currentOid);
+	searchAnswer = { read, results };
+	searchCurrentIndex =
+		steppedIndex >= 0
+			? steppedIndex
+			: currentIndex >= 0
+				? currentIndex
+				: Math.max(0, Math.min(searchCurrentIndex, results.length - 1));
+	const match = results[searchCurrentIndex];
+	if (
+		match &&
+		(steppedIndex >= 0 || (!previous && read.query.wantsFirstMatch()))
+	)
+		selectSearchResult(match.oid);
+}
+
+function snapshotSearchNavigation(): () => boolean {
+	const sequence = scrollSequence;
+	const isParentCurrent = snapshotNavigationIntent?.();
+
+	return () => sequence === scrollSequence && (isParentCurrent?.() ?? true);
 }
 
 function selectSearchResult(oid: string) {
-	const generation = searchGeneration;
-	const path = repoPath;
-
+	const activation = searchActivation;
+	const answer = searchAnswer;
+	(oncommitnavigate ?? oncommitselect)?.(oid);
+	const isParentCurrent = snapshotNavigationIntent?.();
 	void scrollToOid(
 		oid,
 		() =>
-			isCurrentSearch(generation, path) &&
-			searchResults[searchCurrentIndex]?.oid === oid,
+			searchActivation === activation &&
+			searchAnswer === answer &&
+			searchCurrentOid === oid &&
+			(isParentCurrent?.() ?? true),
 	);
-	(oncommitnavigate ?? oncommitselect)?.(oid);
 }
 
 function handleSearchQueryChange(query: string) {
-	searchQuery = query;
-	invalidateSearchRequest();
-	const generation = searchGeneration;
-	const path = repoPath;
-	searchResults = [];
+	searchText = query;
+	searchAnswer = undefined;
 	searchCurrentIndex = 0;
-	searchAnswered = false;
 	const trimmed = query.trim();
-
-	if (!trimmed) return;
-
-	searchDebounceTimer = setTimeout(async () => {
-		searchDebounceTimer = null;
-		if (!isCurrentSearch(generation, path)) return;
-
-		const results = await currentSearchFor(trimmed);
-		if (results === undefined) return;
-
-		searchAnswered = true;
-		searchResults = results;
-		searchCurrentIndex = 0;
-		if (results.length > 0) {
-			selectSearchResult(results[0].oid);
-		}
-	}, 200);
+	searchQuery = trimmed
+		? {
+				path: repoPath,
+				text: trimmed,
+				wantsFirstMatch: snapshotSearchNavigation(),
+			}
+		: undefined;
 }
 
-function handleSearchNext() {
-	if (searchResults.length === 0) return;
+function stepSearch(direction: -1 | 1) {
+	if (!stepResults?.length) return;
 
-	searchCurrentIndex = (searchCurrentIndex + 1) % searchResults.length;
-	const oid = searchResults[searchCurrentIndex].oid;
-	selectSearchResult(oid);
-}
-
-function handleSearchPrev() {
-	if (searchResults.length === 0) return;
-
-	searchCurrentIndex =
-		(searchCurrentIndex - 1 + searchResults.length) % searchResults.length;
-	const oid = searchResults[searchCurrentIndex].oid;
-	selectSearchResult(oid);
+	const step = pendingMatchStep;
+	const from = step?.isCurrent() ? step.index : searchCurrentIndex;
+	const index = (from + direction + stepResults.length) % stepResults.length;
+	if (searchResults) {
+		searchCurrentIndex = index;
+		selectSearchResult(searchResults[index].oid);
+	} else {
+		pendingMatchStep = { index, isCurrent: snapshotSearchNavigation() };
+	}
 }
 
 function handleSearchClose() {
-	invalidateSearchRequest();
 	searchOpen = false;
-	searchQuery = "";
-	searchAnswered = false;
-	searchResults = [];
-	searchCurrentIndex = 0;
+	handleSearchQueryChange("");
 	containerRef?.focus();
 }
 
@@ -2469,13 +2621,13 @@ $effect(() => {
 	>
 		{#if searchOpen}
 			<SearchBar
-				query={searchQuery}
+				query={searchText}
 				currentIndex={searchCurrentIndex}
-				totalMatches={searchResults.length}
-				searching={!searchAnswered}
+				totalMatches={stepResults?.length ?? 0}
+				searching={searchResults === undefined}
 				onquerychange={handleSearchQueryChange}
-				onnext={handleSearchNext}
-				onprev={handleSearchPrev}
+				onnext={() => stepSearch(1)}
+				onprev={() => stepSearch(-1)}
 				onclose={handleSearchClose}
 			/>
 		{/if}
@@ -3028,7 +3180,7 @@ $effect(() => {
 					items={displayItems}
 					defaultEstimatedItemHeight={displaySettings.rowHeight}
 					bind:measuredItemHeight={svgRowHeight}
-					onLoadMore={() => void loadMore()}
+					onLoadMore={() => void loadNextPage()}
 					onrangechange={(start, end) => {
 						renderedStart = start;
 						renderedEnd = end;
@@ -3054,9 +3206,7 @@ $effect(() => {
 							rowHeight={displaySettings.rowHeight}
 							isSearchMatch={searchMatchOids.has(commit.oid)}
 							isCurrentMatch={commit.oid === searchCurrentOid}
-							isSearchActive={searchOpen &&
-								searchQuery.length > 0 &&
-								searchResults.length > 0}
+							isSearchActive={searchDimmingActive}
 							inSession={reviewOids.has(commit.oid)}
 							isPendingBase={pendingBase === commit.oid}
 							commentCount={commentCountFor(commit.oid)}
@@ -3098,7 +3248,7 @@ $effect(() => {
 			{#if error && commits.length > 0}
 				<div class="flex items-center gap-3 px-4 py-2">
 					<span class="error-text text-body">{error}</span>
-					<Button onclick={() => void loadMore()}>Retry</Button>
+					<Button onclick={() => void loadNextPage()}>Retry</Button>
 				</div>
 			{/if}
 		{/if}

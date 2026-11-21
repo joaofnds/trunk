@@ -13,6 +13,8 @@ import {
 import type { RepoChanged } from "../../lib/repo-change-subscription.js";
 import type { GraphResponse } from "../../lib/types.js";
 
+const GRAPH_PAGE = 200;
+
 interface HeldReply {
 	entered: Promise<Record<string, unknown>>;
 	release(value: unknown): void;
@@ -146,8 +148,25 @@ export class RepositoryReadHost implements HostChannel {
 		const barrier = this.barriers.get(cmd)?.shift();
 		if (barrier) return barrier(args);
 		if (cmd === "get_commit_graph" && this.graph) {
-			const offset = Number(args.offset ?? 0);
-			const count = Number(args.loaded ?? 200);
+			const { loaded, revision, through } = args;
+			if (typeof revision === "number" && revision !== this.graph.revision) {
+				throw JSON.stringify({
+					code: "graph_changed",
+					message: "The graph revision changed",
+				});
+			}
+
+			let offset = Number(args.offset ?? 0);
+			let count = GRAPH_PAGE;
+			if (typeof loaded === "number") {
+				offset = 0;
+				count = Math.max(loaded, GRAPH_PAGE);
+			} else if (typeof through === "string") {
+				const row = this.graph.commits.findIndex(({ oid }) => oid === through);
+				if (row < 0) return null;
+
+				count = Math.max(GRAPH_PAGE, row + GRAPH_PAGE - offset);
+			}
 			return {
 				...this.graph,
 				commits: this.graph.commits.slice(offset, offset + count),
