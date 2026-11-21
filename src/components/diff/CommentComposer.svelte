@@ -1,8 +1,8 @@
 <script lang="ts">
 import MessageSquare from "@lucide/svelte/icons/message-square";
 import { untrack } from "svelte";
-import { buildDiffAnchor } from "../../lib/diff-anchor.js";
 import { copyText } from "../../lib/clipboard.js";
+import { buildDiffAnchor } from "../../lib/diff-anchor.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { createOwnedTimer } from "../../lib/owned-timer.js";
