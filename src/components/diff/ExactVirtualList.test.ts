@@ -74,7 +74,7 @@ function mountList(count: number, rowHeight: number = ROW_HEIGHT) {
 	return mountHeights(Array.from({ length: count }, () => rowHeight));
 }
 
-function mountHeights(heights: number[], trailingSpace = 0) {
+function mountHeights(heights: (number | string)[], trailingSpace = 0) {
 	stubLayout({ width: 800, height: VIEWPORT_HEIGHT });
 
 	return render(ExactVirtualList, {
@@ -107,6 +107,50 @@ function rowsTop(container: Element): string | undefined {
 }
 
 describe("ExactVirtualList", () => {
+	it("allocates scroll space from the live height of a row outside the code window", async () => {
+		vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+		const heights: (number | string)[] = Array.from(
+			{ length: 500 },
+			() => ROW_HEIGHT,
+		);
+		heights[300] = "conversation";
+		const { container } = mountHeights(heights);
+		const row = container.querySelector("[data-index='300']")?.parentElement;
+		const content = () => heightOf(container, ".exact-virtual-content");
+
+		expect(content()).toBe("9182px");
+		expect(container.querySelectorAll(".row")).toHaveLength(24);
+		if (!row) throw new Error("Missing conversation row");
+
+		expect(row.inert).toBe(true);
+		setLayout(row, { height: 500.5 });
+		FakeResizeObserver.resize(row);
+		await tick();
+
+		expect(content()).toBe("9482.5px");
+		expect(container.querySelector("[data-index='300']")?.parentElement).toBe(
+			row,
+		);
+	});
+
+	it("jumps past a resized conversation before its observer has reported", async () => {
+		const heights: (number | string)[] = Array.from(
+			{ length: 500 },
+			() => ROW_HEIGHT,
+		);
+		heights[300] = "conversation";
+		const { component, container } = mountHeights(heights);
+		const row = container.querySelector("[data-index='300']")?.parentElement;
+		if (!row) throw new Error("Missing conversation row");
+		setLayout(row, { height: 500 });
+
+		component.scrollToIndex(350);
+		await tick();
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(349 * ROW_HEIGHT + 500);
+	});
+
 	it("mounts the rows covering the viewport plus one screen of runway", () => {
 		const { container } = mountList(5000);
 

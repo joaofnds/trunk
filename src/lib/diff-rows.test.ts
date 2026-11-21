@@ -878,7 +878,7 @@ describe("rowHeights", () => {
 	it("returns one height per row", () => {
 		const model = buildInlineRows([twoHunks], fullMode);
 
-		expect(rowHeights(model, metrics, 80, false, new Map())).toHaveLength(3);
+		expect(rowHeights(model, metrics, 80, false)).toHaveLength(3);
 	});
 
 	it("gives every line one line height when wrap is off", () => {
@@ -887,7 +887,7 @@ describe("rowHeights", () => {
 		]);
 		const model = buildInlineRows([long], fullMode);
 
-		expect(rowHeights(model, metrics, 10, false, new Map())).toEqual([18]);
+		expect(rowHeights(model, metrics, 10, false)).toEqual([18]);
 	});
 
 	it("gives a wrapped line one line height per visual line", () => {
@@ -896,7 +896,7 @@ describe("rowHeights", () => {
 		]);
 		const model = buildInlineRows([long], fullMode);
 
-		expect(rowHeights(model, metrics, 10, true, new Map())).toEqual([54]);
+		expect(rowHeights(model, metrics, 10, true)).toEqual([54]);
 	});
 
 	it("counts a wrapped line's tab to its stop", () => {
@@ -905,33 +905,21 @@ describe("rowHeights", () => {
 		]);
 		const model = buildInlineRows([tabbed], fullMode);
 
-		expect(rowHeights(model, metrics, 4, true, new Map())).toEqual([54]);
+		expect(rowHeights(model, metrics, 4, true)).toEqual([54]);
 	});
 
-	it("sums the probed heights of a comment row's threads", () => {
+	it("gives a group of comments one live row key", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
 			comments: [thread("t1", "New", 2, 2), thread("t2", "New", 2, 2)],
 		});
-		const probed = new Map([
-			["t1", 60],
-			["t2", 40],
+
+		expect(rowHeights(model, metrics, 80, false)).toEqual([
+			18,
+			18,
+			expect.stringMatching(/^comment:/),
+			18,
 		]);
-
-		expect(rowHeights(model, metrics, 80, false, probed)).toEqual([
-			18, 18, 100, 18,
-		]);
-	});
-
-	it("throws rather than guess when a comment row's thread was never probed", () => {
-		const model = buildInlineRows([twoHunks], {
-			...fullMode,
-			comments: [thread("t1", "New", 2, 2)],
-		});
-
-		expect(() => rowHeights(model, metrics, 80, false, new Map())).toThrow(
-			/t1/,
-		);
 	});
 
 	it("takes each fixed row shape's height from its declared token", () => {
@@ -942,7 +930,7 @@ describe("rowHeights", () => {
 			fileHeaders: true,
 		});
 
-		const heights = rowHeights(model, metrics, 80, false, new Map());
+		const heights = rowHeights(model, metrics, 80, false);
 
 		expect(heights.slice(0, 3)).toEqual([
 			FIXED_ROW_HEIGHTS.fileHeader,
@@ -965,7 +953,7 @@ describe("rowHeights", () => {
 			]);
 			const model = buildInlineRows([awkward], { ...fullMode, invisibles });
 
-			const heights = rowHeights(model, metrics, 10, true, new Map());
+			const heights = rowHeights(model, metrics, 10, true);
 
 			for (const [index, row] of model.rows.entries()) {
 				if (row.kind !== "line") continue;
@@ -982,9 +970,7 @@ describe("rowHeights", () => {
 	it("gives a pair row one line height when wrap is off", () => {
 		const model = buildSplitRows([pairable], fullMode);
 
-		expect(rowHeights(model, metrics, 3, false, new Map())).toEqual([
-			18, 18, 18,
-		]);
+		expect(rowHeights(model, metrics, 3, false)).toEqual([18, 18, 18]);
 	});
 
 	it("gives a wrapped pair row the taller of its two sides", () => {
@@ -996,7 +982,7 @@ describe("rowHeights", () => {
 		]);
 		const model = buildSplitRows([lopsided], fullMode);
 
-		expect(rowHeights(model, metrics, 10, true, new Map())).toEqual([54]);
+		expect(rowHeights(model, metrics, 10, true)).toEqual([54]);
 	});
 
 	it("needs nothing probed for a hunk header", () => {
@@ -1005,7 +991,7 @@ describe("rowHeights", () => {
 			content: "hunk",
 		});
 
-		const heights = rowHeights(model, metrics, 80, false, new Map());
+		const heights = rowHeights(model, metrics, 80, false);
 
 		expect(heights[0]).toBe(FIXED_ROW_HEIGHTS.hunkHeader);
 	});
@@ -1252,7 +1238,7 @@ describe("the composer row", () => {
 			composer: onNewTwo,
 		});
 
-		expect(rowHeights(model, metrics, 80, false, new Map())[2]).toBe(
+		expect(rowHeights(model, metrics, 80, false)[2]).toBe(
 			FIXED_ROW_HEIGHTS.composer,
 		);
 	});

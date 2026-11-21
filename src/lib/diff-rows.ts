@@ -63,6 +63,7 @@ export type DiffRow =
 	  }
 	| {
 			kind: "comment";
+			key: string;
 			path: string;
 			hunkIdx: number;
 			lineIdx: number;
@@ -180,7 +181,7 @@ export function buildInlineRows(
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
-			rows.push(...gapRows(fd.path, gaps[hunkIdx]));
+			rows.push(...gapRows(fd.path, hunkIdx, gaps[hunkIdx]));
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
 
 			if (opts.content === "hunk") {
@@ -228,6 +229,7 @@ export function buildInlineRows(
 				if (visibleThreads.length > 0) {
 					rows.push({
 						kind: "comment",
+						key: commentKey("line", fd.path, hunkIdx, lineIdx),
 						path: fd.path,
 						hunkIdx,
 						lineIdx,
@@ -247,7 +249,7 @@ export function buildInlineRows(
 			}
 		}
 
-		rows.push(...gapRows(fd.path, gaps[fd.hunks.length]));
+		rows.push(...gapRows(fd.path, fd.hunks.length, gaps[fd.hunks.length]));
 	}
 
 	return {
@@ -293,7 +295,7 @@ export function buildSplitRows(
 		rows.push(...rowsAboveFile(fd, opts, visibleComments));
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
-			rows.push(...gapRows(fd.path, gaps[hunkIdx]));
+			rows.push(...gapRows(fd.path, hunkIdx, gaps[hunkIdx]));
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
 
 			if (opts.content === "hunk") {
@@ -363,6 +365,7 @@ export function buildSplitRows(
 					if (anchor) {
 						rows.push({
 							kind: "comment",
+							key: commentKey("line", fd.path, hunkIdx, anchor.lineIdx),
 							path: fd.path,
 							hunkIdx,
 							lineIdx: anchor.lineIdx,
@@ -393,7 +396,7 @@ export function buildSplitRows(
 			flatBase += hunk.lines.length;
 		}
 
-		rows.push(...gapRows(fd.path, gaps[fd.hunks.length]));
+		rows.push(...gapRows(fd.path, fd.hunks.length, gaps[fd.hunks.length]));
 	}
 
 	return {
@@ -564,14 +567,31 @@ export function rowIndexForThread(
 	);
 }
 
+function commentKey(
+	kind: "file" | "gap" | "line",
+	path: string,
+	hunk?: number,
+	line?: number,
+): string {
+	return `comment:${JSON.stringify([kind, path, hunk, line])}`;
+}
+
 /** A comment row that hangs under no line takes the first line's indices. */
 const FIRST_LINE = { hunkIdx: 0, lineIdx: 0, flatIdx: 0 } as const;
 
 /** The comment row for the threads in one gap between hunks. */
-function gapRows(path: string, threads: Thread[]): DiffRow[] {
+function gapRows(path: string, hunkIdx: number, threads: Thread[]): DiffRow[] {
 	if (threads.length === 0) return [];
 
-	return [{ kind: "comment", path, ...FIRST_LINE, threads }];
+	return [
+		{
+			kind: "comment",
+			key: commentKey("gap", path, hunkIdx),
+			path,
+			...FIRST_LINE,
+			threads,
+		},
+	];
 }
 
 /** Two cells wide plus one for the gap: room for a count of up to 99. */
@@ -594,20 +614,16 @@ function threadsAcross(
 	];
 }
 
-/** One exact height per row, in row order. Nothing here measures: a line's
- *  height comes from its column count, a comment row's from the heights the
- *  view probed before it rendered the list. A row with neither refuses rather
- *  than substituting a default, which is what makes the offsets a prefix sum
- *  the list never has to correct. */
+/** Code and chrome have computed heights. Each comment group has a key tied
+ *  to its anchor so changes to the cards leave the measured row mounted. */
 export function rowHeights(
 	model: DiffRowModel,
 	metrics: RowMetrics,
 	availableColumns: number,
 	wrap: boolean,
-	probed: Map<string, number>,
-): number[] {
+): (number | string)[] {
 	return model.rows.map((row) =>
-		heightOf(row, metrics, availableColumns, wrap, probed),
+		heightOf(row, metrics, availableColumns, wrap),
 	);
 }
 
@@ -616,8 +632,7 @@ function heightOf(
 	metrics: RowMetrics,
 	availableColumns: number,
 	wrap: boolean,
-	probed: Map<string, number>,
-): number {
+): number | string {
 	if (row.kind === "line") {
 		if (!wrap) return metrics.lineHeightPx;
 		return rowHeightFor(row.columns, availableColumns, metrics);
@@ -634,12 +649,7 @@ function heightOf(
 		);
 	}
 
-	if (row.kind === "comment") {
-		return row.threads.reduce(
-			(total, thread) => total + probedHeight(probed, thread.id),
-			0,
-		);
-	}
+	if (row.kind === "comment") return row.key;
 
 	if (row.kind === "composer") return FIXED_ROW_HEIGHTS.composer;
 	if (row.kind === "file-header") return FIXED_ROW_HEIGHTS.fileHeader;
@@ -679,7 +689,13 @@ function rowsAboveFile(
 	const rows: DiffRow[] = [];
 	const threads = threadsOnWholeFile(visibleComments, fd.path);
 	if (threads.length > 0) {
-		rows.push({ kind: "comment", path: fd.path, ...FIRST_LINE, threads });
+		rows.push({
+			kind: "comment",
+			key: commentKey("file", fd.path),
+			path: fd.path,
+			...FIRST_LINE,
+			threads,
+		});
 	}
 	if (composerOpensAbove(opts.composer, fd)) {
 		rows.push({ kind: "composer", path: fd.path, hunkIdx: 0 });
@@ -713,13 +729,4 @@ function composerEndsOn(
 		composer.side === side &&
 		composer.endLine === lineno
 	);
-}
-
-function probedHeight(probed: Map<string, number>, threadId: string): number {
-	const height = probed.get(threadId);
-	if (height === undefined) {
-		throw new Error(`comment thread ${threadId} was never probed`);
-	}
-
-	return height;
 }

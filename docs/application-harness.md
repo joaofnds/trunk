@@ -153,10 +153,8 @@ costs a mode switch no criterion needs.
 The review workflow, in `tests/app/review.test.ts`: a comment left on a hunk of a commit's
 diff, the thread the review panel shows for it, the publish that keeps the thread and drops its
 Delete action, the Mark done that only a human can give it, and the copied review doc carrying
-the thread's heading and its state. Reading a thread card back needs care: `HunkView` renders
-every thread a second time inside a hidden `.comment-probe` to measure its height, so a query
-naming `.comment-card` alone answers with the probe's copy whether or not the panel ever
-opened.
+the thread's heading and its state. Scope card queries to the Review panel when checking
+that it opens: the inline diff can show a card for the same thread.
 
 The current-file comment workflow, in `tests/app/current-file-comment.test.ts`: reaching a
 file no pending change touches through the finder, selecting a line in it, commenting, and

@@ -154,16 +154,35 @@ describe("ThreadReplies", () => {
 		render(ThreadReplies, {
 			props: {
 				replies: ["r1", "r2", "r3", "r4"].map((id, n) =>
-					aReply({ id, created_at: n }),
+					aReply({ id, created_at: n + 1 }),
 				),
-				history: [aStateChange({ created_at: 10 })],
+				history: [aStateChange({ created_at: 0 })],
 				onreplyedit: () => true,
 				onreplydelete: () => {},
 				dismissed: false,
 			},
 		});
 
-		expect(screen.getByText("Show 2 more replies")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Show earlier activity (2)" }),
+		).toBeInTheDocument();
+	});
+
+	it("keeps the newest reply visible through later state changes", () => {
+		render(ThreadReplies, {
+			props: {
+				replies: ["first", "second", "latest"].map((text, created_at) =>
+					aReply({ id: text, text_html: text, created_at }),
+				),
+				history: [3, 4, 5].map((created_at) => aStateChange({ created_at })),
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: false,
+			},
+		});
+
+		expect(screen.getByText("latest")).toBeInTheDocument();
+		expect(screen.queryByText("second")).toBeNull();
 	});
 
 	it("keeps four replies whole", () => {
@@ -176,7 +195,7 @@ describe("ThreadReplies", () => {
 			},
 		});
 
-		expect(screen.queryByText(/Show \d+ more/)).toBeNull();
+		expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
 	});
 
 	it.each(["Edit reply", "Delete reply"])(
@@ -213,11 +232,105 @@ describe("ThreadReplies", () => {
 			},
 		});
 
-		const more = screen.getByRole("button", { name: /Show 2 more replies/ });
+		const more = screen.getByRole("button", { name: "Show 2 earlier replies" });
 		expect(
 			more.querySelector('[title="Agent (via trunk CLI)"]'),
 		).not.toBeNull();
 		expect(more.querySelector('[title="You"]')).not.toBeNull();
+	});
+
+	it("toggles earlier replies from the same focused button", async () => {
+		render(ThreadReplies, {
+			props: {
+				replies: [1, 2, 3, 4, 5].map((number) =>
+					aReply({ id: `r${number}`, text_html: `reply ${number}` }),
+				),
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+				dismissed: false,
+			},
+		});
+		const disclosure = screen.getByRole("button", {
+			name: "Show 2 earlier replies",
+		});
+		disclosure.focus();
+
+		await fireEvent.click(disclosure);
+
+		expect(disclosure).toHaveAccessibleName("Hide earlier replies");
+		expect(disclosure).toHaveAttribute("aria-expanded", "true");
+		expect(disclosure).toHaveFocus();
+		expect(screen.getByText("reply 1")).toBeInTheDocument();
+
+		await fireEvent.click(disclosure);
+
+		expect(disclosure).toHaveAccessibleName("Show 2 earlier replies");
+		expect(disclosure).toHaveAttribute("aria-expanded", "false");
+		expect(disclosure).toHaveFocus();
+		expect(screen.queryByText("reply 1")).toBeNull();
+		expect(screen.getByText("reply 5")).toBeInTheDocument();
+	});
+
+	it("remembers the reader's expanded history for the mounted surface", async () => {
+		const replies = [1, 2, 3, 4, 5].map((number) =>
+			aReply({ id: `r${number}`, text_html: `reply ${number}` }),
+		);
+		const editorSession = createThreadEditorSession();
+		const props = {
+			replies,
+			onreplyedit: () => true,
+			onreplydelete: () => {},
+			dismissed: false,
+			editorSession,
+		};
+		const first = render(ThreadReplies, { props });
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show 2 earlier replies" }),
+		);
+		first.unmount();
+		render(ThreadReplies, { props });
+
+		expect(screen.getByText("reply 1")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Hide earlier replies" }),
+		).toHaveAttribute("aria-expanded", "true");
+	});
+
+	it("keeps the same focused reply editor when a new reply moves it into earlier history", async () => {
+		const replies = [1, 2, 3, 4, 5].map((number) =>
+			aReply({ id: `r${number}`, text: `reply ${number}` }),
+		);
+		const props = {
+			replies,
+			onreplyedit: () => true,
+			onreplydelete: () => {},
+			dismissed: false,
+		};
+		const view = render(ThreadReplies, { props });
+		await fireEvent.click(
+			screen.getAllByRole("button", { name: "Edit reply" })[0],
+		);
+		const field = screen.getByRole<HTMLTextAreaElement>("textbox", {
+			name: "Edit reply",
+		});
+		field.setSelectionRange(2, 4);
+		expect(
+			screen.getByRole("button", { name: "Show 2 earlier replies" }),
+		).toHaveAttribute("aria-expanded", "false");
+
+		await view.rerender({
+			...props,
+			replies: [...replies, aReply({ id: "r6", text: "reply 6" })],
+		});
+
+		expect(screen.getByRole("textbox", { name: "Edit reply" })).toBe(field);
+		expect(field).toHaveValue("reply 3");
+		expect(field).toHaveFocus();
+		expect([field.selectionStart, field.selectionEnd]).toEqual([2, 4]);
+		expect(
+			screen.getByRole("button", { name: "Hide earlier replies" }),
+		).toHaveAttribute("aria-disabled", "true");
 	});
 
 	it("closes a reply edit once its save succeeds", async () => {
@@ -331,7 +444,9 @@ describe("ThreadReplies", () => {
 		};
 		let view = render(ThreadReplies, { props });
 
-		await fireEvent.click(screen.getByText("Show 2 more replies"));
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show 2 earlier replies" }),
+		);
 		await fireEvent.click(
 			screen.getAllByRole("button", { name: "Edit reply" })[0],
 		);

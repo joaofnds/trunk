@@ -1,4 +1,5 @@
 import type { ReadingLine } from "./diff-rows.js";
+import type { ThreadReadingPosition } from "./diff-thread-position.js";
 import type { Side } from "./types.js";
 
 /**
@@ -27,6 +28,7 @@ export interface DiffNav {
 	step(direction: 1 | -1): void;
 	/** The line at the top of the view, where a view replacing it opens. */
 	readingLine(): ReadingLine | null;
+	readingThread(): ThreadReadingPosition | null;
 }
 
 /** Where the last jump left the view: the stop it went to, and the row that

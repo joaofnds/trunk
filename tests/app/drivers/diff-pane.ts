@@ -16,7 +16,7 @@ const SPLIT_COMMENT_ROW = ".split-comment-row";
 const FULL_FILE_COMMENT_ROW = ".comment-row";
 const HUNK_HEADER = ".hunk-toolbar";
 const DIFF_LINE = ".diff-line";
-const PROBES = ".comment-probe, .metrics-probe";
+const METRICS_PROBE = ".metrics-probe";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 const IMAGE_SIDE = "figure";
@@ -97,14 +97,14 @@ export class DiffPaneDriver {
 	}
 
 	/** What the hunk view shows, topmost first, as a comment row, a hunk header
-	 *  or a line. The off-screen probes that measure rows are not shown. */
+	 *  or a line. The font metrics probe is excluded. */
 	rowsFromTop(): ("comment" | "hunk" | "line")[] {
 		const rows = document.querySelectorAll<HTMLElement>(
 			`.hunk-view :is(${COMMENT_ROW}, ${HUNK_HEADER}, ${DIFF_LINE})`,
 		);
 
 		return [...rows]
-			.filter((row) => !row.closest(PROBES))
+			.filter((row) => !row.closest(METRICS_PROBE))
 			.map((row) => {
 				if (row.matches(COMMENT_ROW)) return "comment";
 				if (row.matches(HUNK_HEADER)) return "hunk";
@@ -121,7 +121,7 @@ export class DiffPaneDriver {
 		);
 
 		return [...rows]
-			.filter((row) => !row.closest(PROBES))
+			.filter((row) => !row.closest(METRICS_PROBE))
 			.map((row) => row.textContent ?? "");
 	}
 

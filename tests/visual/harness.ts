@@ -2,9 +2,16 @@ import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { type Browser, type Page, webkit } from "playwright";
+import {
+	type Browser,
+	type Locator,
+	type Page,
+	type Route,
+	webkit,
+} from "playwright";
 import { inject, type TestContext } from "vitest";
-import { HostClient } from "../app/harness/host-client.js";
+import type { Thread } from "../../src/lib/types.js";
+import { HostClient, type RepoSpec } from "../app/harness/host-client.js";
 import type { Difference } from "./baseline.js";
 import "./page/bindings.js";
 import { CATALOG_PAGE, PAGE, ROOT } from "./server.js";
@@ -81,6 +88,12 @@ export interface FooterView {
 	/** Rebases the repository onto this branch through the app's own command
 	 *  once it is open, for a repository the fixtures build unstopped. */
 	rebaseOnto?: string;
+}
+
+interface ThreadTail {
+	latestReply: boolean;
+	composer: boolean;
+	scrollable: boolean;
 }
 
 /**
@@ -196,6 +209,18 @@ export class VisualHarness {
 		);
 	}
 
+	readInlineReview(
+		repo: RepoSpec,
+		file: string,
+		replies: readonly [string, ...string[]],
+		test: CaptureTest,
+		read: (review: InlineReviewDriver) => Promise<void>,
+	): Promise<void> {
+		return this.onPage(test, async (page) =>
+			read(await page.openInlineReview(repo, file, replies, test.signal)),
+		);
+	}
+
 	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
 		return pixelDifference(this.browser, baseline, capture);
 	}
@@ -204,12 +229,12 @@ export class VisualHarness {
 		await this.opened.close();
 	}
 
-	/** vitest drops whatever a test throws after its timeout, so when it abandons
-	 *  `test`, what the host still owed the page is noted on the test. */
-	private async onPage(
+	/** vitest drops whatever a test throws after its timeout. The note records
+	 *  what the host still owed the page when vitest abandoned the test. */
+	private async onPage<T>(
 		test: CaptureTest,
-		capture: (page: AppPage) => Promise<Buffer>,
-	): Promise<Buffer> {
+		run: (page: AppPage) => Promise<T>,
+	): Promise<T> {
 		const page = await this.borrow();
 		const report = () =>
 			void test.annotate(
@@ -219,7 +244,7 @@ export class VisualHarness {
 		test.signal.addEventListener("abort", report, { once: true });
 
 		try {
-			return await capture(page);
+			return await run(page);
 		} finally {
 			test.signal.removeEventListener("abort", report);
 			this.giveBack(page);
@@ -427,6 +452,59 @@ class AppPage {
 		});
 	}
 
+	async openInlineReview(
+		repo: RepoSpec,
+		file: string,
+		replies: readonly [string, ...string[]],
+		abandoned: AbortSignal,
+	): Promise<InlineReviewDriver> {
+		await this.page.setViewportSize({ width: VIEWPORT.width, height: 800 });
+		const path = await this.openRepository(repo, {}, abandoned);
+		const options = { signal: abandoned };
+		await this.page
+			.getByTestId("commit-row")
+			.filter({ hasText: "// WIP" })
+			.click(options);
+		await this.page
+			.getByTestId("staging-unstaged-section")
+			.getByTestId("staging-file")
+			.filter({ hasText: file })
+			.click(options);
+		await this.page.getByTitle("Side-by-side view").click(options);
+		const viewport = this.page.locator(".split-view .exact-virtual-viewport");
+		await viewport
+			.getByRole("button", { name: "Comment", exact: true })
+			.click(options);
+		await viewport
+			.getByRole("textbox", { name: "Comment", exact: true })
+			.fill("Root comment", options);
+		await viewport
+			.getByRole("button", { name: "Add comment", exact: true })
+			.click(options);
+		await viewport.getByText("Root comment", { exact: true }).waitFor(options);
+
+		const host = this.currentHost();
+		const [thread] = await host.invoke<Pick<Thread, "id">[]>("list_threads", {
+			path,
+		});
+		if (!thread) throw new Error("the submitted inline comment has no thread");
+
+		for (const text of replies) {
+			await host.invoke("add_reply", {
+				path,
+				threadId: thread.id,
+				text,
+				delivery: "send",
+			});
+		}
+
+		return new InlineReviewDriver(
+			this.page,
+			this.page.locator(".exact-virtual-viewport"),
+			abandoned,
+		);
+	}
+
 	describeHost(): string {
 		if (this.host === null) return "no host attached";
 		return this.host.describeOutstanding();
@@ -516,12 +594,14 @@ class AppPage {
 	/** A fresh host whose stored prefs restore `path` as the one open tab, with
 	 *  `prefs` stored beside them, and the app loaded until its first row draws. */
 	private async openRepository(
-		path: string,
+		repo: string | RepoSpec,
 		prefs: Record<string, unknown>,
 		abandoned: AbortSignal,
-	): Promise<void> {
+	): Promise<string> {
 		await this.retireHost(abandoned);
 		await this.attachHost();
+		const path =
+			typeof repo === "string" ? repo : await this.currentHost().seedRepo(repo);
 		await this.storeTab(path, prefs);
 
 		await this.page.goto(this.url, { signal: abandoned });
@@ -529,6 +609,7 @@ class AppPage {
 			.locator("[data-testid=commit-row]")
 			.first()
 			.waitFor({ signal: abandoned });
+		return path;
 	}
 
 	private async storeTab(
@@ -577,6 +658,171 @@ class AppPage {
 		if (this.host === null)
 			throw new Error("no host: capture a repository first");
 		return this.host;
+	}
+}
+
+class InlineReviewDriver {
+	constructor(
+		private readonly page: Page,
+		private readonly viewport: Locator,
+		private readonly signal: AbortSignal,
+	) {}
+
+	private get showEarlier(): Locator {
+		return this.viewport.getByRole("button", {
+			name: /^Show \d+ (?:more|earlier) replies$/,
+		});
+	}
+
+	async expandEarlierReplies(firstReplyLine: string): Promise<void> {
+		await this.showEarlier.click({ signal: this.signal });
+		await this.viewport
+			.getByText(firstReplyLine, { exact: true })
+			.waitFor({ signal: this.signal });
+		await painted(this.page);
+	}
+
+	async collapseEarlierRepliesFromKeyboard(): Promise<void> {
+		await this.page.keyboard.press("Enter");
+		await this.showEarlier.waitFor({ signal: this.signal });
+	}
+
+	earlierRepliesToggleHasFocus(): Promise<boolean> {
+		return this.showEarlier.evaluate(
+			(button) => button === document.activeElement,
+		);
+	}
+
+	async readFromParagraph(text: string, offset: number): Promise<void> {
+		await this.viewport
+			.getByText(text, { exact: true })
+			.evaluate((paragraph, y) => {
+				const viewport = paragraph.closest<HTMLElement>(
+					".exact-virtual-viewport",
+				);
+				if (!viewport)
+					throw new Error("the paragraph is outside the diff viewport");
+
+				viewport.scrollTop +=
+					paragraph.getBoundingClientRect().top -
+					viewport.getBoundingClientRect().top -
+					y;
+			}, offset);
+		await painted(this.page);
+	}
+
+	async delayIllustration(url: string): Promise<() => Promise<void>> {
+		const request = Promise.withResolvers<Route>();
+		await this.page.route(url, (route) => request.resolve(route));
+
+		return async () => {
+			const route = await request.promise;
+			await route.fulfill({
+				contentType: "image/svg+xml",
+				body: '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="160"/>',
+			});
+			await this.page.waitForFunction(
+				(src) =>
+					Array.from(document.images).some(
+						(image) => image.src === src && image.naturalHeight > 0,
+					),
+				url,
+				{ signal: this.signal },
+			);
+			await painted(this.page);
+			await this.page.unroute(url);
+		};
+	}
+
+	paragraphPosition(text: string) {
+		return this.viewport
+			.getByText(text, { exact: true })
+			.evaluate((paragraph) => {
+				const viewport = paragraph.closest(".exact-virtual-viewport");
+				if (!viewport)
+					throw new Error("the paragraph is outside the diff viewport");
+
+				return {
+					offset:
+						paragraph.getBoundingClientRect().top -
+						viewport.getBoundingClientRect().top,
+					scrollTop: viewport.scrollTop,
+					scrollLimit: viewport.scrollHeight - viewport.clientHeight,
+				};
+			});
+	}
+
+	async switchToUnified(): Promise<void> {
+		const options = { signal: this.signal };
+		await this.page.getByTitle("Inline view").click(options);
+		await this.page
+			.locator(".hunk-view .exact-virtual-viewport")
+			.waitFor(options);
+		await painted(this.page);
+	}
+
+	async scrollToEnd(): Promise<void> {
+		await this.viewport.evaluate((element) => {
+			element.scrollTop = element.scrollHeight;
+		});
+		await painted(this.page);
+	}
+
+	async backToRecentReplies(): Promise<void> {
+		await this.viewport
+			.getByRole("button", { name: "Back to recent replies", exact: true })
+			.click({ signal: this.signal });
+		await this.showEarlier.waitFor({ signal: this.signal });
+		await painted(this.page);
+	}
+
+	async replyTexts(): Promise<string[]> {
+		const texts = await this.viewport
+			.locator(".thread-reply-text")
+			.allTextContents();
+		return texts.map((text) => text.trim());
+	}
+
+	focusedReply(): Promise<string | null> {
+		return this.viewport
+			.locator("[data-thread-entry]:focus [data-thread-reply-body]")
+			.evaluateAll((elements) => elements[0]?.textContent?.trim() ?? null);
+	}
+
+	tail(latest: string): Promise<ThreadTail> {
+		return this.viewport.evaluate((element, replyText) => {
+			const bounds = element
+				.querySelector(".exact-virtual-surface")
+				?.getBoundingClientRect();
+			const viewportBounds = element.getBoundingClientRect();
+			const reply = [...element.querySelectorAll(".thread-reply-text")].find(
+				(message) => message.textContent?.trim() === replyText,
+			);
+			const composer = element.querySelector('textarea[aria-label="Reply"]');
+
+			function reachable(target: Element | null | undefined): boolean {
+				if (!target || !bounds) return false;
+
+				const box = target.getBoundingClientRect();
+				const hit = document.elementFromPoint(
+					box.left + box.width / 2,
+					box.top + box.height / 2,
+				);
+				return (
+					box.top >= Math.max(bounds.top, viewportBounds.top) &&
+					box.bottom <= Math.min(bounds.bottom, viewportBounds.bottom) &&
+					box.left >= Math.max(bounds.left, viewportBounds.left) &&
+					box.right <= Math.min(bounds.right, viewportBounds.right) &&
+					target.contains(hit)
+				);
+			}
+
+			return {
+				latestReply: reachable(reply),
+				composer: reachable(composer),
+				scrollable: element.scrollHeight > element.clientHeight,
+			};
+		}, latest);
 	}
 }
 

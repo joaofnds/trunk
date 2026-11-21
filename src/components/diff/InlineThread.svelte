@@ -9,17 +9,25 @@ import ThreadCard from "../ThreadCard.svelte";
 // file with no changes, so the views cannot draw it differently.
 interface Props {
 	thread: Thread;
+	virtualized?: boolean;
 	repoPath: string;
 	/** Which threads are folded, shared with the views the diff switches to. */
 	folds: ThreadFolds;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
 
-let { thread, repoPath, folds, editorSessionForThread }: Props = $props();
+let {
+	thread,
+	repoPath,
+	folds,
+	editorSessionForThread,
+	virtualized = false,
+}: Props = $props();
 </script>
 
 <ThreadCard
 	variant="inline"
+	{virtualized}
 	confirmDelete={false}
 	{thread}
 	{folds}

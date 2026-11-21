@@ -38,6 +38,8 @@ interface Props {
 	/** Rest on one line with no actions until it is clicked or holds text, as a
 	 *  thread's reply does, rather than opening focused. */
 	collapsible?: boolean;
+	/** Inline diff editors take focus from the live edit request. */
+	focusOnMount?: boolean;
 	/** Hints laid before the submit hint. */
 	hint?: Snippet;
 }
@@ -56,6 +58,7 @@ let {
 	onescape,
 	variant = "framed",
 	collapsible = false,
+	focusOnMount = true,
 	hint,
 }: Props = $props();
 
@@ -65,9 +68,12 @@ const open = $derived(!collapsible || focused || text !== "");
 let previewing = $state(false);
 let previewHtml = $state<string | null>(null);
 
-// An editor that opens does so to be typed in, so it takes the focus at once.
+export function focus() {
+	field?.focus({ preventScroll: !focusOnMount });
+}
+
 $effect(() => {
-	if (!collapsible) field?.focus();
+	if (!collapsible && focusOnMount) focus();
 });
 
 function fieldState(node: HTMLTextAreaElement): FieldState {
@@ -100,7 +106,7 @@ async function togglePreview() {
 		previewing = false;
 		previewHtml = null;
 		await tick();
-		field?.focus();
+		focus();
 		return;
 	}
 

@@ -2,7 +2,7 @@ import type { PanelDiffKind } from "./comment-matching.js";
 import { createDraft, type Draft } from "./draft.svelte.js";
 import type { Anchor, Thread } from "./types.js";
 
-/** The transient editors a thread owns while it is mounted on any surface. */
+/** The transient editors and reply disclosure for a thread on one surface. */
 export interface ThreadEditorSession {
 	rootEdit: Draft;
 	reply: Draft;
@@ -11,10 +11,12 @@ export interface ThreadEditorSession {
 	readonly rootEditSaving: boolean;
 	readonly replySaving: boolean;
 	readonly replyEditSaving: boolean;
+	readonly repliesExpanded: boolean;
 	setEditingReply(id: string | null): void;
 	setRootEditSaving(saving: boolean): void;
 	setReplySaving(saving: boolean): void;
 	setReplyEditSaving(saving: boolean): void;
+	setRepliesExpanded(expanded: boolean): void;
 }
 
 /** A mounted review surface whose same thread needs an independent editor. */
@@ -160,6 +162,7 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		rootEditSaving: false,
 		replySaving: false,
 		replyEditSaving: false,
+		repliesExpanded: false,
 	});
 
 	return {
@@ -178,6 +181,9 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		get replyEditSaving() {
 			return state.replyEditSaving;
 		},
+		get repliesExpanded() {
+			return state.repliesExpanded;
+		},
 		setEditingReply(id: string | null) {
 			state.editingReplyId = id;
 		},
@@ -189,6 +195,9 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		},
 		setReplyEditSaving(saving: boolean) {
 			state.replyEditSaving = saving;
+		},
+		setRepliesExpanded(expanded: boolean) {
+			state.repliesExpanded = expanded;
 		},
 	};
 }
@@ -370,6 +379,7 @@ export function createReviewEditorStore(): ReviewEditorStore {
 		session.setRootEditSaving(false);
 		session.setReplySaving(false);
 		session.setReplyEditSaving(false);
+		session.setRepliesExpanded(false);
 	}
 
 	return {

@@ -1,14 +1,13 @@
 /**
  * The virtualization plumbing all three diff views share: the font-metrics
- * probe, the pane ResizeObserver, the comment-height probe, the readiness gate,
+ * probe, the pane ResizeObserver, the readiness gate,
  * and the width/height arithmetic. One factory call per view; the view keeps
  * model building, the list binding, nav/flash and its template, and reads every
  * output through the returned object — destructuring an output severs
  * reactivity and is forbidden.
  *
  * The factory registers `onMount` and a `$effect`, so it must be called during
- * component init. The view `bind:this`es the pane, the metrics probe and the
- * comment probe into the settable refs.
+ * component init. The view `bind:this`es the pane and metrics probe.
  */
 import { onMount, tick, untrack } from "svelte";
 import { adjacentStop, type DiffNav, type StopJump } from "./diff-nav.js";
@@ -24,6 +23,7 @@ import {
 	rowIndexForThread,
 	stepRows,
 } from "./diff-rows.js";
+import type { ThreadReadingPosition } from "./diff-thread-position.js";
 import { measure } from "./perf.js";
 import { RowFlash } from "./row-flash.svelte.js";
 import {
@@ -32,7 +32,7 @@ import {
 	type RowMetrics,
 } from "./row-metrics.js";
 import { getScheduler } from "./scheduler.js";
-import type { ContentMode, Side, Thread } from "./types.js";
+import type { ContentMode, Side } from "./types.js";
 
 // Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
 // columns — unless invisibles are on, where .invisible-char collapses it to one.
@@ -53,15 +53,20 @@ const GUTTER_GAP_PX = 8;
 const SPLIT_ROW_CHROME_PX = 28;
 
 export interface DiffListHandle {
+	isReady(): boolean;
+	readingThread(): ThreadReadingPosition | null;
+	restoreThread(position: ThreadReadingPosition): boolean;
+	preservePosition(update: () => void): void;
 	topIndex(): number;
 	verticalScrollRevision(): number;
 	anchorTo(index: number): void;
 	revealIndex(index: number): void;
-	scrollToIndex(index: number): void;
+	scrollToIndex(index: number, onsettled?: () => void): void;
 }
 
 export interface ReadingAnchor {
 	readonly line: ReadingLine | null;
+	readonly thread?: ThreadReadingPosition | null;
 }
 
 export interface VirtualizedDiffDeps {
@@ -91,15 +96,12 @@ export interface SplitVirtualizedDiffDeps extends VirtualizedDiffDeps {
 export interface InlineVirtualizedDiff extends DiffNav {
 	pane: HTMLDivElement | null;
 	metricsProbe: HTMLDivElement | null;
-	commentProbe: HTMLDivElement | null;
 	readonly metrics: RowMetrics | null;
 	readonly paneWidthPx: number;
-	readonly probedHeights: Map<string, number>;
 	readonly wrapActive: boolean;
 	readonly availableColumns: number;
-	readonly threadsToProbe: Thread[];
 	readonly ready: boolean;
-	readonly heights: number[];
+	readonly heights: (number | string)[];
 	readonly contentWidth: string;
 	readonly gutterW: string;
 	readonly markerW: string;
@@ -129,10 +131,8 @@ export function createVirtualizedDiff(
 	const state = $state({
 		pane: null as HTMLDivElement | null,
 		metricsProbe: null as HTMLDivElement | null,
-		commentProbe: null as HTMLDivElement | null,
 		metrics: null as RowMetrics | null,
 		paneWidthPx: 0,
-		probedHeights: new Map<string, number>(),
 	});
 
 	const model = $derived(deps.model());
@@ -176,19 +176,11 @@ export function createVirtualizedDiff(
 				);
 	});
 
-	const threadsToProbe = $derived(
-		model.rows.flatMap((row) => (row.kind === "comment" ? row.threads : [])),
-	);
-
-	// Invariant 8: withhold the list until every input exists, rather than render
-	// against a default height and correct it afterwards.
 	const ready = $derived(
 		state.metrics !== null &&
 			state.paneWidthPx > 0 &&
-			threadsToProbe.every((thread) => state.probedHeights.has(thread.id)) &&
 			(!wrapActive || availableColumns > 0),
 	);
-
 	const heights = $derived.by(() => {
 		const measured = state.metrics;
 		if (!ready || !measured) return [];
@@ -197,13 +189,7 @@ export function createVirtualizedDiff(
 			observation.attr("rows", model.rows.length);
 			observation.attr("wrap", String(wrapActive));
 
-			return rowHeights(
-				model,
-				measured,
-				availableColumns,
-				wrapActive,
-				state.probedHeights,
-			);
+			return rowHeights(model, measured, availableColumns, wrapActive);
 		});
 	});
 
@@ -255,43 +241,17 @@ export function createVirtualizedDiff(
 		state.paneWidthPx = el.clientWidth;
 
 		const observer = new ResizeObserver(() => {
-			const anchor = deps.list()?.topIndex() ?? 0;
-			state.paneWidthPx = el.clientWidth;
+			const width = el.clientWidth;
+			if (width === state.paneWidthPx) return;
 
-			if (wrapActive) tick().then(() => deps.list()?.anchorTo(anchor));
+			const list = deps.list();
+			if (wrapActive && list) {
+				list.preservePosition(() => {
+					state.paneWidthPx = width;
+				});
+			} else state.paneWidthPx = width;
 		});
 		observer.observe(el);
-
-		return () => observer.disconnect();
-	});
-
-	$effect(() => {
-		const container = state.commentProbe;
-		const wanted = threadsToProbe;
-		if (!container || wanted.length === 0) return;
-
-		// Lay the probe out at the width the real rows occupy, and re-measure
-		// whenever that width changes: a ThreadCard reflows, so a height taken at
-		// another width is not this row's height (P-2's re-probe triggers).
-		container.style.width = contentWidth;
-		container.style.minWidth = `${state.paneWidthPx}px`;
-
-		const rows = container.querySelectorAll<HTMLElement>(
-			"[data-probe-thread-id]",
-		);
-		const remeasure = () => {
-			const measured = heightsOf(rows);
-			if (!wanted.every((thread) => measured.has(thread.id))) return;
-
-			const known = untrack(() => state.probedHeights);
-			if (!sameHeights(known, measured)) state.probedHeights = measured;
-		};
-		remeasure();
-
-		// A card changes its own height when it folds, so the copy measured here
-		// is watched for as long as it stands for its row.
-		const observer = new ResizeObserver(remeasure);
-		for (const row of rows) observer.observe(row);
 
 		return () => observer.disconnect();
 	});
@@ -307,7 +267,7 @@ export function createVirtualizedDiff(
 			revealedComposer = null;
 			return;
 		}
-		if (!list || !ready) return;
+		if (!list?.isReady()) return;
 
 		const key = `${place.path}:${place.side}:${place.endLine}:${place.wholeFile ?? false}`;
 		if (key === revealedComposer) return;
@@ -326,12 +286,17 @@ export function createVirtualizedDiff(
 	$effect(() => {
 		const start = deps.startAt();
 		const list = deps.list();
-		if (!start || start === appliedStart || !list || !ready) return;
+		if (!start || start === appliedStart || !list?.isReady()) return;
 
 		appliedStart = start;
-		const line = start.line;
-		const index = line ? untrack(() => rowIndexForReadingLine(model, line)) : 0;
-		if (index >= 0) list.anchorTo(index);
+		void tick().then(() => {
+			if (list !== deps.list() || start !== deps.startAt()) return;
+			if (start.thread && list.restoreThread(start.thread)) return;
+
+			const line = start.line;
+			const index = line ? rowIndexForReadingLine(model, line) : 0;
+			if (index >= 0) list.anchorTo(index);
+		});
 	});
 
 	// The reading line as of the last frame drawn, kept rather than computed on
@@ -343,15 +308,22 @@ export function createVirtualizedDiff(
 	// Wrapping changes every row's height but never which rows there are, so the
 	// first frame drawn under the other wrap puts the row that was at the top back
 	// there rather than show another one at the old scroll offset.
-	let drawnTop: { index: number; wrap: boolean } | null = null;
+	let drawnTop: {
+		index: number;
+		wrap: boolean;
+		thread: ThreadReadingPosition | null;
+	} | null = null;
 	$effect(() => {
 		const list = deps.list();
-		if (!list || !ready) return;
+		if (!list?.isReady()) return;
 
-		if (drawnTop && drawnTop.wrap !== wrapActive) list.anchorTo(drawnTop.index);
+		if (drawnTop && drawnTop.wrap !== wrapActive) {
+			if (!(drawnTop.thread && list.restoreThread(drawnTop.thread)))
+				list.anchorTo(drawnTop.index);
+		}
 
 		const top = list.topIndex();
-		drawnTop = { index: top, wrap: wrapActive };
+		drawnTop = { index: top, wrap: wrapActive, thread: list.readingThread() };
 		drawnLine = readingLineAt(model, top);
 	});
 
@@ -398,10 +370,13 @@ export function createVirtualizedDiff(
 
 	return {
 		isReady() {
-			return ready && deps.list() !== null;
+			return ready && (deps.list()?.isReady() ?? false);
 		},
 		readingLine() {
 			return drawnLine;
+		},
+		readingThread() {
+			return deps.list()?.readingThread() ?? null;
 		},
 		ordinalOf,
 		scrollToHunk,
@@ -441,18 +416,19 @@ export function createVirtualizedDiff(
 			if (ordinal < 0) return;
 
 			const start = steps[ordinal];
-			list.scrollToIndex(start);
-			flash.show(
-				start,
-				deps.content() === "hunk" ? start + 1 : changeRunEnd(model, start),
-			);
-			lastJump = {
-				ordinal,
-				top: list.topIndex(),
-				model,
-				list,
-				scrollRevision: list.verticalScrollRevision(),
-			};
+			list.scrollToIndex(start, () => {
+				flash.show(
+					start,
+					deps.content() === "hunk" ? start + 1 : changeRunEnd(model, start),
+				);
+				lastJump = {
+					ordinal,
+					top: list.topIndex(),
+					model,
+					list,
+					scrollRevision: list.verticalScrollRevision(),
+				};
+			});
 		},
 		flashLit(index) {
 			return flash.lit(index);
@@ -469,29 +445,17 @@ export function createVirtualizedDiff(
 		set metricsProbe(el) {
 			state.metricsProbe = el;
 		},
-		get commentProbe() {
-			return state.commentProbe;
-		},
-		set commentProbe(el) {
-			state.commentProbe = el;
-		},
 		get metrics() {
 			return state.metrics;
 		},
 		get paneWidthPx() {
 			return state.paneWidthPx;
 		},
-		get probedHeights() {
-			return state.probedHeights;
-		},
 		get wrapActive() {
 			return wrapActive;
 		},
 		get availableColumns() {
 			return availableColumns;
-		},
-		get threadsToProbe() {
-			return threadsToProbe;
 		},
 		get ready() {
 			return ready;
@@ -515,30 +479,4 @@ export function createVirtualizedDiff(
 			return maxRightPx;
 		},
 	};
-}
-
-function heightsOf(rows: Iterable<HTMLElement>): Map<string, number> {
-	const measured = new Map<string, number>();
-	for (const row of rows) {
-		const id = row.dataset.probeThreadId;
-		const height = row.offsetHeight;
-		// A zero here is an unmeasured row, not a row of no height. Recording it
-		// would be the substituted default invariant 8 forbids.
-		if (id && height > 0) measured.set(id, height);
-	}
-
-	return measured;
-}
-
-function sameHeights(
-	known: Map<string, number>,
-	measured: Map<string, number>,
-): boolean {
-	if (known.size !== measured.size) return false;
-
-	for (const [id, height] of measured) {
-		if (known.get(id) !== height) return false;
-	}
-
-	return true;
 }

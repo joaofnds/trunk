@@ -58,6 +58,7 @@ interface Props {
 	// "panel" (default) for the center-pane review panel; "inline" for diff /
 	// commit-detail hosts, the compact card with no excerpt.
 	variant?: "panel" | "inline";
+	virtualized?: boolean;
 	// Optional panel-only header decorations. Inline hosts omit these.
 	onjump?: (thread: Thread) => void;
 	jumpable?: boolean;
@@ -85,6 +86,7 @@ let {
 	ondelete,
 	confirmDelete = true,
 	variant = "panel",
+	virtualized = false,
 	onjump,
 	jumpable = false,
 	orphaned = false,
@@ -123,6 +125,7 @@ const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
 const rootEditSaving = $derived(editor.rootEditSaving);
 const replySaving = $derived(editor.replySaving);
+let rootEditor: ReturnType<typeof CommentEditor> | undefined = $state();
 
 // Where the comment points, whichever shape it holds. A current-file thread
 // carries no anchor, so without this it rendered a card with no location at all
@@ -379,8 +382,12 @@ async function toggleExcerpt(control: HTMLElement) {
 	control.scrollIntoView({ block: "nearest" });
 }
 
-function openEdit() {
+async function openEdit() {
 	draft.open(thread.text);
+	if (virtualized) {
+		await tick();
+		rootEditor?.focus();
+	}
 }
 
 function cancelEdit() {
@@ -597,7 +604,9 @@ async function requestDeleteReply(replyId: string) {
 			{/snippet}
 			{#if draft.editing}
 				<CommentEditor
+					bind:this={rootEditor}
 					bind:text={draft.text}
+					focusOnMount={!virtualized}
 					label="Edit comment"
 					placeholder="Leave a comment"
 					submitLabel="Save"
@@ -612,11 +621,14 @@ async function requestDeleteReply(replyId: string) {
 	           (comrak unsafe-off + ammonia); see commands/markdown.rs -->
 				<div
 					class="comment-card-text markdown-body select-text"
+					data-thread-root-body
 					use:externalLinks
 					>{@html thread.text_html}</div
 				>
 			{:else}
-				<span class="comment-card-text select-text">{thread.text}</span>
+				<span class="comment-card-text select-text" data-thread-root-body
+					>{thread.text}</span
+				>
 			{/if}
 		</ThreadMessage>
 
@@ -628,25 +640,33 @@ async function requestDeleteReply(replyId: string) {
 			onreplyedit={(id, text) => editReply(repoPath, id, text)}
 			onreplydelete={requestDeleteReply}
 			dismissed={thread.state === "dismissed"}
+			{virtualized}
 			{visibility}
-		/>
-
-		<div
-			class="thread-reply-composer flex flex-wrap items-center gap-2 px-1 py-2"
 		>
-			<CommentEditor
-				bind:text={replyDraft.text}
-				label="Reply"
-				placeholder="Reply…"
-				submitLabel={thread.batch_held ? "Add to batch" : "Reply"}
-				submitDisabled={!replyDraft.valid || replySaving}
-				busy={replySaving}
-				onsubmit={() => void submitReply(thread.batch_held ? "hold" : "send")}
-				onhold={thread.batch_held ? undefined : () => void submitReply("hold")}
-				oncancel={() => replyDraft.close()}
-				collapsible
-			/>
-		</div>
+			{#snippet composer()}
+				<div
+					class="thread-reply-composer flex flex-wrap items-center gap-2 px-1 py-2"
+					data-thread-composer
+				>
+					<CommentEditor
+						bind:text={replyDraft.text}
+						label="Reply"
+						placeholder="Reply…"
+						submitLabel={thread.batch_held ? "Add to batch" : "Reply"}
+						submitDisabled={!replyDraft.valid || replySaving}
+						busy={replySaving}
+						onsubmit={() =>
+							void submitReply(thread.batch_held ? "hold" : "send")}
+						onhold={thread.batch_held
+							? undefined
+							: () => void submitReply("hold")}
+						oncancel={() => replyDraft.close()}
+						focusOnMount={!virtualized}
+						collapsible
+					/>
+				</div>
+			{/snippet}
+		</ThreadReplies>
 	{/if}
 
 	{#if confirmingDelete}

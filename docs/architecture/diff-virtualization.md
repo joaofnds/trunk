@@ -8,21 +8,19 @@ record for navigation.
 
 | File | Holds |
 |---|---|
-| `src/lib/diff-rows.ts` | The row model. Pure, no DOM: `buildInlineRows` and `buildSplitRows` project a diff into a flat row list, and `rowHeights` gives each row an exact height. |
+| `src/lib/diff-rows.ts` | The row model. Pure, no DOM: `buildInlineRows` and `buildSplitRows` project a diff into a flat row list, and `rowHeights` gives each row a computed height or an intrinsic row key. |
 | `src/lib/row-metrics.ts` | Character width and line height, measured once from a probe element carrying the row's own font. |
-| `src/lib/virtualized-diff.svelte.ts` | The plumbing all three views share, behind one factory: the font-metrics and comment-height probes, the pane ResizeObserver, the readiness gate, and the width arithmetic for both layouts (inline's px content width, split's per-side pan ceilings). Views read every output through the factory's getters. |
-| `src/components/diff/ExactVirtualList.svelte` | The list. Takes exact heights, never measures a row, and publishes `--pan-x` from its scroll handler. |
+| `src/lib/virtualized-diff.svelte.ts` | The plumbing all three views share, behind one factory: the font-metrics probe, the pane ResizeObserver, the readiness gate, and the width arithmetic for both layouts (inline's px content width, split's per-side pan ceilings). Views read every output through the factory's getters. |
+| `src/components/diff/ExactVirtualList.svelte` | The list. Measures live comment rows, windows code rows, and publishes `--pan-x` from its scroll handler. |
 | `src/lib/diff-nav.ts` | `DiffNav`, the handle a virtualized view publishes so the host can jump to a hunk or a line by row index. |
 
-Two rules hold the design up, and breaking either reintroduces the correction loop the
-design exists to remove:
-
-- **Heights are computed, never measured.** A virtual list never has the widest row
-  mounted, so measuring one makes the extent jump while scrolling. Column counts come
-  from the row model and heights from character arithmetic.
-- **A row whose height cannot be computed refuses.** `rowHeights` throws for a comment
-  row the view has not probed yet, rather than substituting a plausible default. The
-  view withholds the list until every input exists.
+Code heights come from column counts and font metrics. A windowed code row cannot
+supply a reliable measurement for the document. Comment rows have intrinsic height:
+their text, editors and disclosure controls decide it. A second copy can stay collapsed,
+wrap at the code's horizontal extent, or count the wrong amount of group padding.
+The list measures the live row's border box, which includes the cards at the pinned
+pane width and their spacing. Navigation waits for that geometry. Changes to a card
+or the membership of a comment group keep the row at its anchor.
 
 ## Scrolling and painted coverage
 
@@ -41,10 +39,19 @@ The list separates the logical scroll extent from the painted surface:
   where `H` is the viewport height. It stays at the viewport while scrolling inside
   the file bounds. Its height is part of the extent, not added to it.
 - One rendered offset `r = clamp(scrollTop, 0, max(0, T - H))` selects the mounted
-  rows and positions their container at `firstRowOffset - r` inside the surface.
-  Each completed render therefore covers its own surface using one coordinate system.
+  code rows. With only computed rows the list positions that window at
+  `firstRowOffset - r`. With comments the document starts at `-r`. Runs of code
+  reserve their computed height between the live comment rows, and each run mounts
+  the code rows inside the window. The runs and comment rows stay in document order.
 - `overflow: clip` limits painting to that surface without introducing another scroll
   container. The rows' horizontal sticky pins still belong to the outer viewport.
+
+When a comment's size changes, the offsets, scroll extent and clip use the same new
+height. A visible disclosure or editor keeps its place when the scroll bounds allow it.
+The list yields to new scroll input. While reading
+a tall thread, the list can anchor to a timeline entry or Markdown block and carry that
+position to another diff layout. Offscreen comment rows outside the window are inert.
+An inline editor takes focus when the reader opens it.
 
 Between main-thread updates, native scrolling cannot move the finite row window out
 of the in-range viewport. Content can lag behind input if the main thread is busy;
@@ -139,8 +146,11 @@ assertions can read rendered rows and inline dimensions, but do not resolve the 
 that makes the surface sticky and clipped. Those properties need a browser check.
 
 The component tests cover window bounds, variable heights, viewport-local offsets,
-overscroll, short content and a shrinking model. They cannot establish native paint
-correctness. Geometry checks in the running app cover wrapping, comment folding,
+overscroll, short content and a shrinking model. The WebKit review regression in
+`tests/visual/review-thread-geometry.test.ts` checks the last reply and composer against the viewport clip and hit testing after expansion.
+It also exercises a conversation taller than the viewport, preserving the reading
+position across layouts and returning to recent replies. The native capture checks
+the pixels that the compositor presents. Geometry checks in the running app cover wrapping, comment folding,
 selection, navigation, resizing and horizontal pinning.
 
 Use the opt-in native experiment in `scripts/diff-scroll` for pixel regressions.

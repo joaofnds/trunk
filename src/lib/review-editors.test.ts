@@ -24,6 +24,7 @@ describe("review editor store", () => {
 		first.reply.open("unfinished reply");
 		first.replyEdit.open("unfinished reply edit");
 		first.setEditingReply("reply-1");
+		first.setRepliesExpanded(true);
 
 		const remounted = store.thread("review-a", "review-panel", "thread-1");
 		expect(remounted).toBe(first);
@@ -31,6 +32,7 @@ describe("review editor store", () => {
 		expect(remounted.reply.text).toBe("unfinished reply");
 		expect(remounted.replyEdit.text).toBe("unfinished reply edit");
 		expect(remounted.editingReplyId).toBe("reply-1");
+		expect(remounted.repliesExpanded).toBe(true);
 
 		expect(store.thread("review-b", "review-panel", "thread-1")).not.toBe(
 			first,
@@ -41,11 +43,14 @@ describe("review editor store", () => {
 		const store = createReviewEditorStore();
 		const panel = store.thread("review-a", "review-panel", "thread-1");
 		const commitNotes = store.thread("review-a", "commit-notes", "thread-1");
+		const diff = store.thread("review-a", "diff", "thread-1");
 
 		panel.rootEdit.open("panel-only edit");
+		panel.setRepliesExpanded(true);
 
 		expect(commitNotes).not.toBe(panel);
 		expect(commitNotes.rootEdit.editing).toBe(false);
+		expect(diff.repliesExpanded).toBe(false);
 	});
 
 	it("scopes add-note drafts by review, surface, and target", () => {

@@ -759,8 +759,6 @@ describe("ThreadCard", () => {
 			},
 		);
 
-		// The diff draws each inline card twice, once hidden to measure its
-		// height, so the two copies fold as one.
 		it("folds with every card that shares its folds", async () => {
 			const folds = new ThreadFolds();
 			renderCard({ variant: "inline", folds });
@@ -968,7 +966,9 @@ describe("ThreadCard", () => {
 
 		renderCard({ thread: fiveReplies });
 
-		await fireEvent.click(screen.getByText("Show 2 more replies"));
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show 2 earlier replies" }),
+		);
 
 		expect(screen.getByText("reply 1")).toBeInTheDocument();
 		expect(screen.getByText("reply 2")).toBeInTheDocument();
@@ -989,7 +989,7 @@ describe("ThreadCard", () => {
 		renderCard({ thread: threeReplies });
 
 		expect(screen.getByText("reply 1")).toBeInTheDocument();
-		expect(screen.queryByText(/Show \d+ more/)).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
 	});
 
 	it("shows the thread's current state in a chip", () => {
@@ -1241,6 +1241,30 @@ describe("ThreadCard", () => {
 			"unfinished reply edit",
 		);
 	});
+
+	it.each(["Edit comment", "Edit reply"])(
+		"focuses %s on request and keeps a remount from taking focus",
+		async (name) => {
+			const thread: Thread = {
+				...comment,
+				replies: [aReply({ text: "reply" })],
+			};
+			const props = {
+				thread,
+				editorSession: createThreadEditorSession(),
+				variant: "inline" as const,
+				virtualized: true,
+			};
+			const first = renderCard(props);
+			await fireEvent.click(screen.getByRole("button", { name }));
+			expect(screen.getByRole("textbox", { name })).toHaveFocus();
+			first.unmount();
+
+			renderCard(props);
+
+			expect(screen.getByRole("textbox", { name })).not.toHaveFocus();
+		},
+	);
 
 	it("calls editReply with the repo path, reply id, and new text", async () => {
 		const humanReply: Thread = {

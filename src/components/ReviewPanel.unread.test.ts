@@ -6,11 +6,7 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import ReviewVisibilityHost from "../__tests__/helpers/review-visibility-host.svelte";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
-import {
-	aReply,
-	aStateChange,
-	aThread,
-} from "../__tests__/helpers/thread-fixture.js";
+import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { ALL_THREADS, THREAD_PRESETS } from "../lib/review-filter.js";
@@ -533,15 +529,18 @@ describe("ReviewPanel", () => {
 		});
 
 		describe("when later entries fold the reply away", () => {
-			const buried = (): Thread => ({
-				...answered("c1"),
-				history: [3_000, 3_001, 3_002, 3_003].map((created_at, at) =>
-					aStateChange({
-						state: at % 2 === 0 ? "addressed" : "open",
-						created_at,
-					}),
-				),
-			});
+			function buried(): Thread {
+				const thread = answered("c1");
+				return {
+					...thread,
+					replies: [
+						...thread.replies,
+						...[3_000, 3_001, 3_002, 3_003].map((created_at) =>
+							aReply({ id: `c1-reply-${created_at}`, created_at }),
+						),
+					],
+				};
+			}
 
 			it("marks nothing before the reply is expanded", async () => {
 				await mount([buried()]);
@@ -556,7 +555,7 @@ describe("ReviewPanel", () => {
 				await mount([buried()]);
 				await reportInView(cardOf("c1"));
 				await fireEvent.click(
-					screen.getByRole("button", { name: /Show \d+ more replies/ }),
+					screen.getByRole("button", { name: "Show 2 earlier replies" }),
 				);
 				await settle();
 

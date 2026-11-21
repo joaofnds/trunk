@@ -251,6 +251,7 @@ function extendDrag(e: MouseEvent) {
 }
 
 export const readingLine = vd.readingLine;
+export const readingThread = vd.readingThread;
 export const isReady = vd.isReady;
 export const ordinalOf = vd.ordinalOf;
 export const scrollToHunk = vd.scrollToHunk;
@@ -273,7 +274,13 @@ export function clearSelection() {
 </script>
 
 {#snippet threadCard(c: Thread)}
-	<InlineThread thread={c} {repoPath} {folds} {editorSessionForThread} />
+	<InlineThread
+		virtualized
+		thread={c}
+		{repoPath}
+		{folds}
+		{editorSessionForThread}
+	/>
 {/snippet}
 
 {#snippet lineNumbers(line: DiffLine)}
@@ -432,19 +439,6 @@ export function clearSelection() {
 			style:font-size={DIFF_ROW_FONT.fontSize}
 			style:line-height={DIFF_ROW_FONT.lineHeight}
 		></div>
-
-		{#if vd.threadsToProbe.length > 0}
-			<div class="comment-probe" bind:this={vd.commentProbe}>
-				{#each vd.threadsToProbe as c (c.id)}
-					<div
-						class="comment-row"
-						data-probe-thread-id={c.id}
-						style:display={reviewFilter !== "none" ? "block" : "none"}
-						>{@render threadCard(c)}</div
-					>
-				{/each}
-			</div>
-		{/if}
 	</div>
 </div>
 
@@ -482,11 +476,7 @@ export function clearSelection() {
 	min-height: 0;
 }
 
-/* Both probes are laid out at the row's real width so their measurements are
-     the ones the rendered rows will produce, and neither is visible or
-     hit-testable. */
-.metrics-probe,
-.comment-probe {
+.metrics-probe {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -601,10 +591,7 @@ export function clearSelection() {
 	width: 100cqi;
 }
 
-/* Comment rows hang as block siblings directly under their anchored line,
-     indented to clear the change-indicator rail by as much as the composer row,
-     so a card and the composer under it share their edges. One viewport wide,
-     so the probe measures a card at the width the pinned row draws it. */
+/* The comment and composer share their inset from the change-indicator rail. */
 .comment-row {
 	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
 	width: 100cqi;

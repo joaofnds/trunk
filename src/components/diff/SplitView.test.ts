@@ -418,7 +418,9 @@ describe("SplitView row shapes", () => {
 		});
 
 		const rows = Array.from(
-			container.querySelectorAll(".exact-virtual-rows > *"),
+			container.querySelectorAll(
+				".exact-virtual-rows :is(.split-row, .split-comment-row)",
+			),
 		);
 		const commentIndex = rows.findIndex((row) =>
 			row.classList.contains("split-comment-row"),

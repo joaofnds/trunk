@@ -1,8 +1,6 @@
 <script lang="ts">
-// Test host for createVirtualizedDiff: the pane, the metrics probe and the
-// comment probe — the same three elements the views bind — around a model built
-// the way the views build one. It renders no list; the suite asserts on the
-// factory's outputs, which it receives through `onready` at init.
+// The pane and metrics probe around the model the diff views build. The
+// suite reads the factory's outputs through onready.
 import { buildInlineRows, buildSplitRows } from "../diff-rows.js";
 import { ALL_THREADS } from "../review-filter.js";
 import { DIFF_ROW_FONT } from "../row-metrics.js";
@@ -84,14 +82,4 @@ onready(vd);
 		style:font-size={DIFF_ROW_FONT.fontSize}
 		style:line-height={DIFF_ROW_FONT.lineHeight}
 	></div>
-
-	{#if vd.threadsToProbe.length > 0}
-		<div class="comment-probe" bind:this={vd.commentProbe}>
-			{#each vd.threadsToProbe as c (c.id)}
-				<div data-probe-thread-id={c.id}>
-					<article data-thread-id={c.id}>{c.text}</article>
-				</div>
-			{/each}
-		</div>
-	{/if}
 </div>

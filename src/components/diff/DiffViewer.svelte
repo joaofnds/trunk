@@ -241,8 +241,10 @@ $effect.pre(() => {
 		if (shownSubject !== null && subject !== shownSubject) {
 			readingAnchor = { line: null };
 		} else if (view !== shownView && shownView !== null) {
-			const line = (diffNav ?? fullFileView)?.readingLine();
-			if (line) readingAnchor = { line };
+			const outgoing = diffNav ?? fullFileView;
+			const line = outgoing?.readingLine() ?? null;
+			const thread = outgoing?.readingThread();
+			readingAnchor = { line, thread };
 		}
 		shownSubject = subject;
 		shownView = view;
@@ -358,7 +360,10 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			Loading diff…
 		</div>
 	{:else if pane === "no-changes"}
-		<div class="h-full grid content-center-safe overflow-y-auto">
+		<div
+			class="h-full grid content-center-safe overflow-y-auto"
+			data-thread-scroll
+		>
 			<!-- Without this, a rename with nothing in its content to show reads as a
 			     diff that failed to load. A path has no spaces to wrap at, so the line
 			     may break anywhere rather than run out of the box. -->

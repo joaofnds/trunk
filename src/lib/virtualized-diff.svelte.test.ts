@@ -1,11 +1,6 @@
 import { render } from "@testing-library/svelte";
-import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	restoreLayout,
-	setLayout,
-	stubLayout,
-} from "../__tests__/helpers/layout-stub";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture";
 import VirtualizedDiffHost from "./__tests__/VirtualizedDiffHost.svelte";
 import { disablePerf, enablePerf, flushPerf, type PerfSink } from "./perf.js";
@@ -85,11 +80,9 @@ const modifiedFile: FileDiff = {
 	],
 };
 
-/** A thread anchored to line 11's new side, which both row builders attach a
- *  comment row for. */
-function anchoredThread(id = "t1"): Thread {
+function anchoredThread(): Thread {
 	return aThread({
-		id,
+		id: "t1",
 		anchor: {
 			commit_oid: "abc123",
 			file_path: "src/main.ts",
@@ -99,30 +92,6 @@ function anchoredThread(id = "t1"): Thread {
 			end_line: 11,
 		},
 	});
-}
-
-/** Stands in for the browser's resize reports on the probed comment cards, and
- *  returns what delivers one to every observer watching a card. */
-function watchProbedCards(): () => void {
-	const watchers: (() => void)[] = [];
-	vi.stubGlobal(
-		"ResizeObserver",
-		class {
-			readonly #callback: () => void;
-			constructor(callback: () => void) {
-				this.#callback = callback;
-			}
-			observe(target: Element) {
-				if (target instanceof HTMLElement && target.dataset.probeThreadId)
-					watchers.push(this.#callback);
-			}
-			unobserve() {}
-			disconnect() {}
-		},
-	);
-	return () => {
-		for (const watcher of watchers) watcher();
-	};
 }
 
 interface HostProps {
@@ -151,41 +120,12 @@ function mount(overrides: Partial<HostProps> = {}) {
 }
 
 describe("createVirtualizedDiff", () => {
-	it("withholds the list until metrics, a pane width and every probed thread height exist", async () => {
-		// Every element measures zero-height, so the hidden comment probe cannot
-		// report a height — the case the readiness gate exists for.
-		stubLayout({ width: 900, height: 0, replace: true });
-		const { container, rerender, props, vd } = mount({
-			comments: [anchoredThread()],
-		});
-
-		expect(vd.ready).toBe(false);
-
-		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
-			setLayout(probe, { height: 80 });
-		}
-		await rerender(props);
-
-		expect(vd.ready).toBe(true);
-		expect(vd.probedHeights.get("t1")).toBe(80);
-	});
-
-	it("records a probed row's height, padding and all, not the card's inside it", () => {
-		stubLayout({
-			replace: true,
-			width: 900,
-			height: 400,
-			measure: (el) => {
-				if (!(el instanceof HTMLElement)) return undefined;
-				if (el.dataset.probeThreadId) return { height: 80 };
-				if (el.dataset.threadId) return { height: 64 };
-				return undefined;
-			},
-		});
-
+	it("publishes code geometry before the live conversation reports a height", () => {
 		const { vd } = mount({ comments: [anchoredThread()] });
 
-		expect(vd.probedHeights.get("t1")).toBe(80);
+		expect(vd.ready).toBe(true);
+		expect(vd.heights).toContainEqual(expect.stringMatching(/^comment:/));
+		expect(vd.isReady()).toBe(false);
 	});
 
 	it("refuses to wrap on a proportional font", () => {
@@ -258,93 +198,6 @@ describe("createVirtualizedDiff", () => {
 		expect(byName.get("diff.rowHeights")).toEqual({ rows: 5, wrap: "false" });
 	});
 
-	it("re-probes comment heights when the pane resizes", async () => {
-		// Milestone 1's defect: comment rows probed once and never again, so a
-		// card that reflowed at a new pane width kept its stale height. The
-		// narrower pane is what re-runs the probe effect; the flipped height is
-		// how the re-probe becomes observable.
-		let reflowed = false;
-		const watched: { target: Element; callback: () => void }[] = [];
-		vi.stubGlobal(
-			"ResizeObserver",
-			class {
-				readonly #callback: () => void;
-				constructor(callback: () => void) {
-					this.#callback = callback;
-				}
-				observe(target: Element) {
-					watched.push({ target, callback: this.#callback });
-				}
-				unobserve() {}
-				disconnect() {}
-			},
-		);
-		stubLayout({
-			replace: true,
-			width: 900,
-			height: 400,
-			measure: (el) =>
-				el instanceof HTMLElement && el.dataset.probeThreadId
-					? { height: reflowed ? 120 : 80 }
-					: undefined,
-		});
-
-		const { vd } = mount({ comments: [anchoredThread()] });
-		expect(vd.probedHeights.get("t1")).toBe(80);
-
-		setLayout(vd.pane as HTMLElement, { width: 450 });
-		reflowed = true;
-		for (const { target, callback } of watched) {
-			if (target === vd.pane) callback();
-		}
-		await tick();
-
-		expect(vd.probedHeights.get("t1")).toBe(120);
-	});
-
-	it("re-probes a comment card that changes its own height", async () => {
-		let folded = false;
-		const resizeProbedCards = watchProbedCards();
-		stubLayout({
-			replace: true,
-			width: 900,
-			height: 400,
-			measure: (el) =>
-				el instanceof HTMLElement && el.dataset.probeThreadId
-					? { height: folded ? 30 : 80 }
-					: undefined,
-		});
-		const { vd } = mount({ comments: [anchoredThread()] });
-
-		folded = true;
-		resizeProbedCards();
-		await tick();
-
-		expect(vd.probedHeights.get("t1")).toBe(30);
-	});
-
-	// Every row height derives from the probed ones, so a report of the size
-	// the card already had rebuilds nothing.
-	it("keeps its heights when a card reports the height it had", async () => {
-		const resizeProbedCards = watchProbedCards();
-		stubLayout({
-			replace: true,
-			width: 900,
-			height: 400,
-			measure: (el) =>
-				el instanceof HTMLElement && el.dataset.probeThreadId
-					? { height: 80 }
-					: undefined,
-		});
-		const { vd } = mount({ comments: [anchoredThread()] });
-		const before = vd.probedHeights;
-
-		resizeProbedCards();
-		await tick();
-
-		expect(vd.probedHeights).toBe(before);
-	});
-
 	it("expresses the content width in pixels, never ch", () => {
 		// Milestone 1's other defect: a width in ch on a div outside the rows
 		// resolves against the app's proportional font, not the diff row's.
@@ -406,44 +259,5 @@ describe("createVirtualizedDiff", () => {
 		expect(split.maxLeftPx).toBe((2 + 3 + 27) * 9 + 28);
 		expect(split.maxRightPx).toBe((2 + 3 + 5) * 9 + 28);
 		expect(split.contentWidth).toBe(`calc(${(2 + 3 + 27) * 9 + 28}px + 50cqi)`);
-	});
-
-	it("re-anchors the list after a resize only when wrap is active", async () => {
-		const resizes: (() => void)[] = [];
-		vi.stubGlobal(
-			"ResizeObserver",
-			class {
-				constructor(callback: () => void) {
-					resizes.push(callback);
-				}
-				observe() {}
-				unobserve() {}
-				disconnect() {}
-			},
-		);
-
-		const wrapped = {
-			topIndex: () => 7,
-			verticalScrollRevision: () => 0,
-			anchorTo: vi.fn(),
-			revealIndex: vi.fn(),
-			scrollToIndex: vi.fn(),
-		};
-		mount({ wordWrap: true, list: wrapped });
-		const unwrapped = {
-			topIndex: () => 7,
-			verticalScrollRevision: () => 0,
-			anchorTo: vi.fn(),
-			revealIndex: vi.fn(),
-			scrollToIndex: vi.fn(),
-		};
-		mount({ wordWrap: false, list: unwrapped });
-
-		for (const resize of resizes) resize();
-		await tick();
-		await tick();
-
-		expect(wrapped.anchorTo).toHaveBeenCalledWith(7);
-		expect(unwrapped.anchorTo).not.toHaveBeenCalled();
 	});
 });

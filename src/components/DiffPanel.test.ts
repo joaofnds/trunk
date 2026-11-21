@@ -4909,6 +4909,7 @@ describe("DiffPanel hunk navigation", () => {
 
 		component.scrollToLine(5, 5, "New");
 		await tick();
+		await tick();
 
 		expect(viewportOf(container).scrollTop).toBe(64);
 	});
@@ -4934,6 +4935,7 @@ describe("DiffPanel hunk navigation", () => {
 			await ready;
 
 			component.scrollToLine(5, 5, "Old");
+			await tick();
 			await tick();
 
 			expect(viewportOf(container).scrollTop).toBe(64);

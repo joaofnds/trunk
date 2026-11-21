@@ -17,7 +17,6 @@ const COMMENT_FILE = "Comment File";
 const COMPOSER_TEXT = '.comment-composer textarea[aria-label="Comment"]';
 const SUBMIT = '[data-testid="comment-submit"]';
 const CARD = ".comment-card";
-const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
 /** A card in the diff names only its lines; their tooltip names the file too. */
 const RANGE = ".comment-card-range";
@@ -745,16 +744,10 @@ function toolbars(): HTMLElement[] {
 	return [...document.querySelectorAll<HTMLElement>(HUNK_TOOLBAR)];
 }
 
-/**
- * The thread cards the user can see. `HunkView` renders every thread a second
- * time inside a hidden probe to measure its height, so a query that names the
- * card alone answers with the probe's copy — and answers it whether or not the
- * panel ever opened. The panel also keeps filtered cards mounted; their hidden
- * ancestors remove them from the visible thread list.
- */
+/** Cards in the review surface's current interaction window. */
 function cards(): HTMLElement[] {
-	return [...document.querySelectorAll<HTMLElement>(CARD)].filter(
-		(card) => !card.closest(PROBE) && visible(card),
+	return [...document.querySelectorAll<HTMLElement>(CARD)].filter((card) =>
+		visible(card),
 	);
 }
 
@@ -785,6 +778,7 @@ function visible(element: HTMLElement): boolean {
 		const style = getComputedStyle(node);
 		if (
 			node.hidden ||
+			node.inert ||
 			style.display === "none" ||
 			style.visibility === "hidden"
 		) {

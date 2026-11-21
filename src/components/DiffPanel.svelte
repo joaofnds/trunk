@@ -761,15 +761,16 @@ export function scrollToLine(
 	side: Side = "New",
 ) {
 	if (
-		diffPreferences.renderMode === "rendered" &&
-		selectedPath &&
-		isMarkdownPath(selectedPath)
+		!nav?.isReady() ||
+		(diffPreferences.renderMode === "rendered" &&
+			selectedPath &&
+			isMarkdownPath(selectedPath))
 	) {
 		sourceJump = { pending: { startLine, side } };
 		return;
 	}
 
-	if (nav) scrollInSource(nav, startLine, side);
+	scrollInSource(nav, startLine, side);
 }
 
 $effect(() => {

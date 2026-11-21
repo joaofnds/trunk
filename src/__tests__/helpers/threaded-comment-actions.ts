@@ -9,9 +9,7 @@ import { aThread } from "./thread-fixture.js";
 // review-comment-actions.ts, which calls safeInvoke. Asserting on safeInvoke
 // (the real IPC boundary) instead of on review-comment-actions.ts's exports
 // matches the pattern already used for this same wiring in ReviewPanel.test.ts
-// and CommitDetail.test.ts. Every host also renders the same ThreadCard a
-// second time inside a hidden measurement probe, so `cardScope` is the CSS
-// class each host's visible comment row carries, to disambiguate.
+// and CommitDetail.test.ts. Each host identifies its comment row by class.
 // `Component` borrows `render`'s own first-parameter type rather than
 // re-declaring one: the three hosts' concrete `.svelte` imports already have
 // the exact type `render` wants, and re-typing it generically (rather than
@@ -154,9 +152,7 @@ export function describeThreadedCommentActions(
 		expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
 	});
 
-	// The probe's copy is what sets the row's height, so it must fold with the
-	// card the reader folds, or the row keeps the open card's height.
-	it("folds the measured copy of a card the reader folds", async () => {
+	it("folds the one live conversation", async () => {
 		const { container } = render(Component, { props: commentedProps() });
 		const card = visibleCard(container);
 
@@ -164,10 +160,10 @@ export function describeThreadedCommentActions(
 			within(card).getByRole("button", { name: "Collapse thread" }),
 		);
 
-		// The probe is hidden, so nothing in it has an accessible name to find.
-		const measuredToggle = container.querySelector(
-			'[data-probe-thread-id="t1"] button[aria-expanded]',
-		);
-		expect(measuredToggle).toHaveAttribute("aria-expanded", "false");
+		expect(container.querySelectorAll('[data-thread-id="t1"]')).toHaveLength(1);
+		expect(visibleCard(container)).toBe(card);
+		expect(
+			within(card).getByRole("button", { name: "Expand thread" }),
+		).toHaveAttribute("aria-expanded", "false");
 	});
 }

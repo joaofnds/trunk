@@ -381,9 +381,7 @@ describe("FullFileView", () => {
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
 	});
 
-	it("withholds the list until every comment row has a measured height", async () => {
-		// Every element measures zero, so the hidden comment probe cannot report a
-		// height — the case invariant 8 exists for.
+	it("withholds jumps while the mounted conversation lacks a height", () => {
 		stubLayout({ width: 900, height: 0, replace: true });
 		const commented = aThread({
 			id: "t1",
@@ -397,20 +395,10 @@ describe("FullFileView", () => {
 			},
 		});
 		const props = defaultProps({ viewComments: [commented] });
-		const { container, rerender } = render(FullFileView, { props });
+		const { container, component } = render(FullFileView, { props });
 
-		expect(container.querySelectorAll(".exact-virtual-viewport").length).toBe(
-			0,
-		);
-
-		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
-			setLayout(probe, { height: 80 });
-		}
-		await rerender(props);
-
-		expect(container.querySelectorAll(".exact-virtual-viewport").length).toBe(
-			1,
-		);
+		expect(container.querySelector("[data-measured-row]")).toBeInTheDocument();
+		expect(component.isReady()).toBe(false);
 	});
 
 	it("sizes the content from the column arithmetic plus the row chrome", () => {
@@ -486,7 +474,7 @@ describe("FullFileView", () => {
 				disconnect() {}
 			},
 		);
-		stubLayout({ width: 900, height: 400, replace: true });
+		stubLayout({ width: 900, height: 160, replace: true });
 		const wide: FileDiff = {
 			path: "src/wide.ts",
 			old_path: null,
@@ -533,7 +521,7 @@ describe("FullFileView", () => {
 		expect(content.getAttribute("style")).toContain(
 			`height: ${360 + CONTROL_SM_HEIGHT}px`,
 		);
-		viewport.scrollTop = 180;
+		viewport.scrollTop = 185;
 		viewport.dispatchEvent(new Event("scroll"));
 		await tick();
 
@@ -548,7 +536,7 @@ describe("FullFileView", () => {
 		expect(content.getAttribute("style")).toContain(
 			`height: ${900 + CONTROL_SM_HEIGHT}px`,
 		);
-		expect(viewport.scrollTop).toBe(450);
+		expect(viewport.scrollTop).toBe(455);
 
 		vi.unstubAllGlobals();
 	});
@@ -666,10 +654,28 @@ describe("FullFileView", () => {
 		vi.stubGlobal(
 			"ResizeObserver",
 			class {
-				constructor(callback: () => void) {
-					resizes.push(callback);
+				constructor(private readonly callback: ResizeObserverCallback) {}
+				observe(target: Element) {
+					resizes.push(() => {
+						const box = {
+							blockSize: target.getBoundingClientRect().height,
+							inlineSize: target.getBoundingClientRect().width,
+						};
+						const rect = target.getBoundingClientRect();
+						this.callback(
+							[
+								{
+									target,
+									borderBoxSize: [box],
+									contentBoxSize: [box],
+									devicePixelContentBoxSize: [box],
+									contentRect: rect,
+								},
+							],
+							this,
+						);
+					});
 				}
-				observe() {}
 				unobserve() {}
 				disconnect() {}
 			},
@@ -695,8 +701,8 @@ describe("FullFileView", () => {
 
 		// A narrower pane reflows the card taller; the stale height would leave
 		// the rows below it overlapping.
-		for (const probe of container.querySelectorAll("[data-probe-thread-id]")) {
-			setLayout(probe, { height: 900 });
+		for (const row of container.querySelectorAll("[data-measured-row]")) {
+			setLayout(row, { height: 900 });
 		}
 		setLayout(container.querySelector(".list-area") as HTMLElement, {
 			width: 450,
