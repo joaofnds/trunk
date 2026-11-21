@@ -15,6 +15,22 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
+function markdownParagraph(text: string): MarkdownDiff {
+	return {
+		rows: [
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: `<p>${text}</p>`,
+				afterStart: 1,
+				afterEnd: 1,
+			},
+		],
+		whitespaceOnly: false,
+		changedLines: [],
+	};
+}
+
 // Mock the shared IPC helper (not `invoke`) per the project's test convention.
 // Keep the real `isTrunkError` guard — RenderedDiff's catch depends on it.
 const safeInvoke = vi.fn();
@@ -1443,6 +1459,74 @@ describe("RenderedDiff", () => {
 			await unmount(app);
 			target.remove();
 		}
+	});
+
+	it.each([
+		["file switch", { selectedPath: "OTHER.md" }],
+		["revision switch", { commitOid: "other" }],
+		["base revision change", { compareBaseOid: "another-base" }],
+		["comparison swap", { commitOid: "base", compareBaseOid: "target" }],
+		["rename source change", { oldPath: "OLD.md" }],
+		["whitespace filter change", { ignoreWhitespace: true }],
+	] as const)(
+		"hides the previous document while a %s loads",
+		async (_, change) => {
+			const previous = markdownParagraph("Previous document");
+			const replacement = markdownParagraph("Selected document");
+			const entered = deferred<void>();
+			const pending = deferred<MarkdownDiff>();
+			safeInvoke.mockResolvedValueOnce(previous).mockImplementationOnce(() => {
+				entered.resolve();
+				return pending.promise;
+			});
+			const props = {
+				...baseProps,
+				diffKind: "commit" as const,
+				commitOid: "target",
+				compareBaseOid: "base",
+			};
+			const { rerender } = render(RenderedDiff, { props });
+			await screen.findByText("Previous document");
+
+			await rerender({ ...props, ...change });
+			await entered.promise;
+
+			const selected = { ...props, ...change };
+			expect(safeInvoke).toHaveBeenLastCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({
+					beforeRev: { type: "commit", oid: selected.compareBaseOid },
+					afterRev: { type: "commit", oid: selected.commitOid },
+				}),
+			);
+			expect(screen.queryByText("Previous document")).toBeNull();
+			pending.resolve(replacement);
+			expect(await screen.findByText("Selected document")).toBeVisible();
+		},
+	);
+
+	it("reuses the rendered commit file after returning to it during another read", async () => {
+		const previous = markdownParagraph("Cached document");
+		const entered = deferred<void>();
+		const pending = deferred<MarkdownDiff>();
+		safeInvoke.mockResolvedValueOnce(previous).mockImplementationOnce(() => {
+			entered.resolve();
+			return pending.promise;
+		});
+		const props = { ...baseProps, diffKind: "commit" as const, commitOid: "a" };
+		const { rerender } = render(RenderedDiff, { props });
+		await screen.findByText("Cached document");
+		await rerender({ ...props, selectedPath: "OTHER.md" });
+		await entered.promise;
+
+		await rerender(props);
+
+		expect(screen.getByText("Cached document")).toBeVisible();
+		pending.resolve(markdownParagraph("Other document"));
+		await pending.promise;
+		await tick();
+		expect(screen.getByText("Cached document")).toBeVisible();
+		expect(safeInvoke).toHaveBeenCalledTimes(2);
 	});
 
 	it("issues no refetch on a refresh bump when both revs are commits", async () => {

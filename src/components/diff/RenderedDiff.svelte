@@ -121,18 +121,16 @@ type LoadState =
 	| { kind: "loading" }
 	| {
 			kind: "rows";
+			request: string;
 			rows: DiffRow[];
 			whitespaceOnly: boolean;
 			changedLines: number[];
 	  }
-	| { kind: "error"; message: string };
+	| { kind: "error"; request: string; message: string };
 
-let state = $state<LoadState>({ kind: "loading" });
+const loading = { kind: "loading" } as const;
+let settled = $state.raw<LoadState>(loading);
 
-// The request the rows on screen were fetched for. A re-run whose request is
-// unchanged is the refresh token firing, which only the working-tree kinds
-// need to act on. Plain state, not `$state`: only the effect reads it.
-let fetched: string | null = null;
 let requested: string | null = null;
 let generation = 0;
 let active = true;
@@ -147,20 +145,26 @@ interface PendingLoad {
 let pendingLoad: PendingLoad | null = null;
 
 async function readRenderedDiff(load: PendingLoad) {
+	const isCurrent = () =>
+		active && load.generation === generation && load.request === request;
+
 	try {
 		const diff = await renderMarkdownDiff(...load.args);
-		if (!active || load.generation !== generation) return;
-		fetched = load.request;
-		state = {
+		if (!isCurrent()) return;
+
+		settled = {
 			kind: "rows",
+			request: load.request,
 			rows: diff.rows,
 			whitespaceOnly: diff.whitespaceOnly,
 			changedLines: diff.changedLines,
 		};
 	} catch (error) {
-		if (!active || load.generation !== generation) return;
-		state = {
+		if (!isCurrent()) return;
+
+		settled = {
 			kind: "error",
+			request: load.request,
 			message: isTrunkError(error)
 				? error.message
 				: "Failed to render markdown",
@@ -178,76 +182,47 @@ onDestroy(() => {
 });
 
 const parentOid = $derived(commitDetail?.parent_oids[0] ?? null);
+const renderArgs: RenderArgs = $derived([
+	repoPath,
+	{ path: selectedPath, oldPath },
+	beforeRev(diffKind, parentOid, compareBaseOid),
+	afterRev(diffKind, commitOid),
+	ignoreWhitespace,
+	contextLines,
+]);
+const request = $derived(JSON.stringify(renderArgs));
+// Keep the last matching rows visible through a refresh so the scroller
+// keeps its position (TRUNK-127).
+const visibleState = $derived(
+	settled.kind !== "loading" && settled.request === request ? settled : loading,
+);
 
 $effect(() => {
-	// Snapshot every dependency up front so the async resolve isn't racing a
-	// later reactive change. Layout/content-mode are deliberately NOT read here:
-	// they re-project the held array, they must not re-fetch.
-	const repo = repoPath;
-	const file = { path: selectedPath, oldPath };
-	const kind = diffKind;
-	const oid = commitOid;
-	const parent = parentOid;
-	const compareBase = compareBaseOid;
-	const ignoreWs = ignoreWhitespace;
-	// Unlike contentMode, this changes what the BACKEND folds, not just how
-	// the frontend projects the held rows — so it belongs in the fetch's own
-	// dependencies and its request identity, not left to a client-side
-	// re-projection.
-	const context = contextLines;
-	// A dependency only: the token's value never reaches the backend — bumping
-	// it re-runs this effect so the same fetch re-executes against fresh disk.
+	const args = renderArgs;
+	const key = request;
 	void refreshToken;
 
-	// This run's whole backend call, built once. The identity below is derived
-	// from these very arguments, so a new fetch input cannot be added to the
-	// call while being forgotten in the identity — which would silently leave a
-	// stale pane on screen.
-	const args = [
-		repo,
-		file,
-		beforeRev(kind, parent, compareBase),
-		afterRev(kind, oid),
-		ignoreWs,
-		context,
-	] as const;
+	if (key !== requested) {
+		generation += 1;
+		requested = key;
+	}
 
-	// Two runs asking for the same thing differ only in the refresh token, which
-	// is the repo-changed-on-disk signal.
-	const request = JSON.stringify(args);
-
-	// Read untracked: this effect writes both, so tracking them here would make
-	// every fetch re-run the effect that issued it.
-	const { showing, lastRequest } = untrack(() => ({
-		showing: state.kind,
-		lastRequest: fetched,
-	}));
-
-	// A diff between two commits is two fixed revs, so nothing written to the
-	// repo can change its answer. Only a repeat of the same request is skipped:
-	// a reader switching file or commit changes the request and still refetches.
-	// Trunk's own background fetch rewrites FETCH_HEAD about once a minute, so
-	// without this an idle commit view refetches on that timer for nothing.
-	if (kind === "commit" && showing === "rows" && request === lastRequest)
+	const showing = untrack(() => visibleState.kind);
+	if (diffKind === "commit" && showing === "rows") {
+		pendingLoad = null;
 		return;
+	}
 
-	const inputChanged = request !== requested;
-	if (inputChanged) generation += 1;
-	requested = request;
-	const load = { args: [...args], request, generation } satisfies PendingLoad;
-	pendingLoad = load;
+	if (untrack(() => settled.kind) === "error") settled = loading;
 
-	// Hold the rows already on screen while the replacement is in flight. The
-	// placeholder empties the scroller, and a scroller with no content is
-	// clamped to the top — which is the rendered preview jumping to the top of
-	// the document on every repo change (TRUNK-127). Only a pane with nothing to
-	// show yet shows the placeholder.
-	if (showing !== "rows") state = { kind: "loading" };
+	pendingLoad = { args, request: key, generation };
 	renderedRefresh.request();
 });
 
-const rows = $derived(state.kind === "rows" ? state.rows : []);
-const changedLines = $derived(state.kind === "rows" ? state.changedLines : []);
+const rows = $derived(visibleState.kind === "rows" ? visibleState.rows : []);
+const changedLines = $derived(
+	visibleState.kind === "rows" ? visibleState.changedLines : [],
+);
 const hasChanges = $derived(rows.some((r) => r.kind !== "unchanged"));
 
 // Hunk mode over an unchanged document renders the full doc (projected keeps all
@@ -258,7 +233,7 @@ const showNoChange = $derived(
 	contentMode === "hunk" && rows.length > 0 && !hasChanges,
 );
 const noChangeLabel = $derived(
-	state.kind === "rows" && state.whitespaceOnly
+	visibleState.kind === "rows" && visibleState.whitespaceOnly
 		? "Whitespace-only changes — not visible in rendered view"
 		: "No changes",
 );
@@ -744,9 +719,9 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 		{#if showNoChange}
 			<div class="rendered-nochange">{noChangeLabel}</div>
 		{/if}
-		{#if state.kind === "error"}
-			<div class="rendered-note rendered-error">{state.message}</div>
-		{:else if state.kind === "loading"}
+		{#if visibleState.kind === "error"}
+			<div class="rendered-note rendered-error">{visibleState.message}</div>
+		{:else if visibleState.kind === "loading"}
 			<div class="rendered-block"></div>
 		{:else if layoutMode === "split" && absentSide === "before"}
 			<div class="split-columns">
