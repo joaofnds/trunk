@@ -819,9 +819,9 @@ describe the idle-coverage rule, separate geometry checks and reanalysis route.
 
 ### E06: large changed-file lists, retain the full DOM
 
-The large-list investigation is closed with the current full-DOM list retained.
-Three ignored prototypes were rejected; none changes the application's production
-source. The decision weighs the measured benefit against painting, response and
+E06 retained the full list on its 1,000-file workload. All three prototypes were
+rejected. The measured priority table below records the later 5,000-file case
+and the implementation it supported. The decision weighs the measured benefit against painting, response and
 resource costs. It does not establish that future list optimization is impossible.
 Reopen it for a new causal hypothesis or a workload that changes that tradeoff.
 
@@ -1590,6 +1590,89 @@ and untracked trees of that size. The
 [committed E16 record](performance-data/large-worktree-save-2026-11-19.json) holds the
 probe and every timing.
 
+### E17: fifth flow sweep, keeping the selected target and reading position
+
+On 2026-11-21, the flow walk checked I05 to I07, I09, I11 and I16 in the macOS
+[drive build](build-environment.md#an-agent-checks-the-running-app-through-the-drive-route)
+at `cff9d0af` and again at `6fd5a288`. Both process inventories admitted the
+final replay. The native observations
+cover DOM content, focus, viewport geometry and saved preferences. Physical
+input, presented frames, latency and resource cost were outside this walk.
+
+- **Graph navigation.** Set `fixture_dir=$(mktemp -d)`, then generate
+  [cases 09 and 12](fixtures.md#the-cases) with
+  `mise exec -- just fixtures 09-kitchen-sink 12-deep-history --out "$fixture_dir"`.
+  In the kitchen sink, put local branch `release` at `HEAD~1` and tag
+  `release` at `HEAD~2`. Clicking Local's `release` showed the tag's commit
+  before and the branch tip afterward. In a separate remote-row check,
+  `refs/remotes/orphan` and `refs/remotes/unknown/orphan` both displayed as
+  `orphan`. Each opened its own commit. In deep
+  history, start at the top, use **Edit > Find** and type `commit 4`. Click
+  **Next match** as soon as it enables. For the replay, register a
+  `MutationObserver` for the button’s `disabled` attribute before dispatching
+  the input event. On the first enabled observation, disconnect and click.
+  The old build selected `commit 498` in detail
+  while the viewport stayed at HEAD. The new build also brings that row fully into
+  view. For the hidden-tip check, make a side branch with one commit of its own
+  near HEAD and return to `main`. In a fresh graph, hide that branch with its eye
+  and click its name twice. Detail opens on both builds. In the observed fixture
+  each old click appended 200 unrelated rows, growing the graph from 5,616 to
+  16,816 px. The new graph stayed at 5,616 px. A search for the side commit's
+  unique subject showed zero matches and disabled **Next match** after Hide.
+  Show restored the single match and enabled the button.
+- **Reading a diff.** Commit two 400-line text files, `alpha.txt` and `beta.txt`,
+  then change every tenth line through line 300 in both. In that commit's inline
+  Source diff, choose **Show full file**, select line 1 and press Escape. The old
+  pane closed. The new pane stays open and clears the selection. In full-file
+  mode, visit `alpha.txt`, switch to `beta.txt`, scroll down and return to
+  `alpha.txt`. It used to inherit the 4,800 px scroll position and now opens at
+  the top. Scroll into the unchanged tail and choose **Show hunks**. The old view
+  jumped to the first hunk and the new one reaches the last change at line 300.
+  For rendered Markdown, commit two files with 40 numbered headings each,
+  distinct text per file and paragraphs between headings. Change headings 2, 9,
+  16, 23, 30 and 37 in both in a second commit. In the full rendered diff,
+  scroll just past change 16 and press `]`. It used to jump to change 9 and now
+  reaches change 23, with a 0.6 s highlight on that heading. In a one-sided
+  split diff with four headings that fit the viewport, two successive presses
+  of `]` highlighted the second and third headings while scrollTop stayed at zero.
+- **Diff identity.** On `alpha.txt`, stage a change near the top, then make a
+  distinct unstaged change farther down. In Source hunk mode, switch from the
+  Unstaged entry to the Staged entry for that path. The old view briefly offered
+  **Unstage Hunk** over working-tree text. The new view clears both while it loads
+  the index diff. With one Markdown file open in rendered mode, click the other
+  in the commit's file list. The old body briefly appeared under the new filename.
+  The new body shows loading until the requested file's rendering arrives. For
+  each switch, call the row's `click()` and inspect the content in the same
+  page script's next microtask (`Promise.resolve().then(...)`). For Staged,
+  inspect both the working-tree sentinel line and the Unstage Hunk button. For
+  Markdown, read the rendered heading before waiting for its replacement.
+- **Settings and sidebar.** With list view and the Diff and Author columns shown,
+  visit two repository tabs. Enable tree view and use the graph header menu to
+  hide Diff in the first. Switch to the other tab and hide Author there. The old
+  second tab still showed list view and Diff, and a newly opened third tab showed
+  Diff again. Now the second tab picks up tree view and the hidden Diff column,
+  and the third opens with both columns hidden. Collapse Local and click its
+  **Create new branch** button. The old form stayed hidden until Local expanded.
+  The new click expands Local and focuses the name. Hide a branch in each of two
+  repositories, then click Show and Hide in quick succession on the second. The
+  native check read back both saved sets after the first two hides and observed
+  the latest eye state after the rapid clicks.
+
+The forced interleavings were checked headlessly. These cover an initial search
+overtaken by a ref-visibility change, a pending page or search superseded by a newer
+navigation, and late staging or rendered Markdown replies crossing a selection.
+They also cover preserving both hidden sets when saves overlap, getting Show's
+graph and saved state after clicking it during a pending Hide, and honoring
+column or eye clicks while saved preferences load. The native checks exercise
+the ordinary gestures and do not establish those reply orderings.
+[Search](../tests/app/history-search.test.ts),
+[graph](../src/components/CommitGraph.runtime.test.ts),
+[selection](../src/components/RepoView.selection.runtime.test.ts),
+[rendering](../src/components/diff/RenderedDiff.test.ts),
+[sidebar](../src/components/BranchSidebar.runtime.test.ts),
+[store](../src/lib/store.test.ts) and
+[mounted preferences](../src/components/RepoView.preferences.runtime.test.ts) record the cases.
+
 ### Selection presentation and background limits
 
 Three five-second ScreenCaptureKit attempts used a requested 60 Hz virtual display.
@@ -1608,8 +1691,83 @@ supply selection-presentation evidence.
 Background graph statistics were observed competing with selection in the earlier
 screening series; disabling their column makes the controlled experiment explicit.
 No claim of global background quiescence or remote-fetch fairness follows from it.
-The current evidence does not cover large worktrees under saves, deep paging,
-network activity, large conflict/review sets, or long-session memory growth.
+The selection timing series leaves open large worktrees under saves, deep paging
+cost, network activity, large conflict/review sets and long-session memory growth.
+[E17](#e17-fifth-flow-sweep-keeping-the-selected-target-and-reading-position) checks
+whether a deep search match reaches the viewport.
+
+### E18: a tracked edit during a local background fetch
+
+Flow I18. In the macOS drive app on an Apple M5 Pro, the exact modified row
+appeared in Unstaged while the server still held the first fetch advertisement in
+both 30-file fetch trials. The controller held the unchanged request for 194.359 ms
+and the changed request for 107.452 ms, including the round trip to acknowledge the
+row. This triplet checks edit visibility during a transport wait.
+
+At 20,000 tracked files, the server released the advertisement just after the
+write. Each native cohort ran three rotating blocks of no fetch, an unchanged
+origin and an origin with one new branch. The table spans the smallest lower
+bound and largest upper bound for each condition, rounded outward to 0.1 ms.
+
+| Drive build and fixture index | Write to row, no fetch (ms) | Write to row, unchanged origin (ms) | Write to row, new branch (ms) | Release to branch in sidebar and commit in graph (ms) |
+|---|---:|---:|---:|---:|
+| Debug, copied | 1,619.1 to 1,632.0 | 1,615.3 to 1,645.0 | 1,621.6 to 1,647.3 | 3,073.4 to 4,054.2 |
+| Optimized, copied | 1,477.2 to 1,523.4 | 1,468.6 to 1,509.5 | 1,459.1 to 1,532.4 | 3,541.9 to 3,659.3 |
+| Same optimized binary, refreshed copy | 154.7 to 167.0 | 143.5 to 155.1 | 145.0 to 163.2 | 101.2 to 117.1 |
+
+The large-run holds lasted 0.126 to 0.175 ms. The unchanged fetches reported
+zero graph rebuilds and the changed fetches reported one each. With the optimized
+copied index, the changed fetch IPC reply arrived after the row in all three
+trials. With the refreshed index it arrived before the row in all three,
+97.2 to 112.1 ms after release. The new branch and graph commit appeared
+4 to 5 ms after those replies on the page clock.
+
+The lower bound of the fastest optimized copied-index row is 1,292 ms above
+the upper bound of the slowest refreshed-index row. The shift includes the
+no-fetch controls. The refreshed cohort's pre-refresh witness showed a different
+inode and ctime in the copied index from those in its worktree. Refresh aligned
+them with the worktree and preserved the complete staged-entry listing
+byte-for-byte. The clean status probe took 1,504 to 1,638 ms on the copied
+index and 81 to 90 ms on the refreshed index, on the page clock. The cohorts
+ran in sequence. The refreshed cohort also read the staged entries and stat
+witness before and after refresh. The control and fetch ranges overlap within
+each index preparation. Keep the current background fetch path for this case.
+Opening established repositories after users' own Git operations remains
+unmeasured.
+
+For replay, generate the 20,000-file tree from the saved E16 generator and
+unpack the E18 sources into a scratch directory under `.boris/` as described in
+the record. Use a fresh drive instance per trial, with automatic fetch and
+graph Diff statistics off. Before arming the observer, wait for the first
+unscoped repository-change event, a clean status reply and the baseline DOM
+checks. The watcher sends that event at startup. Other whole-repository changes
+use the same payload, so the event alone cannot identify its cause. On the disposable worktree
+the app will open, compare `git ls-files --debug` with on-disk inode, ctime and
+mtime, including after a fresh clone or checkout has been copied. To replay
+the refreshed-copy cohort, run `git update-index --really-refresh` in that
+disposable copy before launching the app and check that
+`git ls-files --stage -z` is unchanged. The frozen runner records this check.
+
+Drive calls `git_fetch_background` over Tauri IPC against a loopback
+`git http-backend`. The server receipts bracket the complete append between
+advertisement arrival and backend start, with the release in between. The
+observer timestamps the first exact modified Unstaged row with Staged empty,
+and, for the changed origin, the first observation of both the new branch
+and the graph row at the expected summary and SHA prefix. Three host/page
+clock brackets on each side, with a 1 ms allowance for each page clock read,
+bound the intervals from the host's open-through-close write or barrier
+release. The Git oracle checks the exact edited bytes, index digest and staged
+entry, HEAD, refs with their symbolic targets, and the one-path porcelain
+status. Only the changed case gains a tracking ref and requires an upload-pack
+POST. All 60 entry and exit process inventories admitted their trials.
+
+The recorded endpoints are DOM and IPC. Paint, input response, remaining startup
+work and global settlement were unmeasured, as were CPU time, memory, I/O and
+energy. The admission snapshots can miss work between them. The direct invocation
+leaves automatic scheduling, unheld or wide-area transport, and sustained
+tracked-file churn open. The [E18 record](performance-data/fetch-edit-overlap-2026-11-21.json)
+contains every admitted sample, binary digests, process-admission receipts,
+earlier exclusions and the probe sources.
 
 ## Measured priority and continuation
 
@@ -1619,10 +1777,10 @@ Frequency remains an assumption; no usage telemetry was collected.
 | --- | --- | --- |
 | 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
 | 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
-| 3 | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. Settle how often users open large highlighted files in full mode first. The installed copy on the measuring machine is set to hunk mode, and files above the 5,000-line cap open as plain text, so the cost reaches only a full-mode user opening a file between about 3,000 and 5,000 lines (2026-11-19). The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
-| Closed | Large-list rendering investigation, E06 | Retain the full DOM. V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
-| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. E16 measured a save at 20,000 tracked files reaching the list in 91 to 110 ms and found sharing one scan among its readers no faster; the largest repository in use has 8,655 files. Local fetch and refreshes for tracked changes under load remain unmeasured. High Git correctness risk; use disposable repositories and exact content oracles. |
+| Closed | Large-list rendering investigation, E06 | E06 retained the full list for its workload. At 5,000 changed files, `bb7d4b38` rendered the visible band plus one viewport on either side. In the M5 Pro drive app with a production frontend and debug Rust, the observed commit-open freeze fell from 382 to 40 ms. In E06, V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
+| 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. E16 measured a save at 20,000 tracked files reaching the list in 91 to 110 ms and found sharing one scan among its readers no faster; the largest repository in use has 8,655 files. In E18's refreshed 20,000-file fixture, the edit appeared within 167 ms in the no-fetch controls and when a local fetch overlapped the write. The server released the fetch after the write. Production scheduling and sustained tracked-file churn remain open. High Git correctness risk; use disposable repositories and exact content oracles. |
 | 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. The deepest repository under `~/code` on this machine has 5,077 commits (2026-11-19). Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. Both slow readings match the cost of a process's first git-binary action, which waited for the user's login shell to start: in the drive instance on 2026-11-19 the first `merge_branch_begin` took 180 to 185 ms against 28 ms for the second, and after `8a6efda3` started that shell at launch the first took 28 to 31 ms. The E10 readings themselves were not retaken. |
+| Last | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. E08 observed usable full-file content in 153 to 175 ms on this fixture. Fresh near-cap opens in ordinary use have no frequency measurement. Retain the current reply and exact colors unless a recurring slow workflow warrants changing when syntax becomes visible. The review finder and a full-file read for anchoring a comment can also request this work independently of the display preference. The installed copy used hunk mode on 2026-11-19. The cap is 5,000 parsed lines per side. Sparse hunks in a larger file can retain highlighting. In full-file mode the new side exceeds the cap when it has more than 5,000 lines, while deleted lines can retain highlighting if their old-side windows fit. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
 coalesced refresh, and the search debounce. It does not support another cache or

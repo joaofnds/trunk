@@ -703,9 +703,9 @@ discarding a capture already in progress. A multi-worktree operation publishes e
 worktree separately.
 
 **Graph revision** — a monotonically increasing identity for a published graph cache
-entry. Change notifications and graph responses carry it. Page and graph-indexed stats
-requests name their expected revision, so a cache replacement rejects an older read
-even before its notification reaches the frontend.
+entry. Change notifications and graph responses carry it. Requests for another page,
+search results or graph-indexed statistics name the displayed revision. A cache
+replacement can reject an older read before its notification reaches the frontend.
 
 **Remote operation registry** — identity-based reservations for fetch, pull and push,
 acquired before spawning a process and held through its exit and graph reconciliation.

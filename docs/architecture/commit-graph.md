@@ -76,7 +76,9 @@ effect. A target absent from the requested revision returns `null` before hydrat
 jump leaves loaded depth unchanged. The viewport can still request its next page. A refresh
 or visibility toggle requests the caller's loaded depth from the top, with a one-page minimum. Full
 hydration through `GraphSnapshot::layout` is explicit, used by fixture and capture tools.
-Search reads captured facts and visible refs directly. Commit statistics read bounded OID
+Search reads captured facts and visible refs for the displayed revision. A cache change
+before or during the search returns `graph_changed`, so the view can retry against its
+new revision. Commit statistics read bounded OID
 slices, and review membership hydrates only selected commits in graph order.
 
 When visibility is empty, the visible source shares the original capture. A nonempty
