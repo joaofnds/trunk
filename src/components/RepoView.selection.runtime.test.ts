@@ -42,6 +42,253 @@ afterEach(() => {
 	restoreDomPolyfills();
 });
 
+describe("RepoView staging selection", () => {
+	it.each([true, false])(
+		"finishes loading another file when an older hunk action completes (changes left: %s)",
+		async (fileStillChanged) => {
+			const one = loadedFile("one", "first file content");
+			const two = loadedFile("two", "second file content");
+			host.seedResponse("get_status", {
+				unstaged: [one, two],
+				staged: [],
+				conflicted: [],
+			});
+			host.seedResponse("diff_unstaged", [one]);
+			await openRepository();
+			await fireEvent.click(await screen.findByText(one.path));
+			const action = host.holdNextReply("stage_hunk");
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Stage Hunk" }),
+			);
+			await action.entered;
+			const nextDiff = host.holdNextReply("diff_unstaged");
+			await fireEvent.click(screen.getByText(two.path));
+			await nextDiff.entered;
+
+			host.seedResponse("get_status", {
+				unstaged: fileStillChanged ? [one, two] : [two],
+				staged: [one],
+				conflicted: [],
+			});
+			action.release({ file_still_changed: fileStillChanged });
+			await drainReplies();
+			nextDiff.release([two]);
+			await drainReplies();
+
+			expect(screen.getByText("second file content")).toBeVisible();
+			expect(screen.queryByText("Loading diff…")).toBeNull();
+			expect(
+				within(screen.getByTestId("staging-staged-section")).getByText(
+					one.path,
+				),
+			).toBeVisible();
+		},
+	);
+
+	it("refreshes the newly selected staged side when a hunk leaves the unstaged side", async () => {
+		const file = loadedFile("one", "unstaged content");
+		const neighbor = loadedFile("neighbor", "neighbor content");
+		host.seedResponse("get_status", {
+			unstaged: [file],
+			staged: [file, neighbor],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [file]);
+		host.seedResponse("diff_staged", [
+			loadedFile("one", "original staged content"),
+		]);
+		await openRepository();
+		const unstaged = within(
+			await screen.findByTestId("staging-unstaged-section"),
+		);
+		const staged = within(screen.getByTestId("staging-staged-section"));
+		await fireEvent.click(await unstaged.findByText(file.path));
+		const action = host.holdNextReply("stage_hunk");
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Stage Hunk" }),
+		);
+		await action.entered;
+		await fireEvent.click(staged.getByText(file.path));
+		await screen.findByText("original staged content");
+
+		host.seedResponse("get_status", {
+			unstaged: [],
+			staged: [file, neighbor],
+			conflicted: [],
+		});
+		host.seedResponse("diff_staged", [
+			loadedFile("one", "updated staged content"),
+		]);
+		action.release({ file_still_changed: false });
+		await drainReplies();
+
+		expect(screen.getByTestId("diff-path")).toHaveTextContent(file.path);
+		expect(screen.getByText("updated staged content")).toBeVisible();
+		expect(staged.getByText(file.path)).toBeVisible();
+		expect(unstaged.queryByText(file.path)).toBeNull();
+	});
+
+	it("follows a reopened file to the other side when its older hunk action empties it", async () => {
+		const one = loadedFile("one", "first file content");
+		const two = loadedFile("two", "second file content");
+		host.seedResponse("get_status", {
+			unstaged: [one, two],
+			staged: [],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [one]);
+		await openRepository();
+		const unstaged = within(
+			await screen.findByTestId("staging-unstaged-section"),
+		);
+		await fireEvent.click(await unstaged.findByText(one.path));
+		const action = host.holdNextReply("stage_hunk");
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Stage Hunk" }),
+		);
+		await action.entered;
+		host.seedResponse("diff_unstaged", [two]);
+		await fireEvent.click(unstaged.getByText(two.path));
+		await screen.findByText("second file content");
+		host.seedResponse("diff_unstaged", [one]);
+		await fireEvent.click(unstaged.getByText(one.path));
+		await screen.findByText("first file content");
+
+		host.seedResponse("get_status", {
+			unstaged: [two],
+			staged: [one],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [two]);
+		host.seedResponse("diff_staged", [
+			loadedFile("one", "staged first file content"),
+		]);
+		action.release({ file_still_changed: false });
+		await drainReplies();
+
+		expect(screen.getByText("staged first file content")).toBeVisible();
+		expect(screen.queryByText("second file content")).toBeNull();
+	});
+
+	it("keeps the lines selected in a different file when an older line action completes", async () => {
+		const one = loadedFile("one", "first file content");
+		const two = loadedFile("two", "second file content");
+		host.seedResponse("get_status", {
+			unstaged: [one, two],
+			staged: [],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [one]);
+		await openRepository();
+		await fireEvent.click(await screen.findByText(one.path));
+		await selectChangedLine("first file content");
+		const action = host.holdNextReply("stage_lines");
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Stage Lines (1)" }),
+		);
+		await action.entered;
+		host.seedResponse("diff_unstaged", [two]);
+		await fireEvent.click(screen.getByText(two.path));
+		await selectChangedLine("second file content");
+
+		action.release({ file_still_changed: true });
+		await drainReplies();
+
+		expect(screen.getByTestId("diff-path")).toHaveTextContent(two.path);
+		expect(
+			screen.getByRole("button", { name: "Stage Lines (1)" }),
+		).toBeEnabled();
+	});
+
+	it("keeps a pending branch navigation when an older hunk action empties its file", async () => {
+		const one = loadedFile("one", "first file content");
+		const two = loadedFile("two", "second file content");
+		seedBranch();
+		host.seedResponse("get_status", {
+			unstaged: [one, two],
+			staged: [],
+			conflicted: [],
+		});
+		host.seedResponse("diff_unstaged", [one]);
+		await openRepository();
+		await fireEvent.click(await screen.findByText(one.path));
+		const action = host.holdNextReply("stage_hunk");
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Stage Hunk" }),
+		);
+		await action.entered;
+		const ref = host.holdNextReply("resolve_ref");
+		await fireEvent.click(await screen.findByText("topic"));
+		await ref.entered;
+
+		host.seedResponse("get_status", {
+			unstaged: [two],
+			staged: [one],
+			conflicted: [],
+		});
+		host.seedResponse("diff_staged", [loadedFile("one", "staged content")]);
+		action.release({ file_still_changed: false });
+		await screen.findByText("staged content");
+		seedCommit("first");
+		ref.release("first");
+
+		expect(await screen.findByTestId("commit-detail")).toHaveTextContent(
+			"first change",
+		);
+	});
+
+	async function selectChangedLine(content: string) {
+		const line = await screen.findByText(content);
+		const grip = line
+			.closest(".diff-line")
+			?.querySelector("[data-gutter-grip]");
+		if (!grip) throw new Error("diff line has no gutter grip");
+
+		await fireEvent.mouseDown(grip);
+		await fireEvent.mouseUp(window);
+	}
+
+	it.each([
+		["unstaged", "staged", "Unstage Hunk"],
+		["staged", "unstaged", "Stage Hunk"],
+	] as const)(
+		"hides the %s hunks while the same file's %s diff loads",
+		async (from, to, action) => {
+			const file = {
+				path: "working.txt",
+				status: "Modified",
+				is_binary: false,
+			};
+			host.seedResponse("get_status", {
+				unstaged: [file],
+				staged: [file],
+				conflicted: [],
+			});
+			host.seedResponse(`diff_${from}`, [
+				loadedFile("working", "previous side"),
+			]);
+			await openRepository();
+			const fromSection = within(screen.getByTestId(`staging-${from}-section`));
+			const toSection = within(screen.getByTestId(`staging-${to}-section`));
+			await fireEvent.click(await fromSection.findByText(file.path));
+			await screen.findByText("previous side");
+			const pending = host.holdNextReply(`diff_${to}`);
+
+			await fireEvent.click(toSection.getByText(file.path));
+			await pending.entered;
+
+			expect(screen.queryByText("previous side")).toBeNull();
+			expect(screen.queryByRole("button", { name: action })).toBeNull();
+			expect(screen.getByText("Loading diff…")).toBeVisible();
+
+			pending.release([loadedFile("working", "selected side")]);
+
+			expect(await screen.findByText("selected side")).toBeVisible();
+			expect(screen.getByRole("button", { name: action })).toBeVisible();
+		},
+	);
+});
+
 describe("RepoView commit selection", () => {
 	it("keeps a newer comparison after an older ref lookup resolves", async () => {
 		seedBranch();
@@ -89,6 +336,36 @@ describe("RepoView commit selection", () => {
 	});
 
 	describe("comparison file content mode", () => {
+		it("renders the comparison revisions after leaving a current-file review", async () => {
+			const markdown = { ...fileDiff("comparison"), path: "guide.md" };
+			host.seedResponse("list_tracked_files", [
+				{ path: "current.txt", changed: false },
+			]);
+			host.seedResponse("open_current_file", [fileDiff("current")]);
+			host.seedResponse("diff_compare_file", [markdown]);
+			const view = await openRepository();
+			await selectCommit("first");
+			await screen.findByText("first.txt");
+			await compareCommit("first", "third", [markdown]);
+
+			await view.rerender({ reviewActive: true });
+			await fireEvent.click(await screen.findByText(/Comment on a file/));
+			await fireEvent.click(
+				await screen.findByRole("option", { name: "current.txt" }),
+			);
+			await screen.findByText("current file content");
+			await view.rerender({ reviewActive: false });
+			await fireEvent.click(await screen.findByText("guide.md"));
+			const rendered = host.holdNextReply("render_markdown_diff");
+			await fireEvent.click(await screen.findByTitle("Show rendered markdown"));
+
+			expect(await rendered.entered).toMatchObject({
+				beforeRev: { type: "commit", oid: "first" },
+				afterRev: { type: "commit", oid: "third" },
+			});
+			rendered.release({ rows: [], changedLines: [], whitespaceOnly: false });
+		});
+
 		it("hides a retained comparison hunk payload while that file's full content loads", async () => {
 			const view = await openRepository();
 			await selectCommit("first");

@@ -5,7 +5,7 @@ import {
 	waitFor,
 	within,
 } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { type ComponentProps, tick } from "svelte";
 import {
 	afterEach,
 	beforeEach,
@@ -34,6 +34,7 @@ import type {
 	ReviewFilter,
 	Thread,
 } from "../lib/types.js";
+import type { StagingAction } from "./DiffPanel.svelte";
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
@@ -52,6 +53,12 @@ async function flushPrefs() {
 	await Promise.resolve();
 	await Promise.resolve();
 	await tick();
+}
+
+function stagingCompletion(
+	complete: (emptiedBy?: StagingAction) => Promise<void>,
+) {
+	return { isCurrent: () => true, complete };
 }
 
 // Selection now arms from the line-number gutter grip, not the code content, so
@@ -3668,7 +3675,7 @@ describe("Discard File button", () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		vi.mocked(ask).mockResolvedValueOnce(true);
 		vi.mocked(safeInvoke).mockClear();
-		const onfileemptied = vi.fn();
+		const completed = vi.fn(async () => {});
 
 		render(DiffPanel, {
 			props: {
@@ -3679,7 +3686,7 @@ describe("Discard File button", () => {
 				diffKind: "unstaged",
 				repoPath: "/test/repo",
 				selectedPath: "src/main.ts",
-				onfileemptied,
+				onstagingaction: () => stagingCompletion(completed),
 			},
 		});
 		await flushPrefs();
@@ -3696,7 +3703,7 @@ describe("Discard File button", () => {
 			path: "/test/repo",
 			filePath: "src/main.ts",
 		});
-		expect(onfileemptied).toHaveBeenCalledWith("src/main.ts", "discard");
+		expect(completed).toHaveBeenCalledWith("discard");
 	});
 
 	it("keeps the file when the user cancels the confirmation", async () => {
@@ -3704,7 +3711,7 @@ describe("Discard File button", () => {
 		vi.mocked(ask).mockClear();
 		vi.mocked(ask).mockResolvedValueOnce(false);
 		vi.mocked(safeInvoke).mockClear();
-		const onfileemptied = vi.fn();
+		const completed = vi.fn(async () => {});
 
 		render(DiffPanel, {
 			props: {
@@ -3715,7 +3722,7 @@ describe("Discard File button", () => {
 				diffKind: "unstaged",
 				repoPath: "/test/repo",
 				selectedPath: "src/main.ts",
-				onfileemptied,
+				onstagingaction: () => stagingCompletion(completed),
 			},
 		});
 		await flushPrefs();
@@ -3727,7 +3734,7 @@ describe("Discard File button", () => {
 			"discard_file",
 			expect.anything(),
 		);
-		expect(onfileemptied).not.toHaveBeenCalled();
+		expect(completed).not.toHaveBeenCalled();
 	});
 
 	it("renders Discard File before Stage File", async () => {
@@ -3825,7 +3832,7 @@ describe("Discard File button", () => {
 				? Promise.reject({ code: "git_error", message: "discard exploded" })
 				: Promise.resolve(undefined),
 		);
-		const onfileemptied = vi.fn();
+		const completed = vi.fn(async () => {});
 
 		render(DiffPanel, {
 			props: {
@@ -3836,7 +3843,7 @@ describe("Discard File button", () => {
 				diffKind: "unstaged",
 				repoPath: "/test/repo",
 				selectedPath: "src/main.ts",
-				onfileemptied,
+				onstagingaction: () => stagingCompletion(completed),
 			},
 		});
 		await flushPrefs();
@@ -3853,7 +3860,7 @@ describe("Discard File button", () => {
 			"discard exploded",
 			"error",
 		);
-		expect(onfileemptied).not.toHaveBeenCalled();
+		expect(completed).not.toHaveBeenCalled();
 	});
 
 	// The action buttons' only `disabled` binding is `hunkOperationInFlight`
@@ -3914,7 +3921,7 @@ describe("Discard File button", () => {
 
 		it("stays closed until the refetch completes", async () => {
 			let releaseRefetch: () => void = () => {};
-			const onhunkaction = vi.fn(
+			const reload = vi.fn(
 				() =>
 					new Promise<void>((resolve) => {
 						releaseRefetch = resolve;
@@ -3929,7 +3936,7 @@ describe("Discard File button", () => {
 					diffKind: "unstaged",
 					repoPath: "/test/repo",
 					selectedPath: "src/main.ts",
-					onhunkaction,
+					onstagingaction: () => stagingCompletion(reload),
 				},
 			});
 			await flushPrefs();
@@ -3937,7 +3944,7 @@ describe("Discard File button", () => {
 			await fireEvent.click(screen.getAllByText("Stage Hunk")[0]);
 			await flushPrefs();
 			expect(stageHunkCalls()).toBe(1);
-			expect(onhunkaction).toHaveBeenCalledOnce();
+			expect(reload).toHaveBeenCalledOnce();
 
 			await fireEvent.click(screen.getAllByText("Stage Hunk")[1]);
 			await flushPrefs();
@@ -3965,7 +3972,7 @@ describe("Discard File button", () => {
 					vi.mocked(ask).mockResolvedValue(false);
 				});
 				let releaseRefetch: () => void = () => {};
-				const onhunkaction = vi.fn(
+				const reload = vi.fn(
 					() =>
 						new Promise<void>((resolve) => {
 							releaseRefetch = resolve;
@@ -3980,7 +3987,7 @@ describe("Discard File button", () => {
 						diffKind,
 						repoPath: "/test/repo",
 						selectedPath: "src/main.ts",
-						onhunkaction,
+						onstagingaction: () => stagingCompletion(reload),
 					},
 				});
 				await flushPrefs();
@@ -4102,16 +4109,11 @@ describe("DiffPanel hunk actions on a changed file", () => {
 
 	async function renderShown({
 		diffKind = "unstaged",
-		onhunkaction = async () => {},
-		onfileemptied = () => {},
-	}: {
-		diffKind?: "unstaged" | "staged";
-		onhunkaction?: (filePath: string) => Promise<void>;
-		onfileemptied?: (
-			filePath: string,
-			action: "stage" | "unstage" | "discard",
-		) => void;
-	} = {}) {
+		onstagingaction,
+	}: Pick<
+		ComponentProps<typeof DiffPanel>,
+		"diffKind" | "onstagingaction"
+	> = {}) {
 		const props = {
 			...commentingDiff,
 			fileDiffs: [shownDiff],
@@ -4120,8 +4122,7 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			diffKind,
 			repoPath: "/test/repo",
 			selectedPath: "src/main.ts",
-			onhunkaction,
-			onfileemptied,
+			onstagingaction,
 		};
 		const view = render(DiffPanel, { props });
 		await flushPrefs();
@@ -4160,7 +4161,9 @@ describe("DiffPanel hunk actions on a changed file", () => {
 
 	it("discards the lines it counted when the diff reloads during the confirmation", async () => {
 		const pending = await pendingConfirmation();
-		const { view, props } = await renderShown();
+		const discarded = vi.fn(async () => {});
+		const onstagingaction = vi.fn(() => stagingCompletion(discarded));
+		const { view, props } = await renderShown({ onstagingaction });
 		await fireEvent.mouseDown(gutterOf("new twenty"));
 		await fireEvent.mouseUp(window);
 
@@ -4168,15 +4171,23 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			screen.getByRole("button", { name: "Discard Lines (1)" }),
 		);
 		await pending.entered;
-		await view.rerender({ ...props, fileDiffs: [reloadedDiff] });
+		await view.rerender({
+			...props,
+			diffKind: "staged",
+			fileDiffs: [reloadedDiff],
+		});
+		vi.mocked(safeInvoke).mockResolvedValueOnce({ file_still_changed: false });
 		pending.confirm(true);
 
-		await waitFor(() =>
-			expect(sent("discard_lines")).toMatchObject({
-				hunk: shownHunk,
-				lineIndices: [1],
-			}),
+		await waitFor(() => expect(discarded).toHaveBeenCalledWith("discard"));
+		expect(onstagingaction).toHaveBeenCalledExactlyOnceWith(
+			"src/main.ts",
+			"unstaged",
 		);
+		expect(sent("discard_lines")).toMatchObject({
+			hunk: shownHunk,
+			lineIndices: [1],
+		});
 	});
 
 	describe("after an action on the only hunk shown", () => {
@@ -4257,16 +4268,14 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			"stays on a file $action leaves a change in",
 			async ({ action, press, command, diffKind }) => {
 				reply(command, true);
-				const onhunkaction = vi.fn(async () => {});
-				const onfileemptied = vi.fn();
-				await renderShown({ diffKind, onhunkaction, onfileemptied });
+				const completed = vi.fn(async () => {});
+				const onstagingaction = vi.fn(() => stagingCompletion(completed));
+				await renderShown({ diffKind, onstagingaction });
 
 				await press(action);
 
-				await waitFor(() =>
-					expect(onhunkaction).toHaveBeenCalledWith("src/main.ts"),
-				);
-				expect(onfileemptied).not.toHaveBeenCalled();
+				await waitFor(() => expect(completed).toHaveBeenCalledWith(undefined));
+				expect(onstagingaction).toHaveBeenCalledWith("src/main.ts", diffKind);
 			},
 		);
 
@@ -4274,16 +4283,14 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			"moves on from a file $action leaves no change in",
 			async ({ action, press, command, diffKind, emptied }) => {
 				reply(command, false);
-				const onhunkaction = vi.fn(async () => {});
-				const onfileemptied = vi.fn();
-				await renderShown({ diffKind, onhunkaction, onfileemptied });
+				const completed = vi.fn(async () => {});
+				const onstagingaction = vi.fn(() => stagingCompletion(completed));
+				await renderShown({ diffKind, onstagingaction });
 
 				await press(action);
 
-				await waitFor(() =>
-					expect(onfileemptied).toHaveBeenCalledWith("src/main.ts", emptied),
-				);
-				expect(onhunkaction).not.toHaveBeenCalled();
+				await waitFor(() => expect(completed).toHaveBeenCalledWith(emptied));
+				expect(onstagingaction).toHaveBeenCalledWith("src/main.ts", diffKind);
 			},
 		);
 	});
@@ -4319,7 +4326,8 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			});
 			return {
 				reload,
-				onhunkaction: async (filePath: string) => reloaded(filePath),
+				onstagingaction: (filePath: string) =>
+					stagingCompletion(async () => reloaded(filePath)),
 			};
 		}
 
@@ -4333,7 +4341,10 @@ describe("DiffPanel hunk actions on a changed file", () => {
 				const { showToast } = await import("../lib/toast.svelte.js");
 				refuseAsStale(command);
 				const reloads = awaitReload();
-				await renderShown({ diffKind, onhunkaction: reloads.onhunkaction });
+				await renderShown({
+					diffKind,
+					onstagingaction: reloads.onstagingaction,
+				});
 
 				await fireEvent.click(screen.getByText(action));
 
@@ -4364,7 +4375,10 @@ describe("DiffPanel hunk actions on a changed file", () => {
 				const { showToast } = await import("../lib/toast.svelte.js");
 				refuseAsStale(command);
 				const reloads = awaitReload();
-				await renderShown({ diffKind, onhunkaction: reloads.onhunkaction });
+				await renderShown({
+					diffKind,
+					onstagingaction: reloads.onstagingaction,
+				});
 				await fireEvent.mouseDown(gutterOf("new twenty"));
 				await fireEvent.mouseUp(window);
 
@@ -4396,7 +4410,10 @@ describe("DiffPanel hunk actions on a changed file", () => {
 			"lets go of the lines $action acted on",
 			async ({ action, diffKind }) => {
 				const refetched = vi.fn(async () => {});
-				await renderShown({ diffKind, onhunkaction: refetched });
+				await renderShown({
+					diffKind,
+					onstagingaction: () => stagingCompletion(refetched),
+				});
 				await fireEvent.mouseDown(gutterOf("new twenty"));
 				await fireEvent.mouseUp(window);
 

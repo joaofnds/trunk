@@ -1,3 +1,13 @@
+<script module lang="ts">
+export type StagingAction = "stage" | "unstage" | "discard";
+export type StagingSide = "unstaged" | "staged";
+
+interface StagingActionCompletion {
+	isCurrent(): boolean;
+	complete(emptiedBy?: StagingAction): Promise<void>;
+}
+</script>
+
 <script lang="ts">
 import type { PanelDiffKind } from "../lib/comment-matching.js";
 import { ask } from "../lib/dialog.js";
@@ -65,11 +75,10 @@ interface Props {
 	backLabel?: string | null;
 	diffKind?: PanelDiffKind;
 	repoPath?: string;
-	onhunkaction?: (filePath: string) => Promise<void>;
-	onfileemptied?: (
+	onstagingaction?: (
 		filePath: string,
-		action: "stage" | "unstage" | "discard",
-	) => void;
+		side: StagingSide,
+	) => StagingActionCompletion;
 	diffPreferences: DiffPreferences;
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
@@ -107,8 +116,7 @@ let {
 	backLabel = null,
 	diffKind = "commit",
 	repoPath = "",
-	onhunkaction,
-	onfileemptied,
+	onstagingaction,
 	diffPreferences,
 	contentMode,
 	oncontentmodechange,
@@ -853,75 +861,57 @@ $effect(() => {
 	collapsedFiles = new Set();
 });
 
-async function handleStageFile() {
-	if (!selectedPath || hunkOperationInFlight) return;
-	const path = selectedPath;
-	hunkOperationInFlight = true;
-	try {
-		await safeInvoke("stage_file", { path: repoPath, filePath: path });
-		onfileemptied?.(path, "stage");
-	} catch (e) {
-		reportErrorToast(e, "Stage file failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
-}
+type StagingTarget =
+	| { unit: "file" }
+	| { unit: "hunk" | "lines"; hunkIndex: number };
 
-async function handleUnstageFile() {
-	if (!selectedPath || hunkOperationInFlight) return;
-	const path = selectedPath;
-	hunkOperationInFlight = true;
-	try {
-		await safeInvoke("unstage_file", {
-			path: repoPath,
-			filePath: path,
-		});
-		onfileemptied?.(path, "unstage");
-	} catch (e) {
-		reportErrorToast(e, "Unstage file failed");
-	} finally {
-		hunkOperationInFlight = false;
+function confirmDiscard(
+	filePath: string,
+	unit: StagingTarget["unit"],
+	lineCount: number,
+) {
+	if (unit === "file") {
+		const isUntracked =
+			fileDiffs.find((file) => file.path === filePath)?.status === "Untracked";
+		return ask(
+			isUntracked
+				? `Delete ${filePath}? This file is untracked and will be permanently removed. This cannot be undone.`
+				: `Discard changes to ${filePath}? This cannot be undone.`,
+			{
+				title: isUntracked ? "Delete File" : "Discard Changes",
+				kind: "warning",
+				okLabel: isUntracked ? "Delete" : "Discard",
+			},
+		);
 	}
-}
 
-async function handleDiscardFile() {
-	if (!selectedPath || hunkOperationInFlight) return;
-	const path = selectedPath;
-	const isUntracked =
-		fileDiffs.find((f) => f.path === path)?.status === "Untracked";
-	const confirmed = await ask(
-		isUntracked
-			? `Delete ${path}? This file is untracked and will be permanently removed. This cannot be undone.`
-			: `Discard changes to ${path}? This cannot be undone.`,
-		{
-			title: isUntracked ? "Delete File" : "Discard Changes",
+	if (unit === "hunk") {
+		return ask("Discard this hunk? This cannot be undone.", {
+			title: "Discard Hunk",
 			kind: "warning",
-			okLabel: isUntracked ? "Delete" : "Discard",
+			okLabel: "Discard Hunk",
+		});
+	}
+
+	return ask(
+		`Discard ${lineCount} selected ${lineCount === 1 ? "line" : "lines"}? This cannot be undone.`,
+		{
+			title: "Discard Lines",
+			kind: "warning",
+			okLabel: lineCount === 1 ? "Discard Line" : "Discard Lines",
 		},
 	);
-	if (!confirmed) return;
-
-	hunkOperationInFlight = true;
-	try {
-		await safeInvoke("discard_file", { path: repoPath, filePath: path });
-		showToast(`Discarded ${path}`, "success");
-		onfileemptied?.(path, "discard");
-	} catch (e) {
-		reportErrorToast(e, "Discard file failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
 }
 
-// The file goes from this side's list only when the repository says it has no
-// change left there, since the diff can hide a whitespace or mode change.
-async function afterLineAction(
+function discardSuccess(
 	filePath: string,
-	outcome: LineActionOutcome,
-	action: "stage" | "unstage" | "discard",
+	unit: StagingTarget["unit"],
+	lineCount: number,
 ) {
-	if (outcome.file_still_changed) await onhunkaction?.(filePath);
-	else onfileemptied?.(filePath, action);
+	if (unit === "file") return `Discarded ${filePath}`;
+	if (unit === "hunk") return "Discarded hunk";
+
+	return `Discarded ${lineCount} ${lineCount === 1 ? "line" : "lines"}`;
 }
 
 // What a hunk or line action names: the hunk as this render shows it, taken at the
@@ -936,88 +926,78 @@ function shownHunk(filePath: string, hunkIndex: number): ShownHunk {
 	};
 }
 
-// The backend refuses a hunk the file no longer has, so nothing changed, and the
-// diff reloads to show the file as it is now.
-async function reportHunkActionError(
-	e: unknown,
+async function changeStaging(
 	filePath: string,
-	fallback: string,
+	action: StagingAction,
+	target: StagingTarget,
 ) {
-	if (isTrunkError(e) && e.code === "stale_hunk") {
-		clearSelection();
-		showToast(
-			`${filePath} changed since its diff was shown, so nothing was done. The diff now shows the file as it is.`,
-			"error",
-		);
-		await onhunkaction?.(filePath);
+	if (
+		hunkOperationInFlight ||
+		(diffKind !== "unstaged" && diffKind !== "staged")
+	)
 		return;
-	}
-	reportErrorToast(e, fallback);
-}
 
-async function handleStageHunk(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
+	const completion = onstagingaction?.(filePath, diffKind);
+	const selectedLines = selectedLineIndices;
+	const isCurrent = () => completion?.isCurrent() ?? true;
+	const clearOriginalLines = () => {
+		if (isCurrent() && selectedLineIndices === selectedLines) clearSelection();
+	};
+	const { unit } = target;
+	const lineIndices = unit === "lines" ? selectedChanges : undefined;
+	const lineCount = lineIndices?.length ?? 0;
+	const args = {
+		path: repoPath,
+		filePath,
+		...(target.unit !== "file" && {
+			hunk: shownHunk(filePath, target.hunkIndex),
+			options: currentDiffOptions(),
+		}),
+		...(lineIndices && { lineIndices }),
+	};
+
 	hunkOperationInFlight = true;
 	try {
-		const outcome = await safeInvoke<LineActionOutcome>("stage_hunk", {
-			path: repoPath,
-			filePath,
-			hunk,
-			options: currentDiffOptions(),
-		});
-		await afterLineAction(filePath, outcome, "stage");
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Stage hunk failed");
+		if (
+			action === "discard" &&
+			!(await confirmDiscard(filePath, unit, lineCount))
+		)
+			return;
+
+		const outcome = await safeInvoke<LineActionOutcome | undefined>(
+			`${action}_${unit}`,
+			args,
+		);
+		if (action === "discard")
+			showToast(discardSuccess(filePath, unit, lineCount), "success");
+		if (unit === "lines") clearOriginalLines();
+
+		// A hunk can leave a whitespace or mode change that the diff hides.
+		const emptied = unit === "file" || outcome?.file_still_changed === false;
+		await completion?.complete(emptied ? action : undefined);
+	} catch (error) {
+		if (isTrunkError(error) && error.code === "stale_hunk") {
+			const refreshed = isCurrent()
+				? " The diff now shows the file as it is."
+				: "";
+			clearOriginalLines();
+			showToast(
+				`${filePath} changed since its diff was shown, so nothing was done.${refreshed}`,
+				"error",
+			);
+			await completion?.complete();
+		} else {
+			const verb = action.charAt(0).toUpperCase() + action.slice(1);
+			reportErrorToast(error, `${verb} ${unit} failed`);
+		}
 	} finally {
 		hunkOperationInFlight = false;
 	}
 }
 
-async function handleUnstageHunk(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
-	hunkOperationInFlight = true;
-	try {
-		const outcome = await safeInvoke<LineActionOutcome>("unstage_hunk", {
-			path: repoPath,
-			filePath,
-			hunk,
-			options: currentDiffOptions(),
-		});
-		await afterLineAction(filePath, outcome, "unstage");
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Unstage hunk failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
-}
-
-async function handleDiscardHunk(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
-	const confirmed = await ask("Discard this hunk? This cannot be undone.", {
-		title: "Discard Hunk",
-		kind: "warning",
-		okLabel: "Discard Hunk",
-	});
-	if (!confirmed) return;
-
-	hunkOperationInFlight = true;
-	try {
-		const outcome = await safeInvoke<LineActionOutcome>("discard_hunk", {
-			path: repoPath,
-			filePath,
-			hunk,
-			options: currentDiffOptions(),
-		});
-		showToast("Discarded hunk", "success");
-		await afterLineAction(filePath, outcome, "discard");
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Discard hunk failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
+function changeSelectedFile(action: StagingAction) {
+	if (selectedPath)
+		return changeStaging(selectedPath, action, { unit: "file" });
 }
 
 // Whether the open diff composer is on exactly the selected lines, as one opened
@@ -1282,87 +1262,6 @@ function extendDrag(e: MouseEvent) {
 	applyDragRange(lineIndex);
 	lastClickedIndex = lineIndex;
 }
-
-async function handleStageLines(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
-	const lineIndices = selectedChanges;
-	hunkOperationInFlight = true;
-	try {
-		const outcome = await safeInvoke<LineActionOutcome>("stage_lines", {
-			path: repoPath,
-			filePath,
-			hunk,
-			lineIndices,
-			options: currentDiffOptions(),
-		});
-		await afterLineAction(filePath, outcome, "stage");
-		clearSelection();
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Stage lines failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
-}
-
-async function handleUnstageLines(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
-	const lineIndices = selectedChanges;
-	hunkOperationInFlight = true;
-	try {
-		const outcome = await safeInvoke<LineActionOutcome>("unstage_lines", {
-			path: repoPath,
-			filePath,
-			hunk,
-			lineIndices,
-			options: currentDiffOptions(),
-		});
-		await afterLineAction(filePath, outcome, "unstage");
-		clearSelection();
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Unstage lines failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
-}
-
-async function handleDiscardLines(filePath: string, hunkIndex: number) {
-	if (hunkOperationInFlight) return;
-	const hunk = shownHunk(filePath, hunkIndex);
-	const lineIndices = selectedChanges;
-	const count = lineIndices.length;
-	const confirmed = await ask(
-		`Discard ${count} selected ${count === 1 ? "line" : "lines"}? This cannot be undone.`,
-		{
-			title: "Discard Lines",
-			kind: "warning",
-			okLabel: count === 1 ? "Discard Line" : "Discard Lines",
-		},
-	);
-	if (!confirmed) return;
-
-	hunkOperationInFlight = true;
-	try {
-		const outcome = await safeInvoke<LineActionOutcome>("discard_lines", {
-			path: repoPath,
-			filePath,
-			hunk,
-			lineIndices,
-			options: currentDiffOptions(),
-		});
-		showToast(
-			`Discarded ${count} ${count === 1 ? "line" : "lines"}`,
-			"success",
-		);
-		await afterLineAction(filePath, outcome, "discard");
-		clearSelection();
-	} catch (e) {
-		await reportHunkActionError(e, filePath, "Discard lines failed");
-	} finally {
-		hunkOperationInFlight = false;
-	}
-}
 </script>
 
 {#snippet composerCard()}
@@ -1423,9 +1322,9 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onshowinvisibleschange={(show) =>
 			diffPreferences.changeShowInvisibles(show)}
 		onwordwrapchange={(wrap) => diffPreferences.changeWordWrap(wrap)}
-		onstagefile={handleStageFile}
-		onunstagefile={handleUnstageFile}
-		ondiscardfile={handleDiscardFile}
+		onstagefile={() => changeSelectedFile("stage")}
+		onunstagefile={() => changeSelectedFile("unstage")}
+		ondiscardfile={() => changeSelectedFile("discard")}
 		oncommentfile={handleCommentFile}
 		{onclose}
 		{backLabel}
@@ -1465,12 +1364,18 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onfilecollapsetoggle={toggleFileCollapsed}
 		onlineclick={handleLineClick}
 		onlinemousedown={handleLineMouseDown}
-		onstagehunk={handleStageHunk}
-		onunstagehunk={handleUnstageHunk}
-		ondiscardhunk={handleDiscardHunk}
-		onstagelines={handleStageLines}
-		onunstagelines={handleUnstageLines}
-		ondiscardlines={handleDiscardLines}
+		onstagehunk={(filePath, hunkIndex) =>
+			changeStaging(filePath, "stage", { unit: "hunk", hunkIndex })}
+		onunstagehunk={(filePath, hunkIndex) =>
+			changeStaging(filePath, "unstage", { unit: "hunk", hunkIndex })}
+		ondiscardhunk={(filePath, hunkIndex) =>
+			changeStaging(filePath, "discard", { unit: "hunk", hunkIndex })}
+		onstagelines={(filePath, hunkIndex) =>
+			changeStaging(filePath, "stage", { unit: "lines", hunkIndex })}
+		onunstagelines={(filePath, hunkIndex) =>
+			changeStaging(filePath, "unstage", { unit: "lines", hunkIndex })}
+		ondiscardlines={(filePath, hunkIndex) =>
+			changeStaging(filePath, "discard", { unit: "lines", hunkIndex })}
 		oncommentlines={handleCommentLines}
 		oncommenthunk={handleCommentHunk}
 		selectionComment={selectionComment && {

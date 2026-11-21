@@ -109,6 +109,7 @@ import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
 import { restoreReviewUpdateComposer } from "../lib/updates-review.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 import CommitGraph from "./CommitGraph.svelte";
+import type { StagingAction, StagingSide } from "./DiffPanel.svelte";
 import FileFinder from "./FileFinder.svelte";
 import LazyView from "./LazyView.svelte";
 import MessageEditor from "./MessageEditor.svelte";
@@ -429,10 +430,12 @@ let draftLoaded = $state(false);
 let treeViewEnabled = $state(false);
 
 // Staging file selection (from StagingPanel)
-let selectedFile = $state<{
+interface StagingFileSelection {
 	path: string;
 	kind: "unstaged" | "staged" | "conflicted";
-} | null>(null);
+}
+
+let selectedFile = $state<StagingFileSelection | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
 // push here updates nothing on screen.
 let stagingDiffFiles = $state.raw<FileDiff[]>([]);
@@ -562,7 +565,7 @@ async function openCurrentFile(filePath: string) {
 	currentFileDiffs = [];
 	prepareCurrentFileRead(filePath, true);
 	selectedCurrentFile = filePath;
-	selectedFile = null;
+	setStagingSelection(null);
 	selectedCommitFile = null;
 	selectedCompareFile = null;
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
@@ -823,7 +826,7 @@ let shownCurrentFile = $derived(
 // current-file view sits last because every other selection supersedes it: the
 // finder does not clear them, exactly as they do not clear each other.
 let diffKind = $derived<PanelDiffKind>(
-	selectedCommitFile
+	selectedCompareFile || selectedCommitFile
 		? "commit"
 		: selectedFile?.kind === "conflicted"
 			? "commit"
@@ -1080,10 +1083,10 @@ function handleRefresh() {
 	sidebarRefreshSignal += 1;
 }
 
-function clearStagingDiff() {
+function setStagingSelection(selection: StagingFileSelection | null) {
 	selectGeneration += 1;
 	pendingSelectedDiff = null;
-	selectedFile = null;
+	selectedFile = selection;
 	stagingDiffFiles = [];
 	stagingDiffLoading = false;
 	stagingDiffError = null;
@@ -1104,17 +1107,17 @@ function keepSelectionListed(s: WorkingTreeStatus) {
 	if (listed(selected.kind)) return;
 
 	if (selected.kind === "conflicted") {
-		clearStagingDiff();
+		setStagingSelection(null);
 		return;
 	}
 
 	const other = selected.kind === "unstaged" ? "staged" : "unstaged";
 	if (!listed(other)) {
-		clearStagingDiff();
+		setStagingSelection(null);
 		return;
 	}
 
-	selectedFile = { path: selected.path, kind: other };
+	setStagingSelection({ path: selected.path, kind: other });
 	void refetchFileDiff(selected.path, other);
 }
 
@@ -1350,7 +1353,7 @@ function handleDiffClose() {
 	cancelPendingCommitSelection();
 	if (selectedCurrentFile) closeCurrentFile();
 	else if (selectedCompareFile) closeCompareFile();
-	else if (selectedFile) clearStagingDiff();
+	else if (selectedFile) setStagingSelection(null);
 	else clearCommitFileDiff();
 }
 
@@ -1359,7 +1362,7 @@ function advanceToNextFile(
 	section: "unstaged" | "staged" | "conflicted",
 ) {
 	if (!cachedStatus) {
-		clearStagingDiff();
+		setStagingSelection(null);
 		return;
 	}
 	const rawFiles = cachedStatus[section];
@@ -1376,15 +1379,59 @@ function advanceToNextFile(
 	if (nextPath) {
 		handleFileSelect(nextPath, section);
 	} else if (section === "conflicted") {
-		clearStagingDiff();
+		setStagingSelection(null);
 	}
+}
+
+function beginStagingAction(filePath: string, side: StagingSide) {
+	const source = selectedFile;
+	const repo = repoPath;
+	const navigationIsCurrent = snapshotNavigationIntent();
+	const isCurrent = () =>
+		navigationIsCurrent() &&
+		tabActive &&
+		!showRebaseEditor &&
+		!reviewPanelShown &&
+		selectedFile === source &&
+		source?.path === filePath &&
+		source.kind === side;
+
+	return {
+		isCurrent,
+		async complete(emptiedBy?: StagingAction) {
+			if (!repoViewActive || repo !== repoPath) return;
+
+			const panel = stagingPanelRef;
+			const advance = emptiedBy !== undefined && isCurrent();
+			if (advance) {
+				advanceToNextFile(filePath, side);
+				panel?.optimisticMove(filePath, side, emptiedBy);
+			}
+
+			const open = selectedFile;
+			let diff: Promise<void> | undefined;
+			if (!advance && open?.path === filePath && open.kind !== "conflicted") {
+				diffRefreshToken += 1;
+				diff = refetchFileDiff(open.path, open.kind);
+			}
+			const status = panel
+				? panel
+						.loadStatus()
+						.catch((error) =>
+							reportErrorToast(error, "Failed to refresh status"),
+						)
+				: dirtyCountsRefresh.run();
+
+			await Promise.all([diff, status]);
+		},
+	};
 }
 
 function handleFileResolved() {
 	if (selectedFile) {
 		advanceToNextFile(selectedFile.path, "conflicted");
 	} else {
-		clearStagingDiff();
+		setStagingSelection(null);
 	}
 }
 
@@ -1398,19 +1445,8 @@ async function handleFileSelect(
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (selectedFile?.path === path && selectedFile?.kind === kind) return;
 
-	selectedFile = { path, kind };
-	if (!repoPath) return;
-
-	if (kind === "conflicted") {
-		// MergeEditor loads its own data via get_merge_sides
-		selectGeneration += 1;
-		pendingSelectedDiff = null;
-		stagingDiffFiles = [];
-		stagingDiffLoading = false;
-		stagingDiffError = null;
-		stagingDiffMode = null;
-		return;
-	}
+	setStagingSelection({ path, kind });
+	if (!repoPath || kind === "conflicted") return;
 
 	await loadSelectedFileDiff(path, kind, undefined, true);
 }
@@ -1499,7 +1535,7 @@ async function readCommit({
 				: null;
 		if (!isCurrent()) return;
 
-		clearStagingDiff();
+		setStagingSelection(null);
 		selectedCommitFile = null;
 		commitEmpty = false;
 		selectedCommitOid = oid;
@@ -2656,7 +2692,7 @@ async function handleRebaseStart(
 		);
 		handleRebaseEditorClose();
 		// The rebase rewrites the commits a selection or an open diff names.
-		clearStagingDiff();
+		setStagingSelection(null);
 		clearCommit();
 		if (result.kind === "stopped") {
 			showToast("Rebase stopped — resolve it in the staging panel", "error");
@@ -2867,24 +2903,7 @@ async function handleRebaseStart(
 									onretry={() => {
 										void retryVisibleDiff();
 									}}
-									onhunkaction={async (filePath) => {
-										if (selectedFile) {
-											await refetchFileDiff(filePath, selectedFile.kind);
-										}
-										await stagingPanelRef?.loadStatus();
-									}}
-									onfileemptied={(filePath, action) => {
-										if (selectedFile?.path === filePath) {
-											const { kind } = selectedFile;
-											advanceToNextFile(filePath, kind);
-											stagingPanelRef?.optimisticMove(filePath, kind, action);
-											void stagingPanelRef
-												?.loadStatus()
-												.catch((error) =>
-													reportErrorToast(error, "Failed to refresh status"),
-												);
-										}
-									}}
+									onstagingaction={beginStagingAction}
 									onclose={reviewSession.state.reviewActive
 										? () => {
 												handleDiffClose();

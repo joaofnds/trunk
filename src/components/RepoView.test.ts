@@ -2401,7 +2401,10 @@ describe("RepoView", () => {
 		});
 
 		describe("when Stage All moves the open file", () => {
-			function mockStageAll(stagedElsewhere: boolean) {
+			function mockStageAll(
+				stagedElsewhere: boolean,
+				stagedDiff = Promise.resolve([stagingDiff("STAGED CONTENT")]),
+			) {
 				const base = mockInvoke.getMockImplementation();
 				if (!base) throw new Error("base invoke implementation missing");
 				const readme = {
@@ -2425,8 +2428,7 @@ describe("RepoView", () => {
 					}
 					if (cmd === "diff_unstaged")
 						return Promise.resolve([stagingDiff("UNSTAGED CONTENT")]);
-					if (cmd === "diff_staged")
-						return Promise.resolve([stagingDiff("STAGED CONTENT")]);
+					if (cmd === "diff_staged") return stagedDiff;
 					return base(cmd, args);
 				});
 			}
@@ -2441,13 +2443,25 @@ describe("RepoView", () => {
 				);
 			}
 
-			it("shows the file's staged diff", async () => {
-				mockStageAll(true);
+			it("hides the unstaged hunks while the file's staged diff loads", async () => {
+				const stagedDiff = Promise.withResolvers<FileDiff[]>();
+				mockStageAll(true, stagedDiff.promise);
 
 				await openReadmeThenStageAll();
 
+				expect(await screen.findByText("Loading diff…")).toBeVisible();
+				expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull();
+				expect(screen.queryByRole("button", { name: "Stage Hunk" })).toBeNull();
+				expect(
+					screen.queryByRole("button", { name: "Unstage Hunk" }),
+				).toBeNull();
+
+				stagedDiff.resolve([stagingDiff("STAGED CONTENT")]);
+
 				expect(await screen.findByText("STAGED CONTENT")).toBeTruthy();
-				expect(screen.queryByText("UNSTAGED CONTENT")).toBeFalsy();
+				expect(
+					screen.getByRole("button", { name: "Unstage Hunk" }),
+				).toBeVisible();
 			});
 
 			it("closes the diff when the file left both lists", async () => {
@@ -2597,10 +2611,11 @@ describe("RepoView", () => {
 
 			await fireEvent.click(screen.getByRole("button", { name: "Stage Hunk" }));
 			await statusReloaded;
-			await tick();
 
+			await waitFor(() =>
+				expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull(),
+			);
 			expect(screen.getByRole("button", { name: "Stage File" })).toBeTruthy();
-			expect(screen.queryByText("UNSTAGED CONTENT")).toBeNull();
 			expect(
 				mockInvoke.mock.calls.filter(
 					([cmd, args]) =>
