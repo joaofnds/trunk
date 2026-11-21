@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mergeBranch, rebaseBranch, resolveForkPoint } from "./branch-op.js";
+import { mergeBranch, rebaseBranch } from "./branch-op.js";
 import { safeInvoke } from "./invoke.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
@@ -138,44 +138,5 @@ describe("rebaseBranch", () => {
 
 		expect(errorMessages()).toEqual(["unstaged changes"]);
 		expect(onDone).not.toHaveBeenCalled();
-	});
-});
-
-describe("resolveForkPoint", () => {
-	it("asks for the fork point of the named branch", async () => {
-		mockInvoke.mockResolvedValue("abc123");
-
-		await resolveForkPoint({ repoPath: "/repo", branch: "topic" });
-
-		expect(mockInvoke).toHaveBeenCalledWith("get_fork_point", {
-			path: "/repo",
-			branch: "topic",
-		});
-	});
-
-	it("returns the fork point it found", async () => {
-		mockInvoke.mockResolvedValue("abc123");
-
-		const forkPoint = await resolveForkPoint({
-			repoPath: "/repo",
-			branch: "topic",
-		});
-
-		expect(forkPoint).toBe("abc123");
-	});
-
-	it("reports the failure and returns null when the lookup rejects", async () => {
-		mockInvoke.mockRejectedValue({
-			code: "git_not_found",
-			message: "no fork point",
-		});
-
-		const forkPoint = await resolveForkPoint({
-			repoPath: "/repo",
-			branch: "topic",
-		});
-
-		expect(forkPoint).toBeNull();
-		expect(errorMessages()).toEqual(["no fork point"]);
 	});
 });

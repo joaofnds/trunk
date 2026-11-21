@@ -4006,7 +4006,13 @@ describe("RepoView", () => {
 
 		function stubRebaseTodo(
 			baseOid: string | null,
-			startResult: { kind: string } = { kind: "completed" },
+			{
+				baseBranch = null,
+				startKind = "completed",
+			}: {
+				baseBranch?: string | null;
+				startKind?: "completed" | "stopped";
+			} = {},
 		) {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
@@ -4040,35 +4046,17 @@ describe("RepoView", () => {
 							revision: 1,
 						});
 					case "start_interactive_rebase":
-						return Promise.resolve(startResult);
+						return Promise.resolve({ kind: startKind });
 					case "get_rebase_todo":
 						return Promise.resolve({
+							source: { ref_name: "refs/heads/main", tip_oid: HEAD_OID },
 							base_oid: baseOid,
+							base_branch: baseBranch,
 							items: [
 								todoItem(CLICKED_OID, "clicked commit"),
 								todoItem(HEAD_OID, "head commit"),
 							],
 						});
-					default:
-						return base(cmd, args);
-				}
-			});
-		}
-
-		function stubBranchAt(name: string, oid: string) {
-			const base = mockInvoke.getMockImplementation();
-			if (!base) throw new Error("base invoke implementation missing");
-			mockInvoke.mockImplementation((cmd, args) => {
-				switch (cmd) {
-					case "list_refs":
-						return Promise.resolve({
-							local: [{ name }],
-							remote: [],
-							tags: [],
-							stashes: [],
-						});
-					case "resolve_ref":
-						return Promise.resolve(oid);
 					default:
 						return base(cmd, args);
 				}
@@ -4248,6 +4236,47 @@ describe("RepoView", () => {
 			expect(insideInert(head)).toBe(true);
 		});
 
+		it("ignores a preview failure that arrives after a newer plan", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const older = Promise.withResolvers<never>();
+			const answer = mockInvoke.getMockImplementation();
+			if (!answer) throw new Error("base invoke implementation missing");
+			let firstPreview = true;
+			mockInvoke.mockImplementation((command, args) => {
+				if (command === "get_rebase_todo" && firstPreview) {
+					firstPreview = false;
+					return older.promise;
+				}
+				return answer(command, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await waitFor(() =>
+				expect(menuActions.has("Interactive Rebase...")).toBe(true),
+			);
+			const open = getMenuAction("Interactive Rebase...");
+
+			void open();
+			await waitFor(() => expect(firstPreview).toBe(false));
+			void open();
+			await screen.findByRole("listbox", { name: "Commits to rebase" });
+			older.reject(
+				JSON.stringify({
+					code: "fork_point_error",
+					message: "Earlier preview failed",
+				}),
+			);
+			await flush();
+
+			expect(
+				screen.getByRole("listbox", { name: "Commits to rebase" }),
+			).toBeVisible();
+			expect(toasts.items).not.toContainEqual(
+				expect.objectContaining({ message: "Earlier preview failed" }),
+			);
+		});
+
 		it.each(["pending", "failed"] as const)(
 			"can cancel a %s rebase editor load without starting the rebase",
 			async (state) => {
@@ -4345,7 +4374,7 @@ describe("RepoView", () => {
 		);
 
 		it("raises a toast when the rebase stops", async () => {
-			stubRebaseTodo(PARENT_OID, { kind: "stopped" });
+			stubRebaseTodo(PARENT_OID, { startKind: "stopped" });
 
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(await screen.findByText("Start Rebase"));
@@ -4428,8 +4457,7 @@ describe("RepoView", () => {
 		});
 
 		it("names the base by the branch that points at it", async () => {
-			stubRebaseTodo(PARENT_OID);
-			stubBranchAt("release", PARENT_OID);
+			stubRebaseTodo(PARENT_OID, { baseBranch: "release" });
 
 			await openTheEditorOnTheClickedCommit();
 
@@ -4459,6 +4487,7 @@ describe("RepoView", () => {
 
 			expect(mockInvoke).toHaveBeenCalledWith("start_interactive_rebase", {
 				path: "/test/repo",
+				source: { ref_name: "refs/heads/main", tip_oid: HEAD_OID },
 				baseOid: PARENT_OID,
 				todoItems: [
 					{

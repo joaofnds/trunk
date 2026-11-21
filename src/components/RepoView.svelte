@@ -28,7 +28,7 @@ import type { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles } from "../lib/file-status.js";
 import { inertWhile } from "../lib/inert-while.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable } from "../lib/keyboard.js";
 import {
 	type LoadedDiff,
@@ -91,9 +91,8 @@ import type {
 	GraphCommit,
 	GraphResponse,
 	RebaseBase,
+	RebasePreviewTarget,
 	RebaseTodo,
-	RebaseTodoItem,
-	RefsResponse,
 	ReviewFilter,
 	ReviewTone,
 	Side,
@@ -731,11 +730,13 @@ let refVisibilityResolved = $state(false);
 let repoListenerSettled = $state(false);
 
 // Rebase editor state
-let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
-let rebaseBaseOid = $state<string | null>(null);
-let rebaseBranchName = $state("");
-let rebaseBase = $state<RebaseBase | null>(null);
-const showRebaseEditor = $derived(rebaseBase !== null);
+let rebasePreview = $state.raw<{
+	todo: RebaseTodo;
+	base: RebaseBase;
+	branchName: string;
+} | null>(null);
+const showRebaseEditor = $derived(rebasePreview !== null);
+let rebaseOpenSeq = 0;
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
 let rebaseFocusedCommitStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
@@ -796,7 +797,7 @@ const reviewMode = $derived(reviewSession.state.reviewActive);
 
 const sidePanes = createSidePanes({
 	view: () => {
-		if (rebaseBase) return "rebase";
+		if (showRebaseEditor) return "rebase";
 		return reviewMode ? "review" : "main";
 	},
 	sidebar: {
@@ -2481,76 +2482,50 @@ async function handleOpenMessageEditor(
 	return (await messageEditorRef?.open(defaultValue)) ?? null;
 }
 
-async function branchNameAt(oid: string): Promise<string | null> {
-	try {
-		const refs = await safeInvoke<RefsResponse>("list_refs", {
-			path: repoPath,
-		});
-		for (const b of [...refs.local, ...refs.remote]) {
-			try {
-				const branchOid = await safeInvoke<string>("resolve_ref", {
-					path: repoPath,
-					refName: b.name,
-				});
-				if (branchOid === oid) return b.name;
-			} catch {
-				// ref resolution failed -- skip
-			}
-		}
-	} catch {
-		// listing refs failed -- no name to offer
-	}
-
-	return null;
+function rebaseOnto(todo: RebaseTodo): RebaseBase {
+	if (todo.base_oid === null) return { kind: "root" };
+	if (todo.base_branch) return { kind: "branch", name: todo.base_branch };
+	return { kind: "commit", oid: todo.base_oid };
 }
 
-async function resolveBase(oid: string | null): Promise<RebaseBase> {
-	if (oid === null) return { kind: "root" };
-
-	const name = await branchNameAt(oid);
-	if (name === null) return { kind: "commit", oid };
-
-	return { kind: "branch", name };
-}
-
-async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
-	if (!repoPath) return;
+async function handleOpenRebaseEditor(target: RebasePreviewTarget) {
+	if (!repoPath || !repoViewActive) return;
+	const path = repoPath;
+	const seq = ++rebaseOpenSeq;
+	const isCurrent = () =>
+		repoViewActive && path === repoPath && seq === rebaseOpenSeq;
 	try {
 		const todo = await safeInvoke<RebaseTodo>("get_rebase_todo", {
-			path: repoPath,
-			baseOid,
-			inclusive,
+			path,
+			target,
 		});
+		if (!isCurrent()) return;
+
+		const branchName = todo.source.ref_name.replace(/^refs\/heads\//, "");
 		if (todo.items.length === 0) {
 			showToast(
-				`Every commit on ${headBranch ?? "HEAD"} is already on that branch, so there is nothing to rebase.`,
+				`Every commit on ${branchName} is already on that branch, so there is nothing to rebase.`,
 				"success",
 			);
 			return;
 		}
 
-		rebaseEditorCommits = todo.items;
-		rebaseBaseOid = todo.base_oid;
-		rebaseBranchName = headBranch ?? "HEAD";
-		const base = await resolveBase(todo.base_oid);
-		rebaseFocusedCommitDetail = null;
-		rebaseFocusedCommitStat = null;
-		rebaseFocusedFileDiffs = [];
-		rebaseLoadedDiffs = noLoadedDiffs();
-		rebaseFocusedFileSelected = null;
-		rebaseBase = base;
+		clearRebaseFocus();
+		rebasePreview = { todo, base: rebaseOnto(todo), branchName };
 	} catch (e) {
-		reportErrorToast(e, "Failed to load commits for rebase");
+		if (isCurrent()) reportErrorToast(e, "Failed to load commits for rebase");
 	}
 }
 
 function handleRebaseEditorClose() {
+	rebaseOpenSeq++;
+	rebasePreview = null;
+	clearRebaseFocus();
+}
+
+function clearRebaseFocus() {
 	rebaseFocusLoadSeq++;
 	closeRebaseDiff();
-	rebaseEditorCommits = [];
-	rebaseBaseOid = null;
-	rebaseBranchName = "";
-	rebaseBase = null;
 	rebaseFocusedCommitDetail = null;
 	rebaseFocusedCommitStat = null;
 	rebaseFocusedFileDiffs = [];
@@ -2742,12 +2717,22 @@ async function handleRebaseStart(
 		newMessage: string | null;
 	}[],
 ) {
-	if (!repoPath) return;
+	const path = repoPath;
+	const preview = rebasePreview;
+	if (!path || !preview || !repoViewActive) return;
+	const isCurrent = () =>
+		repoViewActive && path === repoPath && preview === rebasePreview;
 	try {
 		const result = await safeInvoke<{ kind: "completed" | "stopped" }>(
 			"start_interactive_rebase",
-			{ path: repoPath, baseOid: rebaseBaseOid, todoItems },
+			{
+				path,
+				source: preview.todo.source,
+				baseOid: preview.todo.base_oid,
+				todoItems,
+			},
 		);
+		if (!isCurrent()) return;
 		handleRebaseEditorClose();
 		// The rebase rewrites the commits a selection or an open diff names.
 		setStagingSelection(null);
@@ -2756,6 +2741,10 @@ async function handleRebaseStart(
 			showToast("Rebase stopped — resolve it in the staging panel", "error");
 		}
 	} catch (e) {
+		if (!isCurrent()) return;
+		if (isTrunkError(e) && e.code === "rebase_todo_stale") {
+			handleRebaseEditorClose();
+		}
 		reportErrorToast(e, "Rebase failed");
 	}
 }
@@ -3122,8 +3111,8 @@ async function handleRebaseStart(
 				{/if}
 			</div>
 		</div>
-		{#if rebaseBase}
-			{@const editorBase = rebaseBase}
+		{#if rebasePreview}
+			{@const preview = rebasePreview}
 			<section
 				aria-label="Interactive rebase"
 				class="absolute inset-0 flex overflow-hidden"
@@ -3144,9 +3133,9 @@ async function handleRebaseStart(
 							{#snippet children(RebaseEditor)}
 								<RebaseEditor
 									{repoPath}
-									commits={rebaseEditorCommits}
-									branchName={rebaseBranchName}
-									base={editorBase}
+									commits={preview.todo.items}
+									branchName={preview.branchName}
+									base={preview.base}
 									onclose={handleRebaseEditorClose}
 									onstart={handleRebaseStart}
 									onfocuschange={handleRebaseFocusChange}

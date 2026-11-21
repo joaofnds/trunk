@@ -37,47 +37,69 @@ impl RebaseAction {
     }
 }
 
-/// The listing and the base it was built from, so a rebase started from this listing
-/// cannot pick the commit it replays onto.
+/// The source ref and tip captured when reading the plan. The ref is the full
+/// branch name, or `HEAD` when detached.
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct RebaseSource {
+    pub ref_name: String,
+    pub tip_oid: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RebasePreviewTarget {
+    Commit { oid: String },
+    Branch { ref_name: String },
+}
+
+/// The listing and the source and base it was built from.
 ///
 /// `base_oid` is `None` when the clicked commit is the repository root, which rebases
 /// from `--root`.
 #[derive(Debug, Serialize)]
 pub struct RebaseTodo {
+    pub source: RebaseSource,
     pub base_oid: Option<String>,
+    /// The branch pointing to the resolved base, when there is a plan to show.
+    pub base_branch: Option<String>,
     pub items: Vec<RebaseTodoItem>,
 }
 
-/// The commits an interactive rebase from `base_oid` would replay.
+/// The commits an interactive rebase from a commit or a branch's fork point would replay.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `invalid_oid` when `base_oid`
-/// will not parse, `rebase_has_merge` when the range holds a merge commit, and the git
-/// error when the walk fails.
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the commit
+/// OID will not parse, `fork_point_error` when the branch shares no history with HEAD
+/// or does not resolve, `rebase_has_merge` when the range holds a merge commit, and the
+/// git error when HEAD cannot be read or the walk fails.
 pub fn get_rebase_todo_inner(
     path: &str,
-    base_oid: &str,
-    inclusive: bool,
+    target: &RebasePreviewTarget,
     state_map: &OpenRepos,
 ) -> Result<RebaseTodo, TrunkError> {
     let repo = state_map.open(path)?;
+    let (source, source_oid) = read_rebase_source(&repo)?;
 
-    let base =
-        git2::Oid::from_str(base_oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
-
-    let resolved_base = if inclusive {
-        let commit = repo.find_commit(base).map_err(TrunkError::from)?;
-        if commit.parent_count() == 0 {
-            None
-        } else {
-            Some(commit.parent_id(0).map_err(TrunkError::from)?)
+    let resolved_base = match target {
+        RebasePreviewTarget::Commit { oid } => {
+            let clicked = git2::Oid::from_str(oid)
+                .map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
+            let commit = repo.find_commit(clicked)?;
+            if commit.parent_count() == 0 {
+                None
+            } else {
+                Some(commit.parent_id(0)?)
+            }
         }
-    } else {
-        Some(base)
+        RebasePreviewTarget::Branch { ref_name } => Some(fork_point(&repo, ref_name, source_oid)?),
     };
 
-    let items: Vec<RebaseTodoItem> = replayable_range(&repo, resolved_base)?
+    let items: Vec<RebaseTodoItem> = replayable_range(&repo, source_oid, resolved_base)?
         .iter()
         .rev()
         .map(|commit| {
@@ -93,23 +115,84 @@ pub fn get_rebase_todo_inner(
         .collect();
 
     Ok(RebaseTodo {
+        source,
         base_oid: resolved_base.map(|oid| oid.to_string()),
+        base_branch: resolved_base
+            .filter(|_| !items.is_empty())
+            .and_then(|oid| branch_name_at(&repo, oid)),
         items,
     })
 }
 
-/// The rebase range, newest first: every commit reachable from HEAD and not from
-/// `base`, or every commit reachable from HEAD when `base` is `None`.
+fn read_rebase_source(repo: &git2::Repository) -> Result<(RebaseSource, git2::Oid), TrunkError> {
+    let head = repo.find_reference("HEAD")?;
+    let ref_name = head.symbolic_target()?.unwrap_or("HEAD").to_owned();
+    let oid = head.peel_to_commit()?.id();
+    Ok((
+        RebaseSource {
+            ref_name,
+            tip_oid: oid.to_string(),
+        },
+        oid,
+    ))
+}
+
+fn branch_name_at(repo: &git2::Repository, oid: git2::Oid) -> Option<String> {
+    [git2::BranchType::Local, git2::BranchType::Remote]
+        .into_iter()
+        .find_map(|kind| {
+            optional_base_ref(repo.branches(Some(kind)))?
+                .filter_map(optional_base_ref)
+                .find_map(|(branch, _)| {
+                    let name = optional_base_ref(branch.name())??;
+                    let reference = branch.get();
+                    if kind == git2::BranchType::Remote
+                        && is_remote_head_alias(repo, name, reference)
+                    {
+                        return None;
+                    }
+
+                    let target = reference
+                        .target()
+                        .or_else(|| optional_base_ref(reference.resolve())?.target());
+                    (target == Some(oid)).then(|| name.to_owned())
+                })
+        })
+}
+
+fn optional_base_ref<T>(result: Result<T, git2::Error>) -> Option<T> {
+    result
+        .inspect_err(|error| eprintln!("Rebase base label lookup skipped: {error}"))
+        .ok()
+}
+
+fn is_remote_head_alias(
+    repo: &git2::Repository,
+    name: &str,
+    reference: &git2::Reference<'_>,
+) -> bool {
+    reference.symbolic_target_bytes().is_some()
+        && name.strip_suffix("/HEAD").is_some_and(|remote| {
+            !remote.contains('/')
+                || optional_base_ref(repo.remotes()).is_some_and(|names| {
+                    names.iter().flatten().flatten().any(|name| name == remote)
+                })
+        })
+}
+
+/// The rebase range, newest first: every commit reachable from `source` and not from
+/// `base`, or every commit reachable from `source` when `base` is `None`.
 ///
 /// A todo of picks cannot replay a merge, so a range holding one is refused with
 /// `rebase_has_merge`, naming the oldest merge and counting the others.
 fn replayable_range(
     repo: &git2::Repository,
+    source: git2::Oid,
     base: Option<git2::Oid>,
 ) -> Result<Vec<git2::Commit<'_>>, TrunkError> {
     let mut revwalk = repo.revwalk()?;
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
-    revwalk.push_head()?;
+    revwalk.push(source)?;
     if let Some(base) = base {
         revwalk.hide(base)?;
     }
@@ -148,37 +231,23 @@ fn merge_refusal(merge: &git2::Commit<'_>, others: usize) -> TrunkError {
     )
 }
 
-/// Where the current branch diverged from `branch`.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, and `fork_point_error` saying
-/// which of `branch` and HEAD will not resolve, or that the two share no history.
-pub fn get_fork_point_inner(
-    path: &str,
+fn fork_point(
+    repo: &git2::Repository,
     branch: &str,
-    state_map: &OpenRepos,
-) -> Result<String, TrunkError> {
-    let path_buf = state_map.path_for(path)?;
+    source: git2::Oid,
+) -> Result<git2::Oid, TrunkError> {
     let failed = |e: git2::Error| TrunkError::new("fork_point_error", e.message().to_owned());
 
-    let repo = git2::Repository::open(path_buf).map_err(failed)?;
     let theirs = repo
         .revparse_single(branch)
         .and_then(|object| object.peel_to_commit())
         .map_err(failed)?;
-    let head = repo
-        .head()
-        .and_then(|head| head.peel_to_commit())
-        .map_err(failed)?;
-
-    match repo.merge_base(theirs.id(), head.id()) {
-        Ok(oid) => Ok(oid.to_string()),
+    match repo.merge_base(theirs.id(), source) {
         Err(e) if e.code() == git2::ErrorCode::NotFound => Err(TrunkError::new(
             "fork_point_error",
             format!("{branch} shares no history with the current branch"),
         )),
-        Err(e) => Err(failed(e)),
+        result => result.map_err(failed),
     }
 }
 
@@ -200,7 +269,8 @@ pub enum RebaseStartResult {
 ///
 /// Returns `not_open` when `path` names no open repository, `invalid_oid` when `base_oid`
 /// will not parse, the git error when the range walk fails, `rebase_has_merge` when the
-/// range holds a merge commit, `rebase_todo_stale` when the todo does not list the range,
+/// range holds a merge commit, `rebase_todo_stale` when the source ref or tip changed
+/// or the todo does not list the range,
 /// `io_error` when the todo file will not write, and `rebase_error` carrying git's own
 /// message when `git` will not run or the rebase fails.
 ///
@@ -209,14 +279,16 @@ pub enum RebaseStartResult {
 /// Panics when the session directory's path is not valid UTF-8.
 pub fn start_interactive_rebase_blocking(
     path: &str,
+    expected_source: &RebaseSource,
     base_oid: Option<&str>,
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
     state_map: &OpenRepos,
 ) -> Result<(crate::state::GraphRead, RebaseStartResult), TrunkError> {
     let stopped_at_a_commit = state_map.hold_for_git(path, |repo| {
-        ensure_todo_lists_the_range(repo, base_oid, todo_items)?;
-        run_interactive_rebase(repo, base_oid, todo_items, session_dir)
+        let source_oid = ensure_rebase_source(repo, expected_source)?;
+        ensure_todo_lists_the_range(repo, source_oid, base_oid, todo_items)?;
+        run_interactive_rebase(repo, expected_source, base_oid, todo_items, session_dir)
     })?;
 
     let source = state_map.read_graph(path)?;
@@ -233,6 +305,7 @@ pub fn start_interactive_rebase_blocking(
 /// Run `git rebase -i` over `todo_items`, answering whether it stopped at a commit.
 fn run_interactive_rebase(
     repo: &git2::Repository,
+    expected_source: &RebaseSource,
     base_oid: Option<&str>,
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
@@ -301,6 +374,14 @@ fn run_interactive_rebase(
         None => args.push("--root"),
     }
 
+    // The Trunk writer gate covers this check through Git's exit. An external
+    // process can still change HEAD before Git reads it from the worktree.
+    if let Err(error) = ensure_rebase_source(repo, expected_source) {
+        if !bindings.is_empty() {
+            let _ = std::fs::remove_dir_all(&msg_dir);
+        }
+        return Err(error);
+    }
     let output = UserGit::in_dir(work_tree)
         .args(&args)
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
@@ -346,12 +427,31 @@ fn undo_unstarted_rebase(work_tree: &std::path::Path, refused: &str) -> Result<(
         })
 }
 
+fn stale_todo() -> TrunkError {
+    TrunkError::new(
+        "rebase_todo_stale",
+        "The branch changed after the rebase editor opened. Open it again to see the current commits.",
+    )
+}
+
+fn ensure_rebase_source(
+    repo: &git2::Repository,
+    expected: &RebaseSource,
+) -> Result<git2::Oid, TrunkError> {
+    let (actual, oid) = read_rebase_source(repo).map_err(|_| stale_todo())?;
+    if &actual != expected {
+        return Err(stale_todo());
+    }
+    Ok(oid)
+}
+
 /// Refuses a range holding a merge, and a todo that is not the rebase range: every commit
 /// in it exactly once, drops included, and nothing else. Git replays whatever the todo
 /// names, so a commit that landed after the listing was built would be dropped without a
 /// word, and a commit named twice or from outside the range would stop the rebase partway.
 fn ensure_todo_lists_the_range(
     repo: &git2::Repository,
+    source: git2::Oid,
     base_oid: Option<&str>,
     todo_items: &[RebaseTodoAction],
 ) -> Result<(), TrunkError> {
@@ -359,7 +459,7 @@ fn ensure_todo_lists_the_range(
         .map(git2::Oid::from_str)
         .transpose()
         .map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
-    let range: HashSet<String> = replayable_range(repo, base)?
+    let range: HashSet<String> = replayable_range(repo, source, base)?
         .iter()
         .map(|commit| commit.id().to_string())
         .collect();
@@ -372,10 +472,7 @@ fn ensure_todo_lists_the_range(
     if lists_each_once && listed.len() == range.len() {
         Ok(())
     } else {
-        Err(TrunkError::new(
-            "rebase_todo_stale",
-            "The branch changed after the rebase editor opened. Open it again to see the current commits.",
-        ))
+        Err(stale_todo())
     }
 }
 
@@ -434,37 +531,12 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
 pub async fn get_rebase_todo(
     activity: crate::activity::Activity,
     path: String,
-    base_oid: String,
-    inclusive: Option<bool>,
+    target: RebasePreviewTarget,
     state: State<'_, RepoState>,
 ) -> Result<RebaseTodo, String> {
     let state_map = state.snapshot();
-    let incl = inclusive.unwrap_or(false);
     activity
-        .spawn_blocking(move || get_rebase_todo_inner(&path, &base_oid, incl, &state_map))
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-        .map_err(|e: TrunkError| e.to_json())
-}
-
-/// # Errors
-///
-/// Returns the inner error as JSON, which is what the frontend parses, or
-/// `spawn_error` when the blocking task cannot be joined.
-///
-/// # Panics
-///
-/// Panics when one of the shared state locks it takes is poisoned.
-#[tauri::command]
-pub async fn get_fork_point(
-    activity: crate::activity::Activity,
-    path: String,
-    branch: String,
-    state: State<'_, RepoState>,
-) -> Result<String, String> {
-    let state_map = state.snapshot();
-    activity
-        .spawn_blocking(move || get_fork_point_inner(&path, &branch, &state_map))
+        .spawn_blocking(move || get_rebase_todo_inner(&path, &target, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e: TrunkError| e.to_json())
@@ -497,6 +569,7 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
 pub async fn start_interactive_rebase<R: Runtime>(
     activity: crate::activity::Activity,
     path: String,
+    source: RebaseSource,
     base_oid: Option<String>,
     todo_items: Vec<RebaseTodoAction>,
     state: State<'_, RepoState>,
@@ -515,6 +588,7 @@ pub async fn start_interactive_rebase<R: Runtime>(
         .rebuild_carrying(path.clone(), move || {
             start_interactive_rebase_blocking(
                 &path_clone,
+                &source,
                 base_oid.as_deref(),
                 &todo_items,
                 &session_dir,

@@ -30,7 +30,11 @@ import { SCHEDULER } from "../lib/scheduler.js";
 import { THUMB_CLASS, trackScrollActivity } from "../lib/scrollbar-activity.js";
 import { resetCache } from "../lib/text-measure.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
-import type { GraphCommit, ReviewTally } from "../lib/types.js";
+import type {
+	GraphCommit,
+	RebasePreviewTarget,
+	ReviewTally,
+} from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
@@ -2783,7 +2787,9 @@ describe("CommitGraph", () => {
 			refs: [SHADOWED],
 		});
 
-		async function mountGraph() {
+		async function mountGraph(
+			onopenrebaseeditor?: (target: RebasePreviewTarget) => void,
+		) {
 			installReads({ commits: [HEAD_COMMIT, BRANCH_COMMIT, REMOTE_COMMIT] });
 			render(CommitGraph, {
 				props: {
@@ -2791,6 +2797,7 @@ describe("CommitGraph", () => {
 					repoPath: "/test/repo",
 					remoteState: createRemoteState(),
 					tabActive: true,
+					onopenrebaseeditor,
 				},
 			});
 			await screen.findAllByTestId("commit-row");
@@ -2844,18 +2851,18 @@ describe("CommitGraph", () => {
 			);
 		});
 
-		it("detects the fork point from the fully-qualified ref", async () => {
-			await mountGraph();
+		it("requests the branch preview with the fully qualified ref", async () => {
+			const previews: RebasePreviewTarget[] = [];
+			await mountGraph((target) => previews.push(target));
 
 			await fireEvent.contextMenu(await findPill("feature"));
 			await flush();
 			await getMenuAction("Interactive Rebase feature...")();
 			await flush();
 
-			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("get_fork_point", {
-				path: "/test/repo",
-				branch: "refs/heads/feature",
-			});
+			expect(previews).toEqual([
+				{ kind: "branch", refName: "refs/heads/feature" },
+			]);
 		});
 	});
 

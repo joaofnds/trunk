@@ -11,6 +11,7 @@ export type SpecStep =
 	| { step: "removeFile"; path: string }
 	| { step: "commit"; message: string; at?: number }
 	| { step: "branch"; name: string }
+	| { step: "tag"; name: string }
 	| { step: "checkout"; name: string }
 	| { step: "merge"; branch: string }
 	| { step: "remote"; name: string }

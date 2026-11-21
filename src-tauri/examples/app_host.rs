@@ -105,6 +105,9 @@ enum SpecStep {
     Branch {
         name: String,
     },
+    Tag {
+        name: String,
+    },
     Checkout {
         name: String,
     },
@@ -316,6 +319,7 @@ fn seed(spec: RepoSpec) -> TestContext {
             } => builder.with_commit_at(&message, secs),
             SpecStep::Commit { message, at: None } => builder.with_commit(&message),
             SpecStep::Branch { name } => builder.with_branch(&name),
+            SpecStep::Tag { name } => builder.with_tag(&name),
             SpecStep::Checkout { name } => builder.checkout(&name),
             SpecStep::Merge { branch } => builder.merge(&branch),
             SpecStep::Remote { name } => builder.with_remote(&name),

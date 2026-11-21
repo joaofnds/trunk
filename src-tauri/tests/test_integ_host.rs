@@ -217,17 +217,25 @@ fn get_rebase_todo_returns_the_wrapper_shape_over_ipc() {
         .with_commit_at("Fourth", 1_700_259_200)
         .build();
     let root = oldest_commit_oid(&ctx);
+    ctx.repo()
+        .reference("refs/heads/base", root.parse().unwrap(), false, "")
+        .unwrap();
     let (_app, webview) = boot(WatcherState::disabled());
     invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
 
     let todo = invoke(
         &webview,
         "get_rebase_todo",
-        json!({ "path": ctx.path(), "baseOid": root, "inclusive": false }),
+        json!({ "path": ctx.path(), "target": { "kind": "branch", "refName": "refs/heads/base" } }),
     )
     .expect("list the rebase todo");
 
     assert_eq!(todo["base_oid"], json!(root));
+    assert_eq!(todo["base_branch"], json!("base"));
+    assert_eq!(
+        todo["source"],
+        json!({ "ref_name": "refs/heads/main", "tip_oid": ctx.repo().head().unwrap().target().unwrap().to_string() }),
+    );
     let summaries: Vec<&str> = todo["items"]
         .as_array()
         .expect("items is an array")

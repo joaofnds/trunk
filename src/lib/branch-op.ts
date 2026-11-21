@@ -60,21 +60,3 @@ export async function rebaseBranch({
 		reportErrorToast(e, "Rebase failed");
 	}
 }
-
-export async function resolveForkPoint({
-	repoPath,
-	branch,
-}: {
-	repoPath: string;
-	branch: string;
-}): Promise<string | null> {
-	try {
-		return await safeInvoke<string>("get_fork_point", {
-			path: repoPath,
-			branch,
-		});
-	} catch (e) {
-		reportErrorToast(e, "Failed to detect fork point");
-		return null;
-	}
-}

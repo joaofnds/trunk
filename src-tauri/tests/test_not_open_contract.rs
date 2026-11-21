@@ -19,7 +19,7 @@ use trunk_lib::commands::commit_actions::{
 };
 use trunk_lib::commands::history::refresh_commit_graph;
 use trunk_lib::commands::interactive_rebase::{
-    get_fork_point_inner, start_interactive_rebase_blocking,
+    RebasePreviewTarget, RebaseSource, get_rebase_todo_inner, start_interactive_rebase_blocking,
 };
 use trunk_lib::commands::operation_state::{
     merge_abort_inner, merge_branch_begin_inner, merge_continue_inner, rebase_abort_inner,
@@ -78,8 +78,8 @@ not_open_contract! {
         |path, state| reset_to_commit_inner(path, "HEAD", "hard", state);
     fast_forward_to_reports_not_open_for_an_unregistered_repo =>
         |path, state| fast_forward_to_inner(path, "HEAD", state, &mut GraphCache::default(), &RefVisibility::default());
-    get_fork_point_reports_not_open_for_an_unregistered_repo =>
-        |path, state| get_fork_point_inner(path, "main", state);
+    get_rebase_todo_reports_not_open_for_an_unregistered_repo =>
+        |path, state| get_rebase_todo_inner(path, &RebasePreviewTarget::Branch { ref_name: "refs/heads/main".into() }, state);
     delete_branch_reports_not_open_for_an_unregistered_repo =>
         |path, state| delete_branch_inner(path, "feature", None, &Deletions::default(), state, &mut GraphCache::default(), &RefVisibility::default());
     restore_branch_reports_not_open_for_an_unregistered_repo =>
@@ -107,7 +107,14 @@ not_open_contract! {
     undo_commit_reports_not_open_for_an_unregistered_repo =>
         |path, state| undo_commit_inner(path, "HEAD", state);
     start_interactive_rebase_reports_not_open_for_an_unregistered_repo =>
-        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state);
+        |path, state| start_interactive_rebase_blocking(
+            path,
+            &RebaseSource { ref_name: "refs/heads/main".into(), tip_oid: git2::Oid::ZERO_SHA1.to_string() },
+            None,
+            &[],
+            Path::new("/tmp"),
+            state,
+        );
 }
 
 #[test]

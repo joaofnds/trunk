@@ -17,7 +17,12 @@ import SidebarRefreshHarness from "../__tests__/helpers/sidebar-refresh-harness.
 import { EVERYTHING_VISIBLE } from "../lib/ref-visibility.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
-import type { BranchInfo, GraphResponse, RefsResponse } from "../lib/types.js";
+import type {
+	BranchInfo,
+	GraphResponse,
+	RebasePreviewTarget,
+	RefsResponse,
+} from "../lib/types.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 
 let host: RepositoryReadHost;
@@ -218,9 +223,11 @@ describe("BranchSidebar actions on colliding remote labels", () => {
 		revision: 1,
 		checked: true,
 	};
+	const previews: RebasePreviewTarget[] = [];
 
 	beforeEach(async () => {
 		navigated.length = 0;
+		previews.length = 0;
 		host.seedResponse("list_refs", {
 			...refs("main"),
 			remote: [branch("standalone"), branch("unknown/standalone", "unknown")],
@@ -232,6 +239,7 @@ describe("BranchSidebar actions on colliding remote labels", () => {
 				repoPath: "/repo",
 				remoteState: createRemoteState(),
 				onrefnavigate: (ref) => navigated.push(ref),
+				onopenrebaseeditor: (target) => previews.push(target),
 			},
 		});
 		await fireEvent.click(await screen.findByText("Remote (2)"));
@@ -259,7 +267,7 @@ describe("BranchSidebar actions on colliding remote labels", () => {
 		});
 	});
 
-	it("resolves the fork point for the slashless ref from its menu", async () => {
+	it("requests the branch preview for the slashless ref from its menu", async () => {
 		const [row] = screen.getAllByRole("button", { name: "standalone" });
 
 		await fireEvent.contextMenu(row);
@@ -268,10 +276,7 @@ describe("BranchSidebar actions on colliding remote labels", () => {
 		);
 		host.contextMenu.choose("Interactive Rebase standalone...");
 
-		expect(host.requests).toContainEqual({
-			cmd: "get_fork_point",
-			args: { path: "/repo", branch: slashless },
-		});
+		expect(previews).toEqual([{ kind: "branch", refName: slashless }]);
 	});
 
 	it.each([

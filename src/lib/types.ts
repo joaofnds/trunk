@@ -459,9 +459,18 @@ export interface RebaseTodoItem {
 // base_oid means the listing starts at the repository root, which rebases
 // from --root.
 export interface RebaseTodo {
+	source: {
+		ref_name: string;
+		tip_oid: string;
+	};
 	base_oid: string | null;
+	base_branch: string | null;
 	items: RebaseTodoItem[];
 }
+
+export type RebasePreviewTarget =
+	| { kind: "commit"; oid: string }
+	| { kind: "branch"; refName: string };
 
 // What an interactive rebase replays its commits onto: the branch that points
 // at the base commit, the commit itself when no branch does, or the root.

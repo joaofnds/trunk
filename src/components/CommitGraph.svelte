@@ -14,11 +14,7 @@ import { listen } from "@tauri-apps/api/event";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import { deleteBranch } from "../lib/branch-delete.js";
-import {
-	mergeBranch,
-	rebaseBranch,
-	resolveForkPoint,
-} from "../lib/branch-op.js";
+import { mergeBranch, rebaseBranch } from "../lib/branch-op.js";
 import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
@@ -112,6 +108,7 @@ import type {
 	GraphCommit,
 	GraphResponse,
 	OverlayRefPill,
+	RebasePreviewTarget,
 	RefLabel,
 	RefType,
 	ReviewTally,
@@ -167,7 +164,7 @@ interface Props {
 	navigationCommitOid?: string | null;
 	/** OIDs of the active compare's picked rows, highlighted like the selection. */
 	compareOids?: ReadonlySet<string>;
-	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
+	onopenrebaseeditor?: (target: RebasePreviewTarget) => void;
 	onopenmessageeditor?: (
 		defaultValue: string,
 		title: string,
@@ -1091,11 +1088,6 @@ function handleRebaseBranch(ontoBranch: string) {
 	return rebaseBranch({ repoPath, ontoBranch });
 }
 
-async function handleInteractiveRebaseBranch(branchName: string) {
-	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
-	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
-}
-
 async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
 	const { Menu, MenuItem, PredefinedMenuItem, Submenu } = await nativeMenu();
@@ -1170,7 +1162,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 				// refuses.
 				enabled: commit.in_head_chain && !commit.is_merge,
 				action: () => {
-					onopenrebaseeditor?.(commit.oid, true);
+					onopenrebaseeditor?.({ kind: "commit", oid: commit.oid });
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -1517,7 +1509,10 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 							await MenuItem.new({
 								text: `Interactive Rebase ${ref.shortName}...`,
 								action: () => {
-									handleInteractiveRebaseBranch(ref.name).catch(() => {});
+									onopenrebaseeditor?.({
+										kind: "branch",
+										refName: ref.name,
+									});
 								},
 							}),
 							await PredefinedMenuItem.new({ item: "Separator" }),
@@ -1573,7 +1568,10 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 							await MenuItem.new({
 								text: `Interactive Rebase ${ref.shortName}...`,
 								action: () => {
-									handleInteractiveRebaseBranch(ref.name).catch(() => {});
+									onopenrebaseeditor?.({
+										kind: "branch",
+										refName: ref.name,
+									});
 								},
 							}),
 						]

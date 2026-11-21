@@ -346,11 +346,11 @@ fn get_fork_point_returns_merge_base() {
         repo.branch("feature", &initial_commit, false).unwrap();
     }
 
-    let result = ctx.get_fork_point("feature").unwrap();
+    let result = ctx.rebase_todo_from_branch("feature").unwrap();
 
     assert_eq!(
-        result,
-        oids[0].to_string(),
+        result.base_oid,
+        Some(oids[0].to_string()),
         "Fork point should be the initial commit (merge-base of feature and HEAD)"
     );
 }
@@ -375,7 +375,7 @@ fn get_fork_point_of_a_branch_with_unrelated_history_says_so() {
         .unwrap();
     }
 
-    let err = ctx.get_fork_point("orphan").unwrap_err();
+    let err = ctx.rebase_todo_from_branch("orphan").unwrap_err();
 
     assert_eq!(err.code, "fork_point_error");
     assert_eq!(
@@ -388,7 +388,7 @@ fn get_fork_point_of_a_branch_with_unrelated_history_says_so() {
 fn get_fork_point_of_a_branch_that_does_not_resolve_is_a_fork_point_error() {
     let (ctx, _) = make_three_commit_ctx();
 
-    let err = ctx.get_fork_point("no-such-branch").unwrap_err();
+    let err = ctx.rebase_todo_from_branch("no-such-branch").unwrap_err();
 
     assert_eq!(err.code, "fork_point_error");
 }
@@ -407,6 +407,51 @@ fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
             .collect::<Vec<_>>(),
         vec!["Second commit", "Third commit"]
     );
+}
+
+#[test]
+fn an_inclusive_todo_prefers_a_local_branch_at_its_resolved_parent() {
+    let (ctx, oids) = make_three_commit_ctx();
+    let repo = ctx.repo();
+    repo.reference("refs/remotes/origin/release", oids[0], false, "")
+        .unwrap();
+    repo.reference("refs/heads/release", oids[0], false, "")
+        .unwrap();
+
+    let todo = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    assert_eq!(todo.base_branch.as_deref(), Some("release"));
+}
+
+#[test]
+fn an_inclusive_todo_names_the_remote_tracking_branch_at_its_resolved_parent() {
+    let (ctx, oids) = make_three_commit_ctx();
+    let repo = ctx.repo();
+    repo.reference_symbolic(
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/base",
+        false,
+        "",
+    )
+    .unwrap();
+    repo.reference("refs/remotes/origin/base", oids[0], false, "")
+        .unwrap();
+
+    let todo = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    assert_eq!(todo.base_branch.as_deref(), Some("origin/base"));
+}
+
+#[test]
+fn an_inclusive_todo_names_a_remote_branch_whose_path_ends_in_head() {
+    let (ctx, oids) = make_three_commit_ctx();
+    let repo = ctx.repo();
+    repo.reference("refs/remotes/origin/release/HEAD", oids[0], false, "")
+        .unwrap();
+
+    let todo = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    assert_eq!(todo.base_branch.as_deref(), Some("origin/release/HEAD"));
 }
 
 #[test]
@@ -774,8 +819,8 @@ fn a_start_after_a_commit_landed_since_the_listing_is_refused() {
     let head_before = head_of_main(&ctx);
 
     let err = ctx
-        .start_interactive_rebase(
-            listing.base_oid.as_deref(),
+        .start_rebase_from_preview(
+            &listing,
             &[todo(oid_of(&ctx, "B"), RebaseAction::Pick, None)],
         )
         .expect_err("a todo that no longer lists the branch must not drop D");
@@ -981,10 +1026,7 @@ mod when_another_writer_runs_meanwhile {
             .act_while_another_writer(
                 |_| (),
                 |repo, ()| commit_what_is_staged(repo),
-                |ctx| {
-                    ctx.start_interactive_rebase(listing.base_oid.as_deref(), &items)
-                        .map(drop)
-                },
+                |ctx| ctx.start_rebase_from_preview(&listing, &items).map(drop),
             )
             .expect_err("a todo that no longer lists the branch dropped the commit made meanwhile");
 

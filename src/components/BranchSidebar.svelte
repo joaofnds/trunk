@@ -3,11 +3,7 @@ import Archive from "@lucide/svelte/icons/archive";
 import Search from "@lucide/svelte/icons/search";
 import { onDestroy, untrack } from "svelte";
 import { deleteBranch } from "../lib/branch-delete.js";
-import {
-	mergeBranch,
-	rebaseBranch,
-	resolveForkPoint,
-} from "../lib/branch-op.js";
+import { mergeBranch, rebaseBranch } from "../lib/branch-op.js";
 import {
 	CHECKOUT_CONFLICT_MESSAGE,
 	checkedOutMessage,
@@ -59,6 +55,7 @@ import { showToast } from "../lib/toast.svelte.js";
 import type {
 	BranchInfo,
 	GraphResponse,
+	RebasePreviewTarget,
 	RefLabel,
 	RefsResponse,
 	StashEntry,
@@ -96,7 +93,7 @@ interface Props {
 	refreshSignal?: number;
 	refreshImmediately?: boolean;
 	workingTreeDirty?: boolean;
-	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
+	onopenrebaseeditor?: (target: RebasePreviewTarget) => void;
 	onopenmessageeditor?: (
 		defaultValue: string,
 		title: string,
@@ -684,11 +681,6 @@ function handleRebaseBranch(ontoBranch: string) {
 	return rebaseBranch({ repoPath, ontoBranch, onDone: refreshAfterAction });
 }
 
-async function handleInteractiveRebase(branchName: string) {
-	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
-	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
-}
-
 async function showBranchContextMenu(
 	_e: MouseEvent,
 	branchName: string,
@@ -722,7 +714,10 @@ async function showBranchContextMenu(
 						await MenuItem.new({
 							text: `Interactive Rebase ${branchName}...`,
 							action: () => {
-								handleInteractiveRebase(branchName).catch(() => {});
+								onopenrebaseeditor?.({
+									kind: "branch",
+									refName: localRefName(branchName),
+								});
 							},
 						}),
 					]
@@ -785,7 +780,7 @@ async function showRemoteContextMenu(name: string) {
 						await MenuItem.new({
 							text: `Interactive Rebase ${name}...`,
 							action: () => {
-								handleInteractiveRebase(refName).catch(() => {});
+								onopenrebaseeditor?.({ kind: "branch", refName });
 							},
 						}),
 						await PredefinedMenuItem.new({ item: "Separator" }),
