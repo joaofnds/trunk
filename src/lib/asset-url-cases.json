@@ -1,0 +1,37 @@
+[
+	{
+		"repo": "/r",
+		"rev": { "type": "commit", "oid": "abc123" },
+		"path": "img/a b+c.png",
+		"version": 3,
+		"url": "trunk-asset://asset/?repo=%2Fr&rev=commit-abc123&path=img%2Fa%20b%2Bc.png"
+	},
+	{
+		"repo": "/Users/me/my repo",
+		"rev": { "type": "workingTree" },
+		"path": "docs/a b/c.png",
+		"version": 7,
+		"url": "trunk-asset://asset/?repo=%2FUsers%2Fme%2Fmy%20repo&rev=working-tree&path=docs%2Fa%20b%2Fc.png&v=7"
+	},
+	{
+		"repo": "/r",
+		"rev": { "type": "index" },
+		"path": "a.png",
+		"version": "f00d",
+		"url": "trunk-asset://asset/?repo=%2Fr&rev=index&path=a.png&v=f00d"
+	},
+	{
+		"repo": "/r",
+		"rev": { "type": "head" },
+		"path": "a.png",
+		"version": "c0ffee",
+		"url": "trunk-asset://asset/?repo=%2Fr&rev=head&path=a.png&v=c0ffee"
+	},
+	{
+		"repo": "/r",
+		"rev": { "type": "empty" },
+		"path": "a.png",
+		"version": 1,
+		"url": "trunk-asset://asset/?repo=%2Fr&rev=empty&path=a.png"
+	}
+]

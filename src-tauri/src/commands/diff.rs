@@ -217,18 +217,27 @@ fn file_diff_of(delta: &git2::DiffDelta<'_>) -> FileDiff {
 /// libgit2 fills a delta's sizes, and a working-tree side's id, only once it
 /// has read the content, so a delta read straight from the diff's list reports
 /// 0 bytes for a file that is not empty.
-fn read_sides(file_diff: &mut FileDiff, delta: &git2::DiffDelta<'_>) {
-    file_diff.old_size = size_of(&delta.old_file());
-    file_diff.new_size = size_of(&delta.new_file());
-    file_diff.old_id = id_of(&delta.old_file());
-    file_diff.new_id = id_of(&delta.new_file());
+fn read_sides(file_diff: &mut FileDiff, delta: &git2::DiffDelta<'_>, repo: &git2::Repository) {
+    file_diff.old_size = side_size(&delta.old_file(), repo);
+    file_diff.new_size = side_size(&delta.new_file(), repo);
+    file_diff.old_id = side_id(&delta.old_file());
+    file_diff.new_id = side_id(&delta.new_file());
 }
 
-fn size_of(file: &git2::DiffFile<'_>) -> Option<u64> {
-    file.exists().then(|| file.size())
+/// A file the attributes mark binary is never loaded, so libgit2 leaves its
+/// size at 0 on a side read from a tree. The object database knows it.
+fn side_size(file: &git2::DiffFile<'_>, repo: &git2::Repository) -> Option<u64> {
+    if !file.exists() {
+        return None;
+    }
+    if file.size() > 0 || file.id().is_zero() {
+        return Some(file.size());
+    }
+    let stored = repo.odb().and_then(|odb| odb.read_header(file.id()));
+    Some(stored.map_or(0, |(length, _)| length as u64))
 }
 
-fn id_of(file: &git2::DiffFile<'_>) -> Option<String> {
+fn side_id(file: &git2::DiffFile<'_>) -> Option<String> {
     (file.exists() && !file.id().is_zero()).then(|| file.id().to_string())
 }
 
@@ -350,7 +359,7 @@ fn diff_one_file(
         // sets it once the patch has loaded the content, which only now happened.
         let delta = patch.delta();
         file_diff.is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-        read_sides(&mut file_diff, &delta);
+        read_sides(&mut file_diff, &delta, repo);
         file_diff.hunks = hunks_of(&patch)?;
     }
 
@@ -449,7 +458,7 @@ fn walk_diff(
     diff.foreach(
         &mut |delta, _progress| {
             let mut file_diff = file_diff_of(&delta);
-            read_sides(&mut file_diff, &delta);
+            read_sides(&mut file_diff, &delta, repo);
             delta_sides.borrow_mut().push(delta_sides_of(&delta));
             file_diffs.borrow_mut().push(file_diff);
             true
@@ -798,28 +807,6 @@ pub fn diff_staged_inner(
     let repo = state_map.open(path)?;
     let diff = staged_view_diff(&repo, options)?;
     diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
-}
-
-/// A commit's full diff against its first parent.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
-/// the commit is missing or the diff will not build.
-pub fn diff_commit_inner(
-    path: &str,
-    oid: &str,
-    state_map: &OpenRepos,
-    options: &DiffRequestOptions,
-) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = state_map.open(path)?;
-    let oid =
-        git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
-    let commit = repo.find_commit(oid)?;
-    let mut opts = new_diff_options();
-    apply_request_options(&mut opts, options);
-    let diff = commit_diff(&repo, &commit, &mut opts)?;
-    walk_diff(&diff, &repo, NewSideSource::Odb)
 }
 
 /// The files a commit touched, metadata only.
@@ -1347,7 +1334,7 @@ impl CurrentSourceCache {
         file_path: &str,
     ) -> Result<Arc<FileDiff>, TrunkError> {
         let bytes = match blob_reader::read_tracked_working_tree_file(repo, file_path)? {
-            blob_reader::WorkingTreeFile::Binary => {
+            blob_reader::WorkingTreeFile::Binary { size } => {
                 let previous = self
                     .0
                     .lock()
@@ -1355,7 +1342,7 @@ impl CurrentSourceCache {
                     .take();
                 drop(previous);
 
-                return Ok(Arc::new(binary_current_file_diff(file_path)));
+                return Ok(Arc::new(binary_current_file_diff(file_path, size)));
             }
             blob_reader::WorkingTreeFile::Text(bytes) => bytes,
         };
@@ -1414,21 +1401,23 @@ impl CurrentSourceCache {
 /// returned as `io_error`.
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
     let bytes = match blob_reader::read_tracked_working_tree_file(repo, file_path)? {
-        blob_reader::WorkingTreeFile::Binary => return Ok(binary_current_file_diff(file_path)),
+        blob_reader::WorkingTreeFile::Binary { size } => {
+            return Ok(binary_current_file_diff(file_path, size));
+        }
         blob_reader::WorkingTreeFile::Text(bytes) => bytes,
     };
 
     Ok(build_current_file_diff(file_path, bytes))
 }
 
-fn binary_current_file_diff(file_path: &str) -> FileDiff {
+fn binary_current_file_diff(file_path: &str, size: u64) -> FileDiff {
     FileDiff {
         path: file_path.to_string(),
         old_path: None,
         status: DiffStatus::Unknown,
         is_binary: true,
         old_size: None,
-        new_size: None,
+        new_size: Some(size),
         old_id: None,
         new_id: None,
         hunks: vec![],
@@ -1796,6 +1785,21 @@ mod current_file_tests {
 
         assert!(fd.is_binary);
         assert_eq!(fd.hunks, [] as [crate::types::DiffHunk; 0]);
+    }
+
+    #[test]
+    fn a_binary_file_names_its_size_on_disk() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join("blob.bin"), [0x00, 0x01, 0x02]).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("blob.bin")).unwrap();
+        index.write().unwrap();
+        drop(index);
+
+        let fd = current_file_diff(&repo, "blob.bin").unwrap();
+
+        assert_eq!((fd.old_size, fd.new_size), (None, Some(3)));
     }
 
     fn assert_refused(file_path: &str) {

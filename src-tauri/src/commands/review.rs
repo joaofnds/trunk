@@ -591,7 +591,7 @@ pub fn submit_current_file_thread_inner(
     let not_text = || TrunkError::new("not_found", format!("{file_path} is not text"));
     let text_of_file =
         match trunk_git::blob_reader::read_tracked_working_tree_file(&repo, file_path)? {
-            WorkingTreeFile::Binary => return Err(not_text()),
+            WorkingTreeFile::Binary { .. } => return Err(not_text()),
             WorkingTreeFile::Text(bytes) => String::from_utf8(bytes).map_err(|_| not_text())?,
         };
 
@@ -1993,7 +1993,7 @@ pub fn recompute_staleness(
         )
         .ok()?
         {
-            WorkingTreeFile::Binary => None,
+            WorkingTreeFile::Binary { .. } => None,
             WorkingTreeFile::Text(bytes) => String::from_utf8(bytes).ok(),
         };
 

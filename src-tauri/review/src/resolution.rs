@@ -104,7 +104,7 @@ fn read_pinned_file(
     let file = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
         .map_err(|_| OrphanReason::FileGone)?;
     match file {
-        WorkingTreeFile::Binary => Err(OrphanReason::FileGone),
+        WorkingTreeFile::Binary { .. } => Err(OrphanReason::FileGone),
         WorkingTreeFile::Text(bytes) => {
             String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)
         }

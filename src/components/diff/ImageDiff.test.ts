@@ -128,5 +128,17 @@ describe("ImageDiff", () => {
 			);
 			expect(figure("After")).toHaveTextContent("3.4 KB");
 		});
+
+		it("draws the image again once the file changes", async () => {
+			const view = show(image(), { type: "workingTree" });
+			await fireEvent.error(screen.getByRole("img", { name: "After" }));
+
+			await view.rerender({ version: 5 });
+
+			expect(screen.getByRole("img", { name: "After" })).toBeVisible();
+			expect(figure("After")).not.toHaveTextContent(
+				"This image cannot be previewed",
+			);
+		});
 	});
 });

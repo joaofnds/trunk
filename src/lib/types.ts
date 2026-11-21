@@ -307,7 +307,8 @@ export interface FileDiff {
 	 *  that side, and on both in a commit's file list, which reads no content. */
 	old_size: number | null;
 	new_size: number | null;
-	/** The git blob id of the content on each side, null where the size is. */
+	/** The git blob id of the content on each side. Null where the size is, and
+	 *  on a working-tree side git has not hashed. */
 	old_id: string | null;
 	new_id: string | null;
 	hunks: DiffHunk[];

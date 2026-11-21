@@ -266,7 +266,13 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     #[cfg(not(feature = "drive"))]
     let builder = builder.plugin(tauri_plugin_window_state::Builder::new().build());
     let builder = builder
-        .register_uri_scheme_protocol("trunk-asset", serve_trunk_asset)
+        .register_asynchronous_uri_scheme_protocol("trunk-asset", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let uri = request.uri().to_string();
+            tauri::async_runtime::spawn_blocking(move || {
+                responder.respond(serve_trunk_asset(&app, &uri));
+            });
+        })
         // Live resize is handled flicker-free by the NSWindowDidResize observer
         // (see macos_traffic_lights); this covers the other title-bar relayouts:
         // appearance change and monitor-to-monitor scale changes.
@@ -445,14 +451,14 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
     ])
 }
 
-/// Serve a `trunk-asset://` request from the repository the URL names.
+/// Serve a `trunk-asset://` request from the repository the URL names. The
+/// webview asks for each one on the main thread, so the read runs on the
+/// blocking pool and a large image never holds up the interface.
 fn serve_trunk_asset<R: tauri::Runtime>(
-    ctx: tauri::UriSchemeContext<'_, R>,
-    request: tauri::http::Request<Vec<u8>>,
+    app: &tauri::AppHandle<R>,
+    uri: &str,
 ) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
-    let uri = request.uri().to_string();
-
-    match commands::markdown::resolve_trunk_asset(ctx.app_handle(), &uri) {
+    match commands::markdown::resolve_trunk_asset(app, uri) {
         Ok((bytes, mime)) => tauri::http::Response::builder()
             .status(tauri::http::StatusCode::OK)
             .header(tauri::http::header::CONTENT_TYPE, mime)

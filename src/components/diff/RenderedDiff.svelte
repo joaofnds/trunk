@@ -5,12 +5,8 @@ import { createCoalescedTask } from "../../lib/coalesced-task.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
-import {
-	afterRev,
-	beforeRev,
-	type DiffRow,
-	renderMarkdownDiff,
-} from "../../lib/markdown.js";
+import { type DiffRow, renderMarkdownDiff } from "../../lib/markdown.js";
+import { afterRev, beforeRev } from "../../lib/rev-spec.js";
 import { getScheduler } from "../../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type { CommitDetail } from "../../lib/types.js";

@@ -8,7 +8,8 @@ import {
 	diffHoldsComposer,
 	type ReadingLine,
 } from "../../lib/diff-rows.js";
-import { afterRev, beforeRev, isMarkdownPath } from "../../lib/markdown.js";
+import { isMarkdownPath } from "../../lib/markdown.js";
+import { afterRev, beforeRev } from "../../lib/rev-spec.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { filterThreads } from "../../lib/review-filter.js";
 import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
@@ -248,6 +249,12 @@ $effect.pre(() => {
 	});
 });
 
+const imageBefore = $derived(
+	diffKind === "current_file"
+		? null
+		: beforeRev(diffKind, commitDetail?.parent_oids[0] ?? null, compareBaseOid),
+);
+
 const startAt = $derived(loading || payloadStale ? null : keptLine);
 
 // The selected file's threads, drawn under the no-changes note since no line
@@ -330,13 +337,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		<ImageDiff
 			{repoPath}
 			file={selectedFileDiff}
-			before={diffKind === "current_file"
-				? null
-				: beforeRev(
-						diffKind,
-						commitDetail?.parent_oids[0] ?? null,
-						compareBaseOid,
-					)}
+			before={imageBefore}
 			after={afterRev(diffKind, commitOid)}
 			version={refreshToken}
 		/>

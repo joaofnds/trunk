@@ -1,27 +1,18 @@
-import type { RevSpec } from "./markdown.js";
+import IMAGE_TYPES from "./image-types.json";
+import type { RevSpec } from "./rev-spec.js";
 import type { FileDiff } from "./types.js";
-
-// The extensions the asset protocol serves with an image type. Any other file
-// arrives as application/octet-stream, which nosniff keeps the webview from
-// drawing.
-const IMAGE_EXTENSIONS = new Set([
-	"png",
-	"jpg",
-	"jpeg",
-	"gif",
-	"svg",
-	"webp",
-	"avif",
-	"bmp",
-	"ico",
-]);
 
 const SIZE_UNITS = ["KB", "MB", "GB", "TB"];
 
+/**
+ * Whether the webview can draw the file. The asset protocol serves only the
+ * extensions in the shared table with an image type, and nosniff keeps the
+ * webview from drawing anything it serves as octet-stream.
+ */
 export function isImagePath(path: string): boolean {
 	const dot = path.lastIndexOf(".");
 	if (dot === -1) return false;
-	return IMAGE_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+	return Object.hasOwn(IMAGE_TYPES, path.slice(dot + 1).toLowerCase());
 }
 
 /** A size in bytes the way Finder writes one: decimal units, three digits. */
@@ -38,15 +29,18 @@ export function formatSize(bytes: number): string {
 }
 
 export function binarySummary(
-	file: Pick<FileDiff, "old_size" | "new_size">,
+	file: Pick<FileDiff, "status" | "old_size" | "new_size">,
 ): string {
-	const { old_size: before, new_size: after } = file;
+	const { status, old_size: before, new_size: after } = file;
 
+	if ((status === "Added" || status === "Untracked") && after !== null)
+		return `Binary file added, ${formatSize(after)}`;
+	if (status === "Deleted" && before !== null)
+		return `Binary file deleted, ${formatSize(before)}`;
 	if (before !== null && after !== null)
 		return `Binary file, ${formatSize(before)} → ${formatSize(after)}`;
-	if (after !== null) return `Binary file added, ${formatSize(after)}`;
-	if (before !== null) return `Binary file deleted, ${formatSize(before)}`;
-	return "Binary file";
+	const known = after ?? before;
+	return known === null ? "Binary file" : `Binary file, ${formatSize(known)}`;
 }
 
 function revToken(rev: RevSpec): string {

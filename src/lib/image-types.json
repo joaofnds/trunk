@@ -1,0 +1,15 @@
+{
+	"png": "image/png",
+	"jpg": "image/jpeg",
+	"jpeg": "image/jpeg",
+	"gif": "image/gif",
+	"svg": "image/svg+xml",
+	"webp": "image/webp",
+	"avif": "image/avif",
+	"bmp": "image/bmp",
+	"ico": "image/x-icon",
+	"tif": "image/tiff",
+	"tiff": "image/tiff",
+	"heic": "image/heic",
+	"heif": "image/heif"
+}

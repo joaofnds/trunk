@@ -379,19 +379,29 @@ describe("DiffViewer on a binary image", () => {
 		},
 	);
 
-	it("shows an opened image once, as it is on disk", () => {
+	it("shows an opened image once, as it is on disk, with its size", () => {
+		const opened: FileDiff = {
+			...logo,
+			status: "Unknown",
+			old_size: null,
+			new_size: 3400,
+		};
+
 		render(DiffViewer, {
 			props: {
 				...baseProps,
 				diffKind: "current_file",
-				selectedPath: logo.path,
-				fileDiffs: [logo],
+				selectedPath: opened.path,
+				fileDiffs: [opened],
 			},
 		});
 
 		expect(
 			screen.getAllByRole("img").map((img) => img.getAttribute("alt")),
 		).toEqual(["Current"]);
+		expect(screen.getByRole("figure", { name: /^Current/ })).toHaveTextContent(
+			"3.4 KB",
+		);
 	});
 
 	it("keeps the binary row for a binary file that is not an image", () => {

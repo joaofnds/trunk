@@ -214,6 +214,31 @@ describe("DiffToolbar toggles", () => {
 		expect(screen.getByRole("button", { name: "Discard File" })).toBeEnabled();
 	});
 
+	it.each([
+		["unstaged", "Stage File"],
+		["staged", "Unstage File"],
+	] as const)(
+		"offers %s staging of a file it shows no lines for, whatever the whitespace setting",
+		(diffKind, name) => {
+			render(DiffToolbar, {
+				props: {
+					...baseProps,
+					selectedPath: "assets/logo.png",
+					diffKind,
+					ignoreWhitespace: true,
+					showsLines: false,
+				},
+			});
+
+			const button = screen.getByRole("button", { name });
+			expect(button).toBeEnabled();
+			expect(button).not.toHaveAttribute(
+				"title",
+				"Staging is disabled while whitespace changes are ignored",
+			);
+		},
+	);
+
 	it("closes the pane from a labelled control", async () => {
 		let closes = 0;
 		render(DiffToolbar, {

@@ -116,7 +116,7 @@ pub fn get_merge_sides_inner(
     let theirs = text(repo.find_blob(their.id)?.content().to_vec())?;
     let working = match read_working_file(&repo, file_path)? {
         WorkingTreeFile::Text(bytes) => text(bytes)?,
-        WorkingTreeFile::Binary => return Err(binary()),
+        WorkingTreeFile::Binary { .. } => return Err(binary()),
     };
     let sides = Sides {
         ours: &ours,
@@ -284,7 +284,7 @@ pub fn conflict_marker_files_inner(
     for file_path in file_paths {
         let content = match read_working_file(&repo, file_path) {
             Ok(WorkingTreeFile::Text(content)) => content,
-            Ok(WorkingTreeFile::Binary) => continue,
+            Ok(WorkingTreeFile::Binary { .. }) => continue,
             Err(error) if error.code == "missing_file" => continue,
             Err(error) => return Err(error),
         };

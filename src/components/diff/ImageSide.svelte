@@ -11,16 +11,16 @@ interface Props {
 let { label, url, size }: Props = $props();
 
 type Drawn =
-	| { url: string; width: number; height: number }
-	| { url: string; failed: true };
+	| { kind: "measured"; url: string; width: number; height: number }
+	| { kind: "failed"; url: string };
 
 let drawn = $state<Drawn | null>(null);
 
 const current = $derived(drawn?.url === url ? drawn : null);
-const failed = $derived(current !== null && "failed" in current);
+const failed = $derived(current?.kind === "failed");
 const details = $derived(
 	[
-		current && "width" in current
+		current?.kind === "measured"
 			? `${current.width} × ${current.height} pixels`
 			: null,
 		size === null ? null : formatSize(size),
@@ -35,13 +35,14 @@ function measures(source: string) {
 	return (image: HTMLImageElement) => {
 		const loaded = () => {
 			drawn = {
+				kind: "measured",
 				url: source,
 				width: image.naturalWidth,
 				height: image.naturalHeight,
 			};
 		};
 		const broken = () => {
-			drawn = { url: source, failed: true };
+			drawn = { kind: "failed", url: source };
 		};
 		image.addEventListener("load", loaded);
 		image.addEventListener("error", broken);

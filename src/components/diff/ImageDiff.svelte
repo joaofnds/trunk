@@ -1,6 +1,6 @@
 <script lang="ts">
 import { assetUrl } from "../../lib/binary-file.js";
-import type { RevSpec } from "../../lib/markdown.js";
+import type { RevSpec } from "../../lib/rev-spec.js";
 import type { FileDiff } from "../../lib/types.js";
 import ImageSide from "./ImageSide.svelte";
 
@@ -16,20 +16,20 @@ interface Props {
 
 let { repoPath, file, before, after, version }: Props = $props();
 
-const hasBefore = $derived(
-	before !== null && file.status !== "Added" && file.status !== "Untracked",
+const beforeSide = $derived(
+	file.status === "Added" || file.status === "Untracked" ? null : before,
 );
 const hasAfter = $derived(file.status !== "Deleted");
 </script>
 
 <div class="h-full overflow-auto p-4">
-	<div class="grid gap-4" class:grid-cols-2={hasBefore && hasAfter}>
-		{#if before !== null && hasBefore}
+	<div class="grid gap-4" class:grid-cols-2={beforeSide !== null && hasAfter}>
+		{#if beforeSide !== null}
 			<ImageSide
 				label="Before"
 				url={assetUrl({
 					repo: repoPath,
-					rev: before,
+					rev: beforeSide,
 					path: file.old_path ?? file.path,
 					version: file.old_id ?? version,
 				})}

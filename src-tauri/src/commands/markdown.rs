@@ -3040,23 +3040,19 @@ fn pct_encode(s: &str) -> String {
     out
 }
 
+/// The extensions the webview draws as images, shared with the frontend, which
+/// offers an image view only for these.
+static IMAGE_TYPES: std::sync::LazyLock<HashMap<String, String>> = std::sync::LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../../src/lib/image-types.json"))
+        .expect("the image type table is a JSON object of strings")
+});
+
 fn mime_for_ext(path: &str) -> &'static str {
-    match Path::new(path)
+    Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("svg") => "image/svg+xml",
-        Some("webp") => "image/webp",
-        Some("avif") => "image/avif",
-        Some("bmp") => "image/bmp",
-        Some("ico") => "image/x-icon",
-        _ => "application/octet-stream",
-    }
+        .and_then(|ext| IMAGE_TYPES.get(&ext.to_ascii_lowercase()))
+        .map_or("application/octet-stream", String::as_str)
 }
 
 /// Decode a `trunk-asset://asset/?repo=&rev=&path=` URL into its parts.
@@ -7088,15 +7084,24 @@ mod tests {
     }
 
     #[test]
-    fn parse_asset_uri_reads_the_url_an_image_diff_asks_for() {
-        let uri = "trunk-asset://asset/?repo=%2Fr&rev=working-tree&path=img%2Fa%20b%2Bc.png&v=7";
+    fn parse_asset_uri_reads_every_url_the_frontend_writes() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../../src/lib/asset-url-cases.json")).unwrap();
 
-        let (repo, rev, path) = parse_asset_uri(uri).unwrap();
+        for case in cases {
+            let expected: RevSpec = serde_json::from_value(case["rev"].clone()).unwrap();
 
-        assert_eq!(
-            (repo.as_str(), rev, path.as_str()),
-            ("/r", RevSpec::WorkingTree, "img/a b+c.png")
-        );
+            let (repo, rev, path) = parse_asset_uri(case["url"].as_str().unwrap()).unwrap();
+
+            assert_eq!(
+                (repo.as_str(), rev, path.as_str()),
+                (
+                    case["repo"].as_str().unwrap(),
+                    expected,
+                    case["path"].as_str().unwrap()
+                ),
+            );
+        }
     }
 
     #[test]
@@ -7117,6 +7122,8 @@ mod tests {
         assert_eq!(mime_for_ext("a/b.png"), "image/png");
         assert_eq!(mime_for_ext("x.JPG"), "image/jpeg");
         assert_eq!(mime_for_ext("s.svg"), "image/svg+xml");
+        assert_eq!(mime_for_ext("scan.TIFF"), "image/tiff");
+        assert_eq!(mime_for_ext("photo.heic"), "image/heic");
         assert_eq!(mime_for_ext("weird.xyz"), "application/octet-stream");
     }
 

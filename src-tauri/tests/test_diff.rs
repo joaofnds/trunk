@@ -148,7 +148,7 @@ fn staged_file_on_unborn_head_produces_diff() {
     );
 }
 
-// -- diff_commit tests --
+// -- commit diff tests --
 
 #[test]
 fn diff_commit_succeeds_for_head() {
@@ -163,7 +163,7 @@ fn diff_commit_succeeds_for_head() {
     let head_oid = repo.head().unwrap().target().unwrap().to_string();
     drop(repo);
 
-    let result = ctx.diff_commit(&head_oid);
+    let result = ctx.diff_commit_file(&head_oid, "README.md");
     assert!(result.is_ok(), "expected Ok, got: {result:?}");
 }
 
@@ -185,7 +185,9 @@ fn diff_commit_root_commit_shows_added_files() {
     let root_oid_str = root_oid.to_string();
     drop(repo);
 
-    let file_diffs = ctx.diff_commit(&root_oid_str).expect("diff_commit failed");
+    let file_diffs = ctx
+        .diff_commit_file(&root_oid_str, "README.md")
+        .expect("diff_commit_file failed");
     assert!(
         !file_diffs.is_empty(),
         "expected non-empty file_diffs for root commit"
@@ -943,14 +945,18 @@ fn diff_commit_respects_context_lines() {
         context_lines: 1,
         ..Default::default()
     };
-    let result_1 = ctx.diff_commit_with_options(&head_oid, &opts_1).unwrap();
+    let result_1 = ctx
+        .diff_commit_file_with_options(&head_oid, "big.txt", &opts_1)
+        .unwrap();
     let lines_1: usize = result_1[0].hunks.iter().map(|h| h.lines.len()).sum();
 
     let opts_5 = DiffRequestOptions {
         context_lines: 5,
         ..Default::default()
     };
-    let result_5 = ctx.diff_commit_with_options(&head_oid, &opts_5).unwrap();
+    let result_5 = ctx
+        .diff_commit_file_with_options(&head_oid, "big.txt", &opts_5)
+        .unwrap();
     let lines_5: usize = result_5[0].hunks.iter().map(|h| h.lines.len()).sum();
 
     assert!(
@@ -989,7 +995,9 @@ fn commit_diff_highlights_a_hunk_starting_mid_string_from_real_file_content() {
     let head_oid = repo.head().unwrap().target().unwrap().to_string();
     drop(repo);
 
-    let file_diffs = ctx.diff_commit(&head_oid).expect("diff_commit failed");
+    let file_diffs = ctx
+        .diff_commit_file(&head_oid, "sql.rs")
+        .expect("diff_commit_file failed");
     assert!(!file_diffs.is_empty(), "expected file diffs");
     let hunk = &file_diffs[0].hunks[0];
 
@@ -1605,10 +1613,20 @@ fn a_modified_binary_file_reports_its_size_before_and_after() {
 }
 
 #[test]
-fn every_binary_file_of_a_whole_commit_reports_its_sizes() {
-    let (ctx, head) = binary_change();
+fn an_image_the_attributes_mark_binary_reports_its_size_before_and_after() {
+    let ctx = TestContext::builder()
+        .with_file(".gitattributes", "*.png binary\n")
+        .with_binary_file("logo.png", &[0x89, b'P', b'N', b'G', 0x00, 0x01])
+        .with_commit("Add the logo")
+        .with_binary_file(
+            "logo.png",
+            &[0x89, b'P', b'N', b'G', 0x00, 0x02, 0x03, 0x04],
+        )
+        .with_commit("Change the logo")
+        .build();
+    let head = ctx.repo().head().unwrap().target().unwrap().to_string();
 
-    let diffs = ctx.diff_commit(&head).unwrap();
+    let diffs = ctx.diff_commit_file(&head, "logo.png").unwrap();
 
     assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(6), Some(8)));
 }
@@ -1700,6 +1718,29 @@ fn an_unstaged_binary_file_names_the_content_on_each_side() {
             Some(in_index.to_string().as_str()),
             Some(on_disk_id.to_string().as_str())
         ),
+    );
+}
+
+#[test]
+fn an_untracked_binary_file_names_its_size_and_content() {
+    let (ctx, _) = binary_change();
+    let on_disk = [0x89, b'P', 0x00, 0x03, 0x04];
+    std::fs::write(ctx.repo_path().join("icon.png"), on_disk).unwrap();
+    let on_disk_id = git2::Oid::hash_object(git2::ObjectType::Blob, &on_disk).unwrap();
+
+    let diffs = ctx.diff_unstaged("icon.png").unwrap();
+
+    assert_eq!(
+        (
+            diffs[0].old_size,
+            diffs[0].new_size,
+            diffs[0].old_id.as_deref()
+        ),
+        (None, Some(5), None),
+    );
+    assert_eq!(
+        diffs[0].new_id.as_deref(),
+        Some(on_disk_id.to_string().as_str())
     );
 }
 

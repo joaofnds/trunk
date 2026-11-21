@@ -63,8 +63,6 @@ interface Props {
 	onclose: () => void;
 	/** Names the view the diff covers, where closing it returns to. */
 	backLabel?: string | null;
-	/** Whether the pane shows lines. A binary file shows none, so the controls
-	 *  that shape lines would do nothing there. */
 	showsLines?: boolean;
 }
 
@@ -123,6 +121,8 @@ const badge = $derived(
 const rename = $derived(
 	selectedPath === null ? null : renamePartsOf(selectedPath, selectedOldPath),
 );
+
+const whitespaceHidesLines = $derived(ignoreWhitespace && showsLines);
 
 const commentCount = $derived(
 	Object.values(commentTally ?? {}).reduce((sum, n) => sum + n, 0),
@@ -346,8 +346,8 @@ const compact = $derived(
 			icon={compact}
 			size="sm"
 			variant="success"
-			disabled={hunkOperationInFlight || ignoreWhitespace}
-			title={ignoreWhitespace
+			disabled={hunkOperationInFlight || whitespaceHidesLines}
+			title={whitespaceHidesLines
 				? "Staging is disabled while whitespace changes are ignored"
 				: compact
 					? "Stage File"
@@ -366,8 +366,8 @@ const compact = $derived(
 			icon={compact}
 			size="sm"
 			variant="warning"
-			disabled={hunkOperationInFlight || ignoreWhitespace}
-			title={ignoreWhitespace
+			disabled={hunkOperationInFlight || whitespaceHidesLines}
+			title={whitespaceHidesLines
 				? "Staging is disabled while whitespace changes are ignored"
 				: compact
 					? "Unstage File"

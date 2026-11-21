@@ -38,23 +38,6 @@ impl TestContext {
         diff::diff_staged_inner(self.path(), file_path, self.state_map(), options)
     }
 
-    pub fn diff_commit(&self, oid: &str) -> Result<Vec<FileDiff>, TrunkError> {
-        diff::diff_commit_inner(
-            self.path(),
-            oid,
-            self.state_map(),
-            &DiffRequestOptions::default(),
-        )
-    }
-
-    pub fn diff_commit_with_options(
-        &self,
-        oid: &str,
-        options: &DiffRequestOptions,
-    ) -> Result<Vec<FileDiff>, TrunkError> {
-        diff::diff_commit_inner(self.path(), oid, self.state_map(), options)
-    }
-
     pub fn get_commit_detail(&self, oid: &str) -> Result<CommitDetail, TrunkError> {
         diff::get_commit_detail_inner(self.path(), oid, self.state_map())
     }
@@ -75,6 +58,15 @@ impl TestContext {
             self.state_map(),
             &DiffRequestOptions::default(),
         )
+    }
+
+    pub fn diff_commit_file_with_options(
+        &self,
+        oid: &str,
+        file_path: &str,
+        options: &DiffRequestOptions,
+    ) -> Result<Vec<FileDiff>, TrunkError> {
+        diff::diff_commit_file_inner(self.path(), oid, file_path, self.state_map(), options)
     }
 
     /// Diff with enrichment (syntax + word diff). `diff_unstaged_inner` already

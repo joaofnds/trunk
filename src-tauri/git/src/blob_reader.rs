@@ -254,7 +254,7 @@ pub fn read_tracked_working_tree_file(
 /// first meeting the question the current-file view answers with "binary".
 #[derive(Debug, PartialEq, Eq)]
 pub enum WorkingTreeFile {
-    Binary,
+    Binary { size: u64 },
     Text(Vec<u8>),
 }
 
@@ -264,7 +264,9 @@ const GIT_BINARY_PROBE_BYTES: usize = 8000;
 impl WorkingTreeFile {
     fn classify(bytes: Vec<u8>) -> Self {
         if is_binary(&bytes) {
-            Self::Binary
+            Self::Binary {
+                size: bytes.len() as u64,
+            }
         } else {
             Self::Text(bytes)
         }

@@ -418,40 +418,35 @@ describe("DiffPanel", () => {
 		).toBeInTheDocument();
 	});
 
-	it("offers no line view controls for a binary file it shows on its own", async () => {
-		render(DiffPanel, {
-			props: {
-				...commentingDiff,
-				fileDiffs: [binaryDiff],
-				commitDetail: null,
-				selectedPath: binaryDiff.path,
-				onclose: vi.fn(),
-			},
-		});
-		await flushPrefs();
-		for (const name of [
-			"Show full file",
-			"Side-by-side view",
-			"Ignore whitespace changes",
-			"Show invisible characters",
-			/word wrap/i,
-		])
-			expect(screen.queryByTitle(name)).toBeNull();
-	});
+	describe.each([
+		["Show full file"],
+		["Side-by-side view"],
+		["Ignore whitespace changes"],
+		["Show invisible characters"],
+		[/word wrap/i],
+	])("the %s control", (title) => {
+		function open(file: FileDiff) {
+			render(DiffPanel, {
+				props: {
+					...commentingDiff,
+					fileDiffs: [file],
+					commitDetail: null,
+					selectedPath: file.path,
+					onclose: vi.fn(),
+				},
+			});
+			return flushPrefs();
+		}
 
-	it("keeps the line view controls for a text file", async () => {
-		render(DiffPanel, {
-			props: {
-				...commentingDiff,
-				fileDiffs: [testDiff],
-				commitDetail: null,
-				selectedPath: testDiff.path,
-				onclose: vi.fn(),
-			},
+		it("is not offered for a binary file, which has no lines to view", async () => {
+			await open(binaryDiff);
+			expect(screen.queryByTitle(title)).toBeNull();
 		});
-		await flushPrefs();
-		expect(screen.getByTitle("Side-by-side view")).toBeInTheDocument();
-		expect(screen.getByTitle("Ignore whitespace changes")).toBeInTheDocument();
+
+		it("is offered for a text file", async () => {
+			await open(testDiff);
+			expect(screen.getByTitle(title)).toBeInTheDocument();
+		});
 	});
 
 	it("calls onclose when close button clicked", async () => {
