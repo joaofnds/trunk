@@ -15,7 +15,7 @@ import MessageSquareText from "@lucide/svelte/icons/message-square-text";
 import Plus from "@lucide/svelte/icons/plus";
 import Send from "@lucide/svelte/icons/send";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { tick, untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import { fromAction } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
@@ -127,6 +127,8 @@ interface Props {
 	// Every repo tab keeps its panel mounted, so only the shown tab's panel may
 	// answer the thread keys the window hears.
 	keysActive: boolean;
+	// A diff can cover the panel in the active repository tab.
+	tabActive?: boolean;
 	// False while a diff a jump opened covers the panel, which stays mounted
 	// underneath so it comes back where it was.
 	shown: boolean;
@@ -152,6 +154,7 @@ let {
 	editorSessionForThread,
 	editorNoteSessionFor,
 	keysActive,
+	tabActive = true,
 	shown,
 	reviewList = null,
 	windowFocused,
@@ -404,17 +407,20 @@ const shownThreads = $derived(
 		)
 		.filter(shows),
 );
-let cursor = $state<{ id: string; at: number } | null>(null);
+let cursor = $state<{ reviewId: string | null; id: string; at: number } | null>(
+	null,
+);
 // The thread J and K move between, and D, X, O, R and Enter act on. Once the
 // filter hides it, the thread shown in its place takes over.
 const focusedId = $derived.by(() => {
-	if (cursor === null) return null;
+	if (cursor === null || cursor.reviewId !== shownReviewId) return null;
 	if (shownThreads.some((thread) => thread.id === cursor?.id)) return cursor.id;
 	return shownThreads[Math.min(cursor.at, shownThreads.length - 1)]?.id ?? null;
 });
 
 function placeCursor(thread: Thread) {
 	cursor = {
+		reviewId: shownReviewId,
 		id: thread.id,
 		at: shownThreads.findIndex((shown) => shown.id === thread.id),
 	};
@@ -426,8 +432,8 @@ let bodyEl = $state<HTMLElement>();
 const unreadIds = $derived(
 	new Set(comments.filter(isUnread).map((thread) => thread.id)),
 );
-// Tab in front and panel drawn (keysActive), no diff over it, window focused.
-const showing = $derived(keysActive && shown && windowFocused);
+const panelVisible = $derived(keysActive && shown);
+const showing = $derived(panelVisible && windowFocused);
 const shownThreadIds = $derived(
 	new Set(shownThreads.map((thread) => thread.id)),
 );
@@ -533,9 +539,10 @@ function focusThreadAt(index: number) {
 
 	placeCursor(thread);
 	cursorFromKeys = true;
-	void tick().then(() =>
-		cardOf(thread.id)?.scrollIntoView({ block: "nearest" }),
-	);
+	void tick().then(() => {
+		if (panelVisible && focusedId === thread.id)
+			cardOf(thread.id)?.scrollIntoView({ block: "nearest" });
+	});
 }
 
 // The thread a jump to code leaves from is the one to come back to.
@@ -544,20 +551,59 @@ function jump(thread: Thread) {
 	onJump(thread);
 }
 
-// Showing the panel puts the keys in it, on the cursor's thread where it has
-// one, unless the user is typing in a field.
-let wasShown = false;
-$effect(() => {
-	const appearing = shown && !wasShown;
-	wasShown = shown;
-	if (!appearing || focusInEditable(document.activeElement)) return;
+let focusedEditor: HTMLElement | null = null;
 
-	const id = untrack(() => focusedId);
+function rememberEditor(event: FocusEvent) {
+	const target = event.target;
+	focusedEditor =
+		target instanceof HTMLElement && focusInEditable(target) ? target : null;
+}
+
+function forgetEditor() {
+	// The tab becoming inert blurs its editor before the next tab takes focus.
+	if (tabActive) focusedEditor = null;
+}
+
+// Resuming a tab restores focus without scrolling. The reader may have
+// scrolled away from the cursor before switching tabs.
+let wasShown = false;
+let wasVisible = false;
+$effect(() => {
+	const visible = panelVisible;
+	const appearing = visible && !wasVisible;
+	const resuming = wasShown;
+	wasShown = shown;
+	wasVisible = visible;
+	if (!appearing) return;
+
+	const previousFocus = document.activeElement;
+	let current = true;
 	void tick().then(() => {
-		const card = id === null ? null : cardOf(id);
+		if (!current || !panelVisible) return;
+
+		const focused = document.activeElement;
+		const editor = focusedEditor;
+		const unclaimedFocus = focused === null || focused === document.body;
+		if (!unclaimedFocus) {
+			if (focused !== editor) focusedEditor = null;
+			if (
+				focused !== previousFocus ||
+				!focused.matches('[data-tab-id] > [role="tab"][aria-selected="true"]')
+			)
+				return;
+		} else if (editor?.isConnected && !editor.closest("[hidden], [inert]")) {
+			editor.focus({ preventScroll: true });
+			if (document.activeElement === editor) return;
+		}
+
+		focusedEditor = null;
+		const card = focusedId === null ? null : cardOf(focusedId);
 		(card ?? panelEl)?.focus({ preventScroll: true });
-		card?.scrollIntoView({ block: "nearest" });
+		if (!resuming) card?.scrollIntoView({ block: "nearest" });
 	});
+	return () => {
+		current = false;
+	};
 });
 
 // Enter on a focused button presses that button; it is not a request to open code.
@@ -582,7 +628,7 @@ function keysAreOurs(): boolean {
 function threadKeys(event: KeyboardEvent) {
 	// A key typed into a field is the field's, wherever focus has since gone.
 	const target = event.target instanceof Element ? event.target : null;
-	if (!keysActive || !keysAreOurs() || focusInEditable(target)) return;
+	if (!panelVisible || !keysAreOurs() || focusInEditable(target)) return;
 
 	const chord = keyChord(event);
 	const at = shownThreads.findIndex((thread) => thread.id === focusedId);
@@ -628,6 +674,12 @@ function reportReadFailure(reason: unknown) {
 let loadSeq = 0;
 let fullResolutionPending = false;
 let refsResolutionPending = false;
+let resolutionReviewId: string | null | undefined;
+let resolutionRevision: number | undefined;
+
+onDestroy(() => {
+	loadSeq += 1;
+});
 
 // resolve_threads answers for the shown review, or with an empty list when the
 // repo has none — a normal state, not a failure.
@@ -645,14 +697,23 @@ async function loadResolutions(reviewId: string | null) {
 		resolutions = next;
 	} catch (e) {
 		if (seq !== loadSeq) return;
+		if (!panelVisible) {
+			resolutionRevision = undefined;
+			refsResolutionPending = false;
+			return;
+		}
 
 		reportReadFailure(e);
 	} finally {
 		if (seq === loadSeq) {
 			fullResolutionPending = false;
-			if (refsResolutionPending) {
-				refsResolutionPending = false;
-				void loadRefResolutions(shownReviewId);
+			if (
+				refsResolutionPending &&
+				panelVisible &&
+				reviewId === shownReviewId &&
+				resolutionRevision === reviewComments.revision
+			) {
+				void loadRefResolutions(reviewId);
 			}
 		}
 	}
@@ -664,6 +725,7 @@ async function loadRefResolutions(reviewId: string | null) {
 		return;
 	}
 
+	refsResolutionPending = false;
 	const seq = ++loadSeq;
 	try {
 		const next = await safeInvoke<CommentResolution[]>("resolve_thread_refs", {
@@ -681,6 +743,10 @@ async function loadRefResolutions(reviewId: string | null) {
 		];
 	} catch (e) {
 		if (seq !== loadSeq) return;
+		if (!panelVisible) {
+			refsResolutionPending = true;
+			return;
+		}
 
 		reportReadFailure(e);
 	}
@@ -806,29 +872,38 @@ function commitRename() {
 	if (id) void renameReview(repoPath, id, renameText);
 }
 
-// The owner only refreshes on reviews-changed, but list_session_commits takes
-// its group headers from the graph cache, so a commit or amend changes its
-// answer without emitting one. This panel is destroyed on every jump into a
-// diff, so coming back is the moment to re-ask.
-// untrack: refresh() writes the very state the panel renders, so a plain call
-// would make this effect depend on its own writes and loop. The repo is its
-// only dependency.
+// Refresh the commit groups on first display, once the graph has been opened.
+let refreshedOnEntry = false;
 $effect(() => {
-	void repoPath;
+	if (!panelVisible || refreshedOnEntry) return;
+
+	refreshedOnEntry = true;
 	untrack(() => reviewComments.refresh());
 });
 
-// Ref publications preserve file-pin resolutions; a new review needs a full
-// first resolution even when the last repository publication touched refs.
-let resolutionReviewId: string | null | undefined;
 $effect(() => {
-	void reviewComments.revision;
+	if (!panelVisible) return;
+
+	const revision = reviewComments.revision;
 	const reviewId = shownReviewId;
-	const scope =
-		resolutionReviewId === reviewId ? reviewComments.revisionScope : "full";
+	const sameReview = resolutionReviewId === reviewId;
+	if (sameReview && resolutionRevision === revision) {
+		if (refsResolutionPending) void loadRefResolutions(reviewId);
+		return;
+	}
+
+	// A gap can include a full refresh even if the latest one only touched refs.
+	const refsOnly =
+		sameReview &&
+		resolutionRevision === revision - 1 &&
+		reviewComments.revisionScope === "refs";
 	resolutionReviewId = reviewId;
-	if (scope === "refs") void loadRefResolutions(reviewId);
-	else void loadResolutions(reviewId);
+	resolutionRevision = revision;
+	if (refsOnly) void loadRefResolutions(reviewId);
+	else {
+		refsResolutionPending = false;
+		void loadResolutions(reviewId);
+	}
 });
 
 // Keyed on the failure, NOT on revision: a refused store fails every read and
@@ -838,6 +913,8 @@ $effect(() => {
 // clean refresh — not once per attempt to read through it.
 let toastedError: string | null = null;
 $effect(() => {
+	if (!tabActive) return;
+
 	const failure = reviewComments.lastError;
 	if (failure === toastedError) return;
 	toastedError = failure;
@@ -856,6 +933,8 @@ registerUpdateBlocker(() =>
 	class="flex flex-col flex-1 min-h-0 overflow-hidden bg-surface outline-none"
 	tabindex="-1"
 	bind:this={panelEl}
+	onfocusin={rememberEditor}
+	onfocusout={forgetEditor}
 >
 	<!-- The shown review's name, id and state over its actions, and under them
 	     whether it is the active one, whether the agent can see it, and a tally

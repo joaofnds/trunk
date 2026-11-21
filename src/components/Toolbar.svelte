@@ -87,7 +87,12 @@ const pushing = $derived(
 // session is alive: active only when reviewActive AND the center pane shows the panel.
 const reviewButtonActive = $derived(reviewActive && reviewPanelShowing);
 
-function handleReviewToggle() {
+function handleReviewToggle(
+	event: MouseEvent & { currentTarget: HTMLButtonElement },
+) {
+	if (!reviewButtonActive && document.activeElement === event.currentTarget)
+		event.currentTarget.blur();
+
 	// While a diff is showing inside an active review, the button returns to the
 	// panel rather than ending the session (which is the panel-state / menu action).
 	if (reviewActive && !reviewPanelShowing) {

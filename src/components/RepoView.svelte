@@ -134,6 +134,7 @@ interface Props {
 	remoteState: RemoteState;
 	leftPaneWidth: number;
 	leftPaneCollapsed: boolean;
+	reviewLeftPaneCollapsed?: boolean;
 	rightPaneWidth: number;
 	rightPaneCollapsed: boolean;
 	// Whether this is the active tab. Visited tabs stay mounted, so window-global
@@ -143,8 +144,7 @@ interface Props {
 	// looking at the replies it shows. Required, so a mount that forgets it
 	// fails the type check instead of never marking a reply seen.
 	windowFocused: boolean;
-	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
-	// global event only affects the active tab; App passes the flag down per tab.
+	// Whether the window is in review mode. A tab joins when it becomes active.
 	reviewActive: boolean;
 	// Hides review threads from the graph and the diff. Owned by App.
 	reviewThreadsHidden?: boolean;
@@ -188,6 +188,7 @@ let {
 	remoteState,
 	leftPaneWidth,
 	leftPaneCollapsed,
+	reviewLeftPaneCollapsed = leftPaneCollapsed,
 	rightPaneWidth,
 	rightPaneCollapsed,
 	tabActive,
@@ -233,8 +234,7 @@ const displayedDiffNotification = createCoalescedTask(scheduler, async () => {
 
 // Center-pane Review-mode state (UI-SPEC:133, LOCKED to the center pane). The
 // rune owns rightPaneMode (panel|diff); jumpTo composes the existing
-// selection/scroll machinery via injected deps. App's review-toggle flag syncs
-// into the rune so only the active tab enters review mode.
+// selection/scroll machinery via injected deps.
 const reviewSession = createReviewSession();
 
 // The single reactive comments source for this tab (plan §3). Lifted here so
@@ -281,7 +281,14 @@ const editorNoteSessionFor = (reviewId: string | null, surface: string) =>
 	reviewEditors.note(reviewId, surface);
 
 $effect(() => {
-	reviewSession.setReviewActive(reviewActive);
+	// A tab switch hides its review. Ending review closes it in every tab.
+	const active = reviewActive;
+	if (active && !tabActive) return;
+
+	untrack(() => {
+		if (reviewSession.state.reviewActive !== active)
+			reviewSession.setReviewActive(active);
+	});
 });
 
 // Reconcile repository-tab editor state against the authoritative active-review
@@ -297,18 +304,8 @@ $effect(() => {
 	});
 });
 
-// Report whether this tab's center pane shows the review panel, but only while it's
-// the active review tab (reviewActive folds in tab.id === activeTabId at the App
-// level). Inactive tabs never clobber App's value; on tab switch the newly-active
-// review tab re-reports. The reported value mirrors the render condition below
-// EXACTLY (it reads showDiff), so the Toolbar button and the rendered pane share one
-// source of truth — deselecting a file re-shows the panel and re-lights the button.
 $effect(() => {
-	if (reviewSession.state.reviewActive) {
-		onreviewpanelshowingchange(
-			!(reviewSession.state.rightPaneMode === "diff" && showDiff),
-		);
-	}
+	if (tabActive && reviewMode) onreviewpanelshowingchange(reviewPanelShown);
 });
 
 // The Toolbar Review button, clicked while the center pane shows a diff, asks to
@@ -318,7 +315,7 @@ $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("review-show-panel", () => {
 		if (isUpdateFrozen()) return;
-		if (reviewSession.state.reviewActive) reviewSession.showPanel();
+		if (tabActive && reviewMode) reviewSession.showPanel();
 	}).then((fn) => {
 		unlisten = fn;
 	});
@@ -802,7 +799,7 @@ const sidePanes = createSidePanes({
 	},
 	sidebar: {
 		width: () => leftPaneWidth,
-		collapsed: () => leftPaneCollapsed,
+		collapsed: () => (reviewMode ? reviewLeftPaneCollapsed : leftPaneCollapsed),
 		onwidthchange: (width) => onleftpanewidthchange(width),
 		oncollapsedchange: (collapsed) => onleftpanecollapsedchange(collapsed),
 		store: setLeftPaneWidth,
@@ -820,6 +817,9 @@ let reviewListPane = $state<HTMLDivElement | null>(null);
 // The review panel claims the center pane until a selection swaps it for the diff.
 const reviewPanelShown = $derived(
 	reviewMode && !(reviewSession.state.rightPaneMode === "diff" && showDiff),
+);
+const reviewPanelVisible = $derived(
+	tabActive && reviewPanelShown && !showRebaseEditor,
 );
 const finderAvailable = $derived(
 	tabActive && reviewActive && reviewPanelShown && !showRebaseEditor,
@@ -2795,7 +2795,7 @@ async function handleRebaseStart(
 					onopenmessageeditor={handleOpenMessageEditor}
 				/>
 			</div>
-			{#if reviewMode && !leftPaneCollapsed}
+			{#if reviewMode && !reviewLeftPaneCollapsed}
 				<div
 					class="shrink-0 overflow-hidden flex flex-col"
 					style:width="{sidePanes.sidebar.width}px"
@@ -2837,7 +2837,7 @@ async function handleRebaseStart(
 					>
 						<LazyView
 							{onready}
-							active={reviewPanelShown}
+							active={reviewPanelVisible}
 							load={() => import("./ReviewPanel.svelte")}
 							label="review"
 						>
@@ -2855,10 +2855,9 @@ async function handleRebaseStart(
 									oncommentonfile={openFileFinder}
 									onopenfile={openCurrentFile}
 									headBranch={headBranch ?? null}
+									{tabActive}
 									shown={reviewPanelShown}
-									keysActive={tabActive &&
-										reviewPanelShown &&
-										!showRebaseEditor}
+									keysActive={reviewPanelVisible}
 									{windowFocused}
 									reviewList={reviewListPane}
 								/>

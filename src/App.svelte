@@ -1376,11 +1376,8 @@ $effect(() => {
 	};
 });
 
-// Review mode toggle (Phase 69): the View-menu "Start/End Code Review" item
-// emits review-toggle (registered in Rust, Plan 65-03). The flag is owned here
-// at the App level so this window-global event only flips the ACTIVE tab into
-// review mode; RepoView receives it as `reviewActive` and drives the center-pane
-// review panel via the review-session rune. Mirrors the search-toggle listener.
+// Review mode is a window toggle. Each visited RepoView keeps the review it
+// opened until the window leaves review mode.
 $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("review-toggle", () => {
@@ -1529,20 +1526,17 @@ $effect(() => {
 					{#if diffPreferences && isRepoViewMounted(tab)}
 						{#key tab.repoPath}
 							{@const tabState = getTabState(tab.id)}
-							{@const tabReviewActive =
-								reviewPanelOpen && tab.id === activeTabId}
 							<RepoView
 								repoPath={tab.repoPath}
 								remoteState={tabState.remoteState}
 								{leftPaneWidth}
-								leftPaneCollapsed={tabReviewActive
-									? reviewLeftPaneCollapsed
-									: leftPaneCollapsed}
+								{leftPaneCollapsed}
+								{reviewLeftPaneCollapsed}
 								{rightPaneWidth}
 								{rightPaneCollapsed}
 								tabActive={tab.id === activeTabId}
 								{windowFocused}
-								reviewActive={tabReviewActive}
+								reviewActive={reviewPanelOpen}
 								{reviewThreadsHidden}
 								{threadFilter}
 								onthreadfilterchange={(filter) => {

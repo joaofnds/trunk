@@ -198,6 +198,11 @@ class StatefulAppHost implements HostChannel {
 		const activeReview = repositoryReviews?.reviews.find(
 			({ review }) => review.id === repositoryReviews.activeReviewId,
 		);
+		const requestedReview = args.reviewId
+			? repositoryReviews?.reviews.find(
+					({ review }) => review.id === args.reviewId,
+				)
+			: activeReview;
 		switch (cmd) {
 			case "prefs_get": {
 				const key = String(args.key);
@@ -233,9 +238,9 @@ class StatefulAppHost implements HostChannel {
 			case "get_review_snapshots":
 				return { working_tree_snapshot: null, index_snapshot: null };
 			case "list_threads":
-				return activeReview?.threads ?? [];
+				return requestedReview?.threads ?? [];
 			case "list_session_commits":
-				return activeReview?.commits ?? [];
+				return requestedReview?.commits ?? [];
 			case "set_active_review":
 				if (repositoryReviews) {
 					repositoryReviews.activeReviewId = String(args.reviewId);
@@ -337,6 +342,131 @@ afterEach(async () => {
 });
 
 describe("App review preference", () => {
+	it("resumes the archived review at its reading position after switching tabs", async () => {
+		seedTwoTabs();
+		const active = reviewWith("open");
+		const archive = reviewWith("done", [
+			aThread({ id: "first", commit_oid: "commit-1", text: "first note" }),
+			aThread({ id: "second", commit_oid: "commit-1", text: "second note" }),
+			aThread({ id: "third", commit_oid: "commit-1", text: "third note" }),
+		]);
+		archive.review.archived = true;
+		host.seedReviews(REPO_A, [active, archive], active.review.id);
+		host.seedReview(
+			REPO_B,
+			reviewWith("open", [
+				aThread({
+					id: "other",
+					commit_oid: "commit-1",
+					text: "other repo note",
+				}),
+			]),
+		);
+		render(App);
+		await openReviewPanel();
+		await fireEvent.click(
+			await screen.findByRole("button", { name: /^Archived/ }),
+		);
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Show review ${archive.review.id}` }),
+		);
+		const panel = screen.getByRole("region", { name: "Review threads" });
+		await within(panel).findByText("third note");
+		await fireEvent.keyDown(window, { key: "j" });
+		await fireEvent.keyDown(window, { key: "j" });
+		const body = panel.querySelector<HTMLElement>(".review-body");
+		if (!body) throw new Error("the review has no scroll body");
+		body.scrollTop = 500;
+		const tabA = screen.getByRole("tab", { name: "A" });
+
+		await activateTab("tab-b");
+		await screen.findByText("other repo note");
+		tabA.focus();
+		await activateTab("tab-a");
+
+		const returned = (
+			await screen.findByText("third note")
+		).closest<HTMLElement>("section[aria-label='Review threads']");
+		if (!returned) throw new Error("the archived review did not return");
+		expect(returned.querySelector(".review-body")?.scrollTop).toBe(500);
+		expect(screen.getByRole("button", { name: /^Archived/ })).toHaveAttribute(
+			"aria-expanded",
+			"true",
+		);
+		const cursor = within(returned).getByRole("article", { current: true });
+		expect(cursor).toHaveTextContent("second note");
+		expect(cursor).toHaveFocus();
+
+		await fireEvent.keyDown(window, { key: "j" });
+
+		expect(
+			within(returned).getByRole("article", { current: true }),
+		).toHaveTextContent("third note");
+	});
+
+	it("returns to the reply field after switching repositories by keyboard", async () => {
+		seedTwoTabs();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.seedReview(REPO_B, reviewWith("done"));
+		render(App);
+		await openReviewPanel();
+		const reply = await screen.findByRole("textbox", { name: "Reply" });
+		reply.focus();
+		await fireEvent.input(reply, { target: { value: "unsent reply" } });
+
+		await fireEvent.keyDown(reply, { key: "2", metaKey: true });
+		await screen.findByRole("button", { name: "done review" });
+		await pressShortcut("1");
+
+		expect(reply).toHaveFocus();
+		expect(reply).toHaveValue("unsent reply");
+	});
+
+	it("keeps a focused outside control on the first and subsequent review tab visits", async () => {
+		seedTwoTabs();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.seedReview(REPO_B, reviewWith("done"));
+		render(App);
+		await openReviewPanel();
+		const reply = await screen.findByRole("textbox", { name: "Reply" });
+		const control = screen.getByRole("button", { name: "New tab" });
+		control.focus();
+
+		await pressShortcut("2");
+		await screen.findByRole("button", { name: "done review" });
+		expect(control).toHaveFocus();
+		await pressShortcut("1");
+		reply.focus();
+		await pressShortcut("2");
+		control.focus();
+		await pressShortcut("1");
+
+		expect(control).toHaveFocus();
+	});
+
+	it("ends the review in both repositories when the user exits from the other tab", async () => {
+		seedTwoTabs();
+		host.seedReview(REPO_A, reviewWith("open"));
+		host.seedReview(REPO_B, reviewWith("done"));
+		render(App);
+		(await screen.findByRole("button", { name: "Review" })).focus();
+		await openReviewPanel();
+		await fireEvent.keyDown(window, { key: "j" });
+		expect(screen.getByRole("article", { current: true })).toBeInTheDocument();
+		await activateTab("tab-b");
+		await screen.findByRole("button", { name: "done review" });
+
+		await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+		await waitFor(() =>
+			expect(screen.queryByRole("button", { name: "open review" })).toBeNull(),
+		);
+		await activateTab("tab-a");
+		await openReviewPanel();
+
+		expect(screen.getByRole("button", { name: "open review" })).toBeVisible();
+		expect(screen.queryByRole("article", { current: true })).toBeNull();
+	});
+
 	it("narrows every repository tab to the preset the panel picks", async () => {
 		seedTwoTabs();
 		host.seedReview(REPO_A, reviewWith("open"));

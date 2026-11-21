@@ -11,11 +11,12 @@ import { reviewPanelProps } from "../__tests__/helpers/review-props.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { aPinnedThread, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
+import { invokesSettled } from "../lib/invoke.js";
 import {
 	createReviewComments,
 	type ReviewCommentsManager,
 } from "../lib/review-comments.svelte.js";
-import { SCHEDULER } from "../lib/scheduler.js";
+import { realScheduler, SCHEDULER } from "../lib/scheduler.js";
 import type { CommentResolution, Review } from "../lib/types.js";
 import ReviewPanel from "./ReviewPanel.svelte";
 
@@ -90,10 +91,11 @@ afterEach(() => {
 	restoreDomPolyfills();
 });
 
-async function mountPanel(): Promise<void> {
+async function mountPanel() {
 	manager = createReviewComments("/repo", clock);
-	render(ReviewPanel, {
-		props: reviewPanelProps({ reviewComments: manager }),
+	const props = reviewPanelProps({ reviewComments: manager });
+	const view = render(ReviewPanel, {
+		props,
 		context: new Map([[SCHEDULER, clock]]),
 	});
 	await screen.findByTitle("Commit gone. Only the saved excerpt survives.");
@@ -101,6 +103,7 @@ async function mountPanel(): Promise<void> {
 	await waitFor(() => expect(host.count("refresh_thread_staleness")).toBe(1));
 	await manager.refresh();
 	await tick();
+	return { props, view };
 }
 
 async function deliverRefs(): Promise<void> {
@@ -117,6 +120,88 @@ async function deliverRefs(): Promise<void> {
 }
 
 describe("refs-only review refresh", () => {
+	it("defers panel-only anchor reads while a diff covers the review", async () => {
+		const { props, view } = await mountPanel();
+		const resolutions = host.count("resolve_threads");
+		await view.rerender({ shown: false, keysActive: false });
+		host.seedResponse("resolve_threads", [missing[0]]);
+
+		await manager.refresh();
+		await tick();
+		expect(host.count("resolve_threads")).toBe(resolutions);
+		await view.rerender(props);
+
+		await waitFor(() => {
+			expect(
+				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
+			).toBeNull();
+		});
+		expect(host.count("resolve_threads")).toBe(resolutions + 1);
+	});
+
+	it("retries an anchor lookup that failed after its tab was hidden", async () => {
+		const { props, view } = await mountPanel();
+		const failed = host.holdNextReply("resolve_threads");
+		await manager.refresh();
+		await failed.entered;
+		await view.rerender({ tabActive: false, keysActive: false });
+		host.seedResponse("resolve_threads", [missing[0]]);
+
+		failed.reject({ code: "store", message: "anchor lookup failed" });
+		await invokesSettled(realScheduler);
+		await view.rerender(props);
+
+		await waitFor(() => {
+			expect(
+				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
+			).toBeNull();
+		});
+	});
+
+	it("retries a failed refs lookup when the review returns and keeps file-pin results", async () => {
+		const { props, view } = await mountPanel();
+		const fullReads = host.count("resolve_threads");
+		const failed = host.holdNextReply("resolve_thread_refs");
+		await deliverRefs();
+		await failed.entered;
+		await view.rerender({ shown: false, keysActive: false });
+
+		failed.reject({ code: "store", message: "anchor lookup failed" });
+		await invokesSettled(realScheduler);
+		await view.rerender(props);
+
+		await waitFor(() => {
+			expect(
+				screen.queryByTitle("Commit gone. Only the saved excerpt survives."),
+			).toBeNull();
+		});
+		expect(
+			screen.getByTitle("Code gone. Only the saved excerpt survives."),
+		).toBeVisible();
+		expect(host.count("resolve_threads")).toBe(fullReads);
+	});
+	it("resolves changed thread anchors only when their repository tab returns", async () => {
+		const { props, view } = await mountPanel();
+		const resolutions = host.count("resolve_threads");
+		const revision = manager.revision;
+		await view.rerender({ keysActive: false, tabActive: false });
+		host.seedResponse("resolve_threads", [missing[0]]);
+
+		await host.emit("reviews-changed", "/repo");
+		clock.advanceBy(REPO_CHANGE_DELAY_MS);
+		await waitFor(() => expect(manager.revision).toBeGreaterThan(revision));
+		expect(host.count("resolve_threads")).toBe(resolutions);
+
+		await view.rerender({ ...props, tabActive: true });
+
+		await waitFor(() => {
+			expect(
+				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
+			).toBeNull();
+		});
+		expect(host.count("resolve_threads")).toBe(resolutions + 1);
+	});
+
 	it("defers inactive publications, recovers a missing anchor on activation, and preserves file-pin state", async () => {
 		await mountPanel();
 		manager.setActive(false);

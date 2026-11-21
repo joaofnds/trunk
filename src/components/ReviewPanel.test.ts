@@ -3209,11 +3209,11 @@ describe("ReviewPanel keyboard", () => {
 			document.body.append(control);
 			control.focus();
 			onTestFinished(() => control.remove());
+			return control;
 		}
 
-		it("takes the keys from the control that opened it", async () => {
+		it("takes the keys when the review opens and focus is free", async () => {
 			await aCommitWithANoteAndALineThread();
-			focusAControlOutside();
 
 			renderPanel();
 			await flush();
@@ -3227,7 +3227,6 @@ describe("ReviewPanel keyboard", () => {
 			const props = panelProps({ headBranch: "main", shown: false });
 			const view = render(ReviewPanel, { props });
 			await flush();
-			focusAControlOutside();
 
 			await view.rerender({ ...props, shown: true });
 			await flush();
@@ -3252,6 +3251,48 @@ describe("ReviewPanel keyboard", () => {
 			expect(document.activeElement).toBe(field);
 		});
 
+		it("leaves a visible control focused while its tab is hidden and when it returns", async () => {
+			await aCommitWithANoteAndALineThread();
+			focusAControlOutside();
+			const control = document.activeElement;
+			const props = panelProps({ headBranch: "main" });
+			const view = render(ReviewPanel, {
+				props: { ...props, keysActive: false, tabActive: false },
+			});
+			await flush();
+			expect(document.activeElement).toBe(control);
+
+			await view.rerender(props);
+			await flush();
+
+			expect(document.activeElement).toBe(control);
+		});
+
+		it("starts at the first thread when a different review becomes active while the tab is hidden", async () => {
+			await aCommitWithANoteAndALineThread();
+			const props = panelProps({ headBranch: "main" });
+			const view = render(ReviewPanel, { props });
+			await flush();
+			await press("j");
+			await press("j");
+			await view.rerender({ keysActive: false, tabActive: false });
+
+			const reviewId = "replacement";
+			reviewComments.seed({
+				activeReviewId: reviewId,
+				reviews: [aReview({ id: reviewId })],
+				threads: [
+					commitLevelComment("first", COMMIT_A, "first replacement note"),
+					commitLevelComment("second", COMMIT_A, "second replacement note"),
+				],
+			});
+			await reviewComments.refresh();
+			await view.rerender(props);
+			await press("j");
+
+			expect(focusedThread()).toHaveTextContent("first replacement note");
+		});
+
 		it("puts the focus back on the thread a jump left from", async () => {
 			await aCommitWithANoteAndALineThread();
 			const props = panelProps({ headBranch: "main" });
@@ -3262,7 +3303,8 @@ describe("ReviewPanel keyboard", () => {
 				screen.getByRole("button", { name: "Lines 10–12" }),
 			);
 			await view.rerender({ ...props, shown: false });
-			focusAControlOutside();
+			const closeDiff = focusAControlOutside();
+			closeDiff.remove();
 
 			await view.rerender({ ...props, shown: true });
 			await flush();
