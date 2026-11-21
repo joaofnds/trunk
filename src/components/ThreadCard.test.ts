@@ -1125,6 +1125,18 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("changes the state once for a double click on Mark done", async () => {
+		renderCard();
+		const markDone = screen.getByText("Mark done");
+
+		await fireEvent.click(markDone, { detail: 1 });
+		await fireEvent.click(markDone, { detail: 2 });
+
+		expect(
+			calledCommands().filter((command) => command === "set_thread_state"),
+		).toHaveLength(1);
+	});
+
 	it("calls setThreadState with the repo path and target state when Dismiss is clicked", async () => {
 		renderCard();
 

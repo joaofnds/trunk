@@ -2932,6 +2932,21 @@ describe("ReviewPanel keyboard", () => {
 		});
 	});
 
+	it("changes the state once while D is held", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+
+		await press("j");
+		await press("d");
+		await fireEvent.keyDown(window, { key: "d", repeat: true });
+		await flush();
+
+		expect(
+			calledCommands().filter((command) => command === "set_thread_state"),
+		).toHaveLength(1);
+	});
+
 	it("dismisses the focused thread with X", async () => {
 		await aCommitWithANoteAndALineThread();
 		renderPanel();

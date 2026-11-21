@@ -26,6 +26,7 @@ import {
 } from "../lib/review-editors.svelte.js";
 import { isSettled } from "../lib/review-filter.js";
 import { reviewVisibility } from "../lib/review-visibility.svelte.js";
+import { singleClick } from "../lib/single-click.js";
 import { ThreadFolds } from "../lib/thread-folds.svelte.js";
 import { CHANGE_TEXT } from "../lib/thread-timeline.js";
 import type {
@@ -771,7 +772,10 @@ async function requestDeleteReply(replyId: string) {
 			<Button
 				size="sm"
 				variant={action.variant}
-				onclick={() => setThreadState(repoPath, thread.id, action.next)}
+				onclick={(e) =>
+					singleClick(e, () =>
+						setThreadState(repoPath, thread.id, action.next),
+					)}
 			>
 				{#if action.next === "done"}
 					<Check size={12} aria-hidden="true" />

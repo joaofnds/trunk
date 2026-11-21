@@ -586,7 +586,7 @@ function threadKeys(event: KeyboardEvent) {
 
 	const step = STEP_KEYS[chord];
 	if (step !== undefined) {
-		if (thread.allowed_transitions.includes(step)) {
+		if (!event.repeat && thread.allowed_transitions.includes(step)) {
 			void setThreadState(repoPath, thread.id, step);
 		}
 		return;
