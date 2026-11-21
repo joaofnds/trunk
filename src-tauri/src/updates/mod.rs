@@ -7,6 +7,7 @@ mod tests;
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -136,6 +137,32 @@ impl Coordinator {
         let snapshot = self.status.clone();
         let _ = app.emit("updates-changed", &snapshot);
         snapshot
+    }
+}
+
+/// Lets a download's progress through when the whole percent the update panel
+/// shows for it changes, so a download sends about a hundred updates rather
+/// than one for every chunk the network hands over.
+struct ProgressGate(AtomicU64);
+
+impl Default for ProgressGate {
+    fn default() -> Self {
+        Self(AtomicU64::new(u64::MAX))
+    }
+}
+
+impl ProgressGate {
+    /// The percent to show for `downloaded` of `total`, rounded as the panel
+    /// rounds it, or `None` when the panel already shows it.
+    fn admit(&self, downloaded: u64, total: u64) -> Option<u64> {
+        let percent = if total == 0 {
+            0
+        } else {
+            (downloaded.saturating_mul(200).saturating_add(total) / total.saturating_mul(2))
+                .min(100)
+        };
+
+        (self.0.swap(percent, Ordering::Relaxed) != percent).then_some(percent)
     }
 }
 
@@ -486,16 +513,20 @@ pub async fn download<R: Runtime>(
         drop(coordinator);
         (cancel, candidate)
     };
+    let gate = ProgressGate::default();
     let result = network::fetch(
         candidate.update.download_url.as_str(),
         usize::try_from(MAX_ARTIFACT_BYTES).unwrap(),
         cancel,
         |downloaded, total| {
+            let total = total.unwrap_or(candidate.size);
             let state = app.state::<UpdateState>();
             let mut coordinator = state.0.lock().unwrap();
             coordinator.status.downloaded = downloaded;
-            coordinator.status.total = total.or(Some(candidate.size));
-            coordinator.emit(&app);
+            coordinator.status.total = Some(total);
+            if gate.admit(downloaded, total).is_some() {
+                coordinator.emit(&app);
+            }
         },
     )
     .await

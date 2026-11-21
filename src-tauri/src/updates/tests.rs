@@ -640,3 +640,25 @@ fn unsigned_discovery_cannot_replace_an_adopted_installations_candidate() {
     assert_eq!(status(app.handle()).phase, Phase::Ready);
     assert_eq!(status(app.handle()).version.as_deref(), Some("2.0.0"));
 }
+
+#[test]
+fn download_progress_reaches_the_panel_once_for_each_percent_it_shows() {
+    const CHUNK: u64 = 16 * 1024;
+    let total = 40 * 1024 * 1024;
+    let gate = ProgressGate::default();
+
+    let shown: Vec<u64> = (0..=total / CHUNK)
+        .filter_map(|chunks| gate.admit(chunks * CHUNK, total))
+        .collect();
+
+    assert_eq!(shown, (0..=100).collect::<Vec<_>>());
+}
+
+#[test]
+fn download_progress_rounds_half_a_percent_up_as_the_panel_does() {
+    let gate = ProgressGate::default();
+
+    assert_eq!(gate.admit(0, 200), Some(0));
+    assert_eq!(gate.admit(1, 200), Some(1));
+    assert_eq!(gate.admit(2, 200), None);
+}
