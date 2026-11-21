@@ -2963,6 +2963,58 @@ describe("ReviewPanel keyboard", () => {
 		).toHaveLength(1);
 	});
 
+	describe("when the filter hides the thread the keys just settled", () => {
+		const notes = [
+			commitLevelComment("first", COMMIT_A, "first note"),
+			commitLevelComment("second", COMMIT_A, "second note"),
+			commitLevelComment("third", COMMIT_A, "third note"),
+		];
+
+		async function settleTheNoteJReaches(presses: number) {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: notes,
+			});
+			render(ReviewPanel, {
+				props: panelProps({
+					headBranch: "main",
+					keysActive: true,
+					threadFilter: NEEDS_ME,
+				}),
+			});
+			await flush();
+			for (let pressed = 0; pressed < presses; pressed++) await press("j");
+			const settled = focusedThread()?.dataset.threadId;
+			reviewComments.seed({
+				threads: notes.map((note) =>
+					note.id === settled ? { ...note, state: "done" } : note,
+				),
+			});
+			await reviewComments.refresh();
+			await flush();
+		}
+
+		it("moves the cursor to the thread that took its place", async () => {
+			await settleTheNoteJReaches(2);
+
+			expect(focusedThread()).toHaveTextContent("third note");
+		});
+
+		it("moves on from there with J", async () => {
+			await settleTheNoteJReaches(2);
+
+			await press("j");
+
+			expect(focusedThread()).toHaveTextContent("third note");
+		});
+
+		it("hands the cursor up when the last thread settles", async () => {
+			await settleTheNoteJReaches(3);
+
+			expect(focusedThread()).toHaveTextContent("second note");
+		});
+	});
+
 	it("dismisses the focused thread with X", async () => {
 		await aCommitWithANoteAndALineThread();
 		renderPanel();

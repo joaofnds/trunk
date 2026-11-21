@@ -394,8 +394,6 @@ function isJumpable(c: Thread): boolean {
 	return (c.anchor !== null || c.content_pin != null) && !isOrphan(c);
 }
 
-// The thread J and K move between, and D, X, O, R and Enter act on.
-let focusedId = $state<string | null>(null);
 // Only the keys draw it: a pointer press already shows where it landed.
 let cursorFromKeys = $state(false);
 const shownThreads = $derived(
@@ -406,6 +404,21 @@ const shownThreads = $derived(
 		)
 		.filter(shows),
 );
+let cursor = $state<{ id: string; at: number } | null>(null);
+// The thread J and K move between, and D, X, O, R and Enter act on. Once the
+// filter hides it, the thread shown in its place takes over.
+const focusedId = $derived.by(() => {
+	if (cursor === null) return null;
+	if (shownThreads.some((thread) => thread.id === cursor?.id)) return cursor.id;
+	return shownThreads[Math.min(cursor.at, shownThreads.length - 1)]?.id ?? null;
+});
+
+function placeCursor(thread: Thread) {
+	cursor = {
+		id: thread.id,
+		at: shownThreads.findIndex((shown) => shown.id === thread.id),
+	};
+}
 let bodyEl = $state<HTMLElement>();
 
 // Unread counts every thread of the shown review, filtered or folded away
@@ -518,7 +531,7 @@ function focusThreadAt(index: number) {
 		shownThreads[Math.max(0, Math.min(shownThreads.length - 1, index))];
 	if (!thread) return;
 
-	focusedId = thread.id;
+	placeCursor(thread);
 	cursorFromKeys = true;
 	void tick().then(() =>
 		cardOf(thread.id)?.scrollIntoView({ block: "nearest" }),
@@ -527,7 +540,7 @@ function focusThreadAt(index: number) {
 
 // The thread a jump to code leaves from is the one to come back to.
 function jump(thread: Thread) {
-	focusedId = thread.id;
+	placeCursor(thread);
 	onJump(thread);
 }
 
@@ -1408,7 +1421,7 @@ registerUpdateBlocker(() =>
 		focused={focusedId === comment.id}
 		cursorShown={cursorFromKeys}
 		onfocusrequest={() => {
-			focusedId = comment.id;
+			placeCursor(comment);
 			cursorFromKeys = false;
 		}}
 		onjump={jump}
