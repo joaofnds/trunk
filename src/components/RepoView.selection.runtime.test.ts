@@ -1186,6 +1186,8 @@ function seedCommit(oid: string): void {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [],
 	};
 	host.seedResponse("get_commit_detail", detailFor(oid));
@@ -1204,6 +1206,8 @@ function fileDiff(oid: string): FileDiff {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: "@@ -0,0 +1,1 @@",

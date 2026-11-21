@@ -56,6 +56,8 @@ function file(path: string, hunks: DiffHunk[], isBinary = false): FileDiff {
 		old_path: null,
 		status: "Modified",
 		is_binary: isBinary,
+		old_size: null,
+		new_size: null,
 		hunks,
 	};
 }
@@ -232,6 +234,22 @@ describe("buildInlineRows", () => {
 			.map((row) => row.marker);
 
 		expect(markers).toEqual([null, { count: 1, tone: "open" }, null]);
+	});
+
+	it("writes a binary file's row with its size on each side", () => {
+		const binary = {
+			...file("assets/logo.png", [], true),
+			old_size: 6,
+			new_size: 8,
+		};
+
+		const model = buildInlineRows([binary], { ...fullMode, fileHeaders: true });
+
+		expect(model.rows[1]).toEqual({
+			kind: "binary",
+			path: "assets/logo.png",
+			text: "Binary file, 6 bytes → 8 bytes",
+		});
 	});
 
 	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
@@ -466,6 +484,22 @@ describe("buildSplitRows", () => {
 		});
 
 		expect(model.rows.map((row) => row.kind)).toEqual(["file-header"]);
+	});
+
+	it("writes a binary file's row with its size on each side", () => {
+		const binary = {
+			...file("assets/logo.png", [], true),
+			old_size: 6,
+			new_size: 8,
+		};
+
+		const model = buildSplitRows([binary], { ...fullMode, fileHeaders: true });
+
+		expect(model.rows[1]).toEqual({
+			kind: "binary",
+			path: "assets/logo.png",
+			text: "Binary file, 6 bytes → 8 bytes",
+		});
 	});
 
 	it("emits a header row and a binary row, and no pairs, for a binary file", () => {

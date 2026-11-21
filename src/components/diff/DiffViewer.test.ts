@@ -30,6 +30,8 @@ const selectedReadme: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [],
 };
 
@@ -38,6 +40,8 @@ const pureRename: FileDiff = {
 	old_path: "README.md",
 	status: "Renamed",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [],
 };
 
@@ -116,6 +120,8 @@ describe("DiffViewer's wrapper", () => {
 			old_path: "docs/old.md",
 			status: "Renamed",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [],
 		};
 
@@ -144,6 +150,8 @@ describe("DiffViewer's wrapper", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [],
 		};
 
@@ -178,6 +186,8 @@ describe("DiffViewer while a diff is loading", () => {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: "@@ -1,0 +1,1 @@",
@@ -229,6 +239,8 @@ describe("DiffViewer while a diff is loading", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [],
 		};
 
@@ -246,6 +258,8 @@ describe("DiffViewer while a diff is loading", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: true,
+			old_size: null,
+			new_size: null,
 			hunks: [],
 		};
 
@@ -272,6 +286,118 @@ describe("DiffViewer while a diff is loading", () => {
 
 		expect(queryByText("STABLE CONTENT")).toBeNull();
 		expect(queryByText("Loading diff…")).not.toBeNull();
+	});
+});
+
+describe("DiffViewer on a binary image", () => {
+	const logo: FileDiff = {
+		path: "assets/logo.png",
+		old_path: null,
+		status: "Modified",
+		is_binary: true,
+		old_size: 1200,
+		new_size: 3400,
+		hunks: [],
+	};
+
+	const parentOf = (oid: string) => ({
+		oid: "bbb",
+		short_oid: "bbb",
+		summary: "",
+		body: null,
+		message: "",
+		author_name: "",
+		author_email: "",
+		author_timestamp: 0,
+		committer_name: "",
+		committer_email: "",
+		committer_timestamp: 0,
+		parent_oids: [oid],
+	});
+
+	beforeEach(() => stubLayout({ width: 900, height: 600 }));
+	afterEach(restoreLayout);
+
+	function sourceOf(name: string): string | null {
+		return screen.getByRole("img", { name }).getAttribute("src");
+	}
+
+	it("shows a commit's image at its parent and at the commit", () => {
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				diffKind: "commit",
+				commitOid: "bbb",
+				commitDetail: parentOf("aaa"),
+				selectedPath: logo.path,
+				fileDiffs: [logo],
+			},
+		});
+
+		expect([sourceOf("Before"), sourceOf("After")]).toEqual([
+			"trunk-asset://asset/?repo=%2Frepo&rev=commit-aaa&path=assets%2Flogo.png",
+			"trunk-asset://asset/?repo=%2Frepo&rev=commit-bbb&path=assets%2Flogo.png",
+		]);
+	});
+
+	it.each([
+		["staged", "head", "index"],
+		["unstaged", "index", "working-tree"],
+	] as const)(
+		"shows a %s image on the two sides it compares",
+		(diffKind, before, after) => {
+			render(DiffViewer, {
+				props: {
+					...baseProps,
+					diffKind,
+					selectedPath: logo.path,
+					fileDiffs: [logo],
+					refreshToken: 2,
+				},
+			});
+
+			expect([sourceOf("Before"), sourceOf("After")]).toEqual([
+				`trunk-asset://asset/?repo=%2Frepo&rev=${before}&path=assets%2Flogo.png&v=2`,
+				`trunk-asset://asset/?repo=%2Frepo&rev=${after}&path=assets%2Flogo.png&v=2`,
+			]);
+		},
+	);
+
+	it("shows an opened image once, as it is on disk", () => {
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				diffKind: "current_file",
+				selectedPath: logo.path,
+				fileDiffs: [logo],
+			},
+		});
+
+		expect(
+			screen.getAllByRole("img").map((img) => img.getAttribute("alt")),
+		).toEqual(["Current"]);
+	});
+
+	it("keeps the binary row for a binary file that is not an image", () => {
+		const font = { ...logo, path: "assets/font.woff2" };
+
+		const { container } = render(DiffViewer, {
+			props: { ...baseProps, selectedPath: font.path, fileDiffs: [font] },
+		});
+
+		expect(screen.queryByRole("img")).toBeNull();
+		expect(container.querySelector(".binary-row")).toHaveTextContent(
+			"Binary file, 1.2 KB → 3.4 KB",
+		);
+	});
+
+	it("keeps the binary row for an image among all of a commit's files", () => {
+		const { container } = render(DiffViewer, {
+			props: { ...baseProps, selectedPath: null, fileDiffs: [logo] },
+		});
+
+		expect(screen.queryByRole("img")).toBeNull();
+		expect(container.querySelector(".binary-row")).not.toBeNull();
 	});
 });
 
@@ -476,6 +602,8 @@ describe("DiffViewer's comment composer", () => {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: "@@ -1,1 +1,1 @@",
@@ -553,6 +681,8 @@ describe("DiffViewer when the reader switches view", () => {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks,
 	});
 	// Forty five-line hunks, a hundred lines apart, so the hunk headers above

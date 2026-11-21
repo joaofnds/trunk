@@ -33,6 +33,8 @@ function file(path: string, content?: string): FileDiff {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks:
 			content === undefined
 				? []
@@ -195,11 +197,11 @@ describe("RepoView commit file reuse", () => {
 			{ ...file("f.ts"), is_binary: true },
 		]);
 		await selectFile("f.ts");
-		await screen.findByText("Binary file — no diff available");
+		await screen.findByText("Binary file");
 		await openFile("g.ts", "SECOND");
 
 		await selectFile("f.ts");
-		await screen.findByText("Binary file — no diff available");
+		await screen.findByText("Binary file");
 
 		expect(host.count("diff_commit_file")).toBe(2);
 	});

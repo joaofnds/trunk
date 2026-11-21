@@ -7,7 +7,15 @@ import {
 import type { FileDiff, FileStatus, WorkingTreeStatus } from "./types.js";
 
 function fd(path: string, status: FileDiff["status"] = "Modified"): FileDiff {
-	return { path, old_path: null, status, is_binary: false, hunks: [] };
+	return {
+		path,
+		old_path: null,
+		status,
+		is_binary: false,
+		old_size: null,
+		new_size: null,
+		hunks: [],
+	};
 }
 
 describe("toFileStatusList", () => {

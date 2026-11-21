@@ -19,6 +19,8 @@ const DIFF_LINE = ".diff-line";
 const PROBES = ".comment-probe, .metrics-probe";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
+const IMAGE_SIDE = "figure";
+const BINARY_ROW = ".binary-row";
 
 /** The center diff pane's markdown affordance: the source/rendered toggle and
  *  the tinted blocks the rendered view shows. */
@@ -303,6 +305,24 @@ export class DiffPaneDriver {
 				li.parentElement?.parentElement?.classList.contains("markdown-body"),
 			),
 		}));
+	}
+
+	/** Each side an image diff shows, left to right: its caption as one line and
+	 *  the address the picture is read from. */
+	imageSides(): { caption: string; src: string }[] {
+		return [...document.querySelectorAll<HTMLElement>(IMAGE_SIDE)].map(
+			(side) => ({
+				caption: (side.querySelector("figcaption")?.textContent ?? "")
+					.replace(/\s+/g, " ")
+					.trim(),
+				src: side.querySelector("img")?.getAttribute("src") ?? "",
+			}),
+		);
+	}
+
+	/** What the pane says in place of a binary file's lines. */
+	binaryNotices(): string[] {
+		return textsOf(BINARY_ROW);
 	}
 }
 

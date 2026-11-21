@@ -270,6 +270,11 @@ pub struct FileDiff {
     pub old_path: Option<String>,
     pub status: DiffStatus,
     pub is_binary: bool,
+    /// The file's size in bytes on each side. `None` on a side where the file
+    /// does not exist, so an added file has no `old_size`, and on both sides of
+    /// a commit's file list, which reads no content.
+    pub old_size: Option<u64>,
+    pub new_size: Option<u64>,
     pub hunks: Vec<DiffHunk>,
 }
 

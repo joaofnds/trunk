@@ -38,6 +38,8 @@ const fileDiffs: FileDiff[] = [
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [],
 	},
 ];

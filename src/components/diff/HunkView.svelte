@@ -361,7 +361,7 @@ export const step = vd.step;
 			</Row>
 		</div>
 	{:else if item.kind === "binary"}
-		<div class="binary-row">Binary file — no diff available</div>
+		<div class="binary-row">{item.text}</div>
 	{/if}
 {/snippet}
 

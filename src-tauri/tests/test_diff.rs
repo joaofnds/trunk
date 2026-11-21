@@ -1555,7 +1555,10 @@ fn binary_change() -> (TestContext, String) {
     let ctx = TestContext::builder()
         .with_binary_file("logo.png", &[0x89, b'P', b'N', b'G', 0x00, 0x01])
         .with_commit("Add the logo")
-        .with_binary_file("logo.png", &[0x89, b'P', b'N', b'G', 0x00, 0x02])
+        .with_binary_file(
+            "logo.png",
+            &[0x89, b'P', b'N', b'G', 0x00, 0x02, 0x03, 0x04],
+        )
         .with_commit("Change the logo")
         .build();
     let head = ctx.repo().head().unwrap().target().unwrap().to_string();
@@ -1590,6 +1593,89 @@ fn a_staged_file_of_raw_bytes_is_flagged_binary() {
 
     assert_eq!(diffs.len(), 1);
     assert!(diffs[0].is_binary);
+}
+
+#[test]
+fn a_modified_binary_file_reports_its_size_before_and_after() {
+    let (ctx, head) = binary_change();
+
+    let diffs = ctx.diff_commit_file(&head, "logo.png").unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(6), Some(8)));
+}
+
+#[test]
+fn every_binary_file_of_a_whole_commit_reports_its_sizes() {
+    let (ctx, head) = binary_change();
+
+    let diffs = ctx.diff_commit(&head).unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(6), Some(8)));
+}
+
+#[test]
+fn a_commits_file_list_claims_no_size_it_has_not_read() {
+    let (ctx, head) = binary_change();
+
+    let files = ctx.list_commit_files(&head).unwrap();
+
+    assert_eq!((files[0].old_size, files[0].new_size), (None, None));
+}
+
+#[test]
+fn an_added_binary_file_has_no_size_before() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello\n")
+        .with_commit("Initial commit")
+        .with_binary_file("icon.png", &[0x89, b'P', 0x00, 0x01, 0x02])
+        .with_commit("Add the icon")
+        .build();
+    let head = ctx.repo().head().unwrap().target().unwrap().to_string();
+
+    let diffs = ctx.diff_commit_file(&head, "icon.png").unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (None, Some(5)));
+}
+
+#[test]
+fn a_deleted_binary_file_has_no_size_after() {
+    let ctx = TestContext::builder()
+        .with_binary_file("icon.png", &[0x89, b'P', 0x00, 0x01, 0x02])
+        .with_commit("Add the icon")
+        .with_removed_file("icon.png")
+        .with_commit("Remove the icon")
+        .build();
+    let head = ctx.repo().head().unwrap().target().unwrap().to_string();
+
+    let diffs = ctx.diff_commit_file(&head, "icon.png").unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(5), None));
+}
+
+#[test]
+fn a_staged_binary_file_reports_its_size_at_head_and_in_the_index() {
+    let (ctx, _) = binary_change();
+    std::fs::write(ctx.repo_path().join("logo.png"), [0x89, b'P', 0x00]).unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("logo.png")).unwrap();
+        index.write().unwrap();
+    }
+
+    let diffs = ctx.diff_staged("logo.png").unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(8), Some(3)));
+}
+
+#[test]
+fn an_unstaged_binary_file_reports_its_size_in_the_index_and_on_disk() {
+    let (ctx, _) = binary_change();
+    std::fs::write(ctx.repo_path().join("logo.png"), [0x89, b'P', 0x00, 0x03]).unwrap();
+
+    let diffs = ctx.diff_unstaged("logo.png").unwrap();
+
+    assert_eq!((diffs[0].old_size, diffs[0].new_size), (Some(8), Some(4)));
 }
 
 #[test]

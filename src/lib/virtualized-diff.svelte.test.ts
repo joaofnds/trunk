@@ -33,6 +33,8 @@ const modifiedFile: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -10,4 +10,4 @@",
@@ -362,6 +364,8 @@ describe("createVirtualizedDiff", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -1,1 +1,1 @@",

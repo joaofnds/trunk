@@ -169,6 +169,8 @@ const testDiff: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -1,3 +1,4 @@",
@@ -238,6 +240,8 @@ const binaryDiff: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: true,
+	old_size: 1200,
+	new_size: 3400,
 	hunks: [],
 };
 
@@ -246,6 +250,8 @@ const untrackedDiff: FileDiff = {
 	old_path: null,
 	status: "Untracked",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -0,0 +1,1 @@",
@@ -271,6 +277,8 @@ const testDiffWithMergedSpans: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -1,1 +1,1 @@",
@@ -386,7 +394,7 @@ describe("DiffPanel", () => {
 		expect(screen.getByText("src/main.ts")).toBeInTheDocument();
 	});
 
-	it("shows binary file indicator", async () => {
+	it("shows a binary file's size on each side", async () => {
 		render(DiffPanel, {
 			props: {
 				...commentingDiff,
@@ -398,7 +406,7 @@ describe("DiffPanel", () => {
 		});
 		await flushPrefs();
 		expect(
-			screen.getByText(/Binary file.*no diff available/),
+			screen.getByText("Binary file, 1.2 KB → 3.4 KB"),
 		).toBeInTheDocument();
 	});
 
@@ -1460,6 +1468,8 @@ describe("VIEW-04: a large full-file payload", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -1,5000 +1,5000 @@",
@@ -2292,6 +2302,8 @@ const addedFileDiff: FileDiff = {
 	old_path: null,
 	status: "Added",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -0,0 +1,2 @@",
@@ -2324,6 +2336,8 @@ const hunksOfDifferentLengths: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -1,0 +1,2 @@",
@@ -2567,6 +2581,8 @@ describe("DiffPanel drag-to-select", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -1,3000 +1,3000 @@",
@@ -3803,6 +3819,8 @@ describe("Discard File button", () => {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -1,1 +1,1 @@",
@@ -3984,6 +4002,8 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [rewrite],
 	};
 	// An editor inserted a line at the top while the confirmation was open, so
@@ -4406,6 +4426,8 @@ describe("DiffPanel hunk navigation", () => {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: "@@ -1,2 +1,2 @@",

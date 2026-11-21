@@ -303,6 +303,10 @@ export interface FileDiff {
 	old_path: string | null;
 	status: DiffStatus;
 	is_binary: boolean;
+	/** The size in bytes on each side. Null where the file does not exist on
+	 *  that side, and on both in a commit's file list, which reads no content. */
+	old_size: number | null;
+	new_size: number | null;
 	hunks: DiffHunk[];
 }
 

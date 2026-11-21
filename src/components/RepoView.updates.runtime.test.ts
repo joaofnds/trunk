@@ -135,6 +135,8 @@ class UpdateRepositoryHarness {
 			old_path: null,
 			status: "Modified",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -0,0 +1,1 @@",

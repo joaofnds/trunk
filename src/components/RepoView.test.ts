@@ -1296,6 +1296,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,1 +1,1 @@",
@@ -1964,6 +1966,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,0 +1,1 @@",
@@ -3021,6 +3025,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [],
 			};
 		}
@@ -3031,6 +3037,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,1 +1,1 @@",
@@ -3899,6 +3907,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [],
 			};
 		}
@@ -4970,6 +4980,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,1 +1,1 @@",
@@ -5064,6 +5076,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [],
 			};
 		}
@@ -5871,6 +5885,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,1 +1,1 @@",
@@ -5986,6 +6002,8 @@ describe("RepoView", () => {
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
+				old_size: null,
+				new_size: null,
 				hunks: [
 					{
 						header: "@@ -1,1 +1,1 @@",

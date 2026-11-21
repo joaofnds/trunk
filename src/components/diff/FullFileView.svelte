@@ -388,7 +388,7 @@ export function clearSelection() {
 	{:else if item.kind === "composer" && composer}
 		<div class="composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "binary"}
-		<div class="binary-row">Binary file — no diff available</div>
+		<div class="binary-row">{item.text}</div>
 	{/if}
 {/snippet}
 

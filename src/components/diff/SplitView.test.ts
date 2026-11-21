@@ -44,6 +44,8 @@ function fileOf(path: string, lines: DiffLine[]): FileDiff {
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: `@@ -1,${lines.length} +1,${lines.length} @@`,

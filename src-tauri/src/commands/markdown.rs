@@ -7088,6 +7088,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_asset_uri_reads_the_url_an_image_diff_asks_for() {
+        let uri = "trunk-asset://asset/?repo=%2Fr&rev=working-tree&path=img%2Fa%20b%2Bc.png&v=7";
+
+        let (repo, rev, path) = parse_asset_uri(uri).unwrap();
+
+        assert_eq!(
+            (repo.as_str(), rev, path.as_str()),
+            ("/r", RevSpec::WorkingTree, "img/a b+c.png")
+        );
+    }
+
+    #[test]
     fn cache_put_bounds_the_map() {
         let mut map = HashMap::new();
         for i in 0..MARKDOWN_CACHE_CAP {

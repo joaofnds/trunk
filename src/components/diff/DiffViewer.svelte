@@ -1,5 +1,6 @@
 <script lang="ts">
 import { untrack } from "svelte";
+import { isImagePath } from "../../lib/binary-file.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
 import {
@@ -7,7 +8,7 @@ import {
 	diffHoldsComposer,
 	type ReadingLine,
 } from "../../lib/diff-rows.js";
-import { isMarkdownPath } from "../../lib/markdown.js";
+import { afterRev, beforeRev, isMarkdownPath } from "../../lib/markdown.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { filterThreads } from "../../lib/review-filter.js";
 import type { ThreadFolds } from "../../lib/thread-folds.svelte.js";
@@ -25,6 +26,7 @@ import Button from "../../lib/ui/Button.svelte";
 import ReviewEmpty from "../review/ReviewEmpty.svelte";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
+import ImageDiff from "./ImageDiff.svelte";
 import InlineThread from "./InlineThread.svelte";
 import RenderedDiff from "./RenderedDiff.svelte";
 import type { SelectionCommentPlace } from "./SelectionComment.svelte";
@@ -209,6 +211,8 @@ const pane = $derived.by(() => {
 	if (loadError) return "error";
 	if ((loading || payloadStale) && !hasContent) return "loading";
 	if (selectedFileDiff && !isLoaded(selectedFileDiff)) return "no-changes";
+	if (selectedFileDiff?.is_binary && isImagePath(selectedFileDiff.path))
+		return "image";
 	// A thread can follow a commit through an amend that drops its file, and
 	// the jump to it then selects a file the commit's list does not hold.
 	if (diffKind === "commit" && selectedPath !== null && !selectedFileDiff)
@@ -321,6 +325,20 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 			{wordWrap}
 			{refreshToken}
 			{hunkElements}
+		/>
+	{:else if pane === "image" && selectedFileDiff}
+		<ImageDiff
+			{repoPath}
+			file={selectedFileDiff}
+			before={diffKind === "current_file"
+				? null
+				: beforeRev(
+						diffKind,
+						commitDetail?.parent_oids[0] ?? null,
+						compareBaseOid,
+					)}
+			after={afterRev(diffKind, commitOid)}
+			version={refreshToken}
 		/>
 	{:else if pane === "error"}
 		<div

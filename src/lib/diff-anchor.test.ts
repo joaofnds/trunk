@@ -42,6 +42,8 @@ function file(status: DiffStatus, path: string, lines: DiffLine[]): FileDiff {
 		old_path: null,
 		status,
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [
 			{
 				header: "@@ -1,4 +1,4 @@",

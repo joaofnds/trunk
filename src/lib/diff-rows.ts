@@ -6,6 +6,7 @@
  */
 
 import type { Snippet } from "svelte";
+import { binarySummary } from "./binary-file.js";
 import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import {
 	commentsForLine,
@@ -36,7 +37,7 @@ export interface LineMarker {
 
 export type DiffRow =
 	| { kind: "file-header"; path: string; collapsed: boolean }
-	| { kind: "binary"; path: string }
+	| { kind: "binary"; path: string; text: string }
 	| { kind: "hunk-header"; path: string; hunkIdx: number; header: string }
 	| {
 			kind: "line";
@@ -170,7 +171,7 @@ export function buildInlineRows(
 		if (collapsed) continue;
 
 		if (fd.is_binary) {
-			rows.push({ kind: "binary", path: fd.path });
+			rows.push({ kind: "binary", path: fd.path, text: binarySummary(fd) });
 			continue;
 		}
 		let flatIdx = 0;
@@ -283,7 +284,7 @@ export function buildSplitRows(
 		if (collapsed) continue;
 
 		if (fd.is_binary) {
-			rows.push({ kind: "binary", path: fd.path });
+			rows.push({ kind: "binary", path: fd.path, text: binarySummary(fd) });
 			continue;
 		}
 		let flatBase = 0;

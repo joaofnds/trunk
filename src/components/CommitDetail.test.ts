@@ -56,6 +56,8 @@ const fileDiffs: FileDiff[] = [
 		old_path: null,
 		status: "Modified",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [],
 	},
 	{
@@ -63,6 +65,8 @@ const fileDiffs: FileDiff[] = [
 		old_path: null,
 		status: "Added",
 		is_binary: false,
+		old_size: null,
+		new_size: null,
 		hunks: [],
 	},
 ];
@@ -467,6 +471,8 @@ describe("CommitDetail", () => {
 					old_path: null,
 					status: "Modified",
 					is_binary: true,
+					old_size: null,
+					new_size: null,
 					hunks: [],
 				},
 			];
@@ -493,6 +499,8 @@ describe("CommitDetail", () => {
 					old_path: "code/util.ts",
 					status: "Renamed",
 					is_binary: false,
+					old_size: null,
+					new_size: null,
 					hunks: [],
 				},
 			];

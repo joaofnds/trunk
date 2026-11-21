@@ -263,6 +263,8 @@ describe("composer operation lifetime", () => {
 			old_path: null,
 			status: "Added",
 			is_binary: false,
+			old_size: null,
+			new_size: null,
 			hunks: [
 				{
 					header: "@@ -0,0 +1 @@",

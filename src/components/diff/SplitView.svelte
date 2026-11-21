@@ -472,7 +472,7 @@ function originClass(origin: string): string {
 			</Row>
 		</div>
 	{:else if item.kind === "binary"}
-		<div class="binary-row pan-pinned">Binary file — no diff available</div>
+		<div class="binary-row pan-pinned">{item.text}</div>
 	{/if}
 {/snippet}
 

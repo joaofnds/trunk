@@ -26,6 +26,8 @@ const modifiedFile: FileDiff = {
 	old_path: null,
 	status: "Modified",
 	is_binary: false,
+	old_size: null,
+	new_size: null,
 	hunks: [
 		{
 			header: "@@ -10,3 +10,4 @@",
