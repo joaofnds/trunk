@@ -58,9 +58,7 @@ describe("RepoView staging selection", () => {
 			await openRepository();
 			await fireEvent.click(await screen.findByText(one.path));
 			const action = host.holdNextReply("stage_hunk");
-			await fireEvent.click(
-				await screen.findByRole("button", { name: "Stage Hunk" }),
-			);
+			await clickStageHunk();
 			await action.entered;
 			const nextDiff = host.holdNextReply("diff_unstaged");
 			await fireEvent.click(screen.getByText(two.path));
@@ -105,9 +103,7 @@ describe("RepoView staging selection", () => {
 		const staged = within(screen.getByTestId("staging-staged-section"));
 		await fireEvent.click(await unstaged.findByText(file.path));
 		const action = host.holdNextReply("stage_hunk");
-		await fireEvent.click(
-			await screen.findByRole("button", { name: "Stage Hunk" }),
-		);
+		await clickStageHunk();
 		await action.entered;
 		await fireEvent.click(staged.getByText(file.path));
 		await screen.findByText("original staged content");
@@ -144,9 +140,7 @@ describe("RepoView staging selection", () => {
 		);
 		await fireEvent.click(await unstaged.findByText(one.path));
 		const action = host.holdNextReply("stage_hunk");
-		await fireEvent.click(
-			await screen.findByRole("button", { name: "Stage Hunk" }),
-		);
+		await clickStageHunk();
 		await action.entered;
 		host.seedResponse("diff_unstaged", [two]);
 		await fireEvent.click(unstaged.getByText(two.path));
@@ -214,9 +208,7 @@ describe("RepoView staging selection", () => {
 		await openRepository();
 		await fireEvent.click(await screen.findByText(one.path));
 		const action = host.holdNextReply("stage_hunk");
-		await fireEvent.click(
-			await screen.findByRole("button", { name: "Stage Hunk" }),
-		);
+		await clickStageHunk();
 		await action.entered;
 		const ref = host.holdNextReply("resolve_ref");
 		await fireEvent.click(await screen.findByText("topic"));
@@ -237,6 +229,13 @@ describe("RepoView staging selection", () => {
 			"first change",
 		);
 	});
+
+	async function clickStageHunk() {
+		await vi.dynamicImportSettled();
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Stage Hunk" }),
+		);
+	}
 
 	async function selectChangedLine(content: string) {
 		const line = await screen.findByText(content);
