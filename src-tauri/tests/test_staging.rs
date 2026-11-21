@@ -3076,6 +3076,29 @@ fn unstage_hunk_reports_the_staged_mode_change_its_hunk_leaves() {
 }
 
 #[test]
+fn unstage_hunk_reports_a_staged_rename_done_once_its_hunk_reverts_it() {
+    let ctx = staged_rename_with_one_edit();
+
+    let outcome = ctx.unstage_hunk("math-util.ts", 0).unwrap();
+
+    assert!(!outcome.file_still_changed);
+}
+
+#[test]
+fn unstage_lines_reports_a_file_staged_before_the_first_commit_still_staged() {
+    let ctx = TestContext::new_empty();
+    std::fs::write(ctx.repo_path().join("new.txt"), "one\ntwo\nthree\n").unwrap();
+    ctx.stage_file("new.txt").unwrap();
+    let diff = ctx.diff_staged("new.txt").unwrap();
+
+    let outcome = ctx
+        .unstage_lines("new.txt", 0, &changed_lines(&diff, 0)[..1])
+        .unwrap();
+
+    assert!(outcome.file_still_changed);
+}
+
+#[test]
 fn discard_hunk_reports_the_whitespace_change_the_view_hides() {
     let ctx = TestContext::builder()
         .with_file("ws.txt", &joined(&numbered_lines()))

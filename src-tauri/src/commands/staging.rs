@@ -1,4 +1,4 @@
-use crate::commands::diff::{hunks_of, staged_view_diff, unstaged_view_diff};
+use crate::commands::diff::{hunks_of, new_diff_options, staged_view_diff, unstaged_view_diff};
 use crate::state::{OpenRepos, RepoState};
 use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, ShownHunk, WorkingTreeStatus};
 use git2::{Status, StatusOptions};
@@ -1698,9 +1698,18 @@ fn staged_outcome(
     repo: &git2::Repository,
     file_path: &str,
 ) -> Result<LineActionOutcome, TrunkError> {
-    let diff = staged_view_diff(repo, &DiffRequestOptions::default())?;
+    let mut opts = new_diff_options();
+    opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
+
+    let head_tree = if is_head_unborn(repo) {
+        None
+    } else {
+        Some(repo.head()?.peel_to_tree()?)
+    };
+    let diff = repo.diff_tree_to_index(head_tree.as_ref(), None, Some(&mut opts))?;
 
     Ok(LineActionOutcome {
-        file_still_changed: delta_index_of(&diff, file_path).is_some(),
+        file_still_changed: diff.deltas().len() > 0,
     })
 }
