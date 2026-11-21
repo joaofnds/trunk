@@ -4,7 +4,9 @@
 /// The repository's remotes, read once so that naming the remote of every
 /// remote-tracking ref does not reread the config per ref, as
 /// `Repository::branch_remote_name` does.
+#[derive(Default)]
 pub struct Remotes<'repo> {
+    configured_names: Option<git2::string_array::StringArray>,
     remotes: Vec<git2::Remote<'repo>>,
 }
 
@@ -14,20 +16,48 @@ pub struct RemoteBranch {
     pub branch: String,
 }
 
+/// A symbolic default-branch alias points into its remote's own namespace.
+pub fn is_remote_head_alias<'loaded, 'repo: 'loaded>(
+    reference: &git2::Reference<'_>,
+    remotes: impl FnOnce() -> &'loaded Remotes<'repo>,
+) -> bool {
+    let Ok(Some(destination)) = reference.symbolic_target() else {
+        return false;
+    };
+    let Ok(name) = reference.name() else {
+        return false;
+    };
+    let Some(namespace) = name.strip_suffix("/HEAD") else {
+        return false;
+    };
+    let Some(remote) = namespace.strip_prefix("refs/remotes/") else {
+        return false;
+    };
+
+    destination
+        .strip_prefix(namespace)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+        && remotes().owns_default_slot(remote, name, destination)
+}
+
 impl<'repo> Remotes<'repo> {
     pub fn read(repo: &'repo git2::Repository) -> Self {
-        let remotes = repo
-            .remotes()
-            .map(|names| {
-                names
-                    .iter()
-                    .flatten()
-                    .flatten()
-                    .filter_map(|name| repo.find_remote(name).ok())
-                    .collect()
-            })
-            .unwrap_or_default();
-        Self { remotes }
+        Self::try_read(repo).unwrap_or_default()
+    }
+
+    pub fn try_read(repo: &'repo git2::Repository) -> Result<Self, git2::Error> {
+        let names = repo.remotes()?;
+        let remotes = names
+            .iter()
+            .flatten()
+            .flatten()
+            .filter_map(|name| repo.find_remote(name).ok())
+            .collect();
+
+        Ok(Self {
+            configured_names: Some(names),
+            remotes,
+        })
     }
 
     /// The one remote whose fetch refspec writes `remote_ref`, or `None` when no
@@ -65,6 +95,28 @@ impl<'repo> Remotes<'repo> {
                 remote: remote.to_owned(),
                 branch: branch.to_owned(),
             })
+    }
+
+    fn owns_default_slot(&self, owner: &str, alias: &str, destination: &str) -> bool {
+        // A conventional alias can survive without its remote's config. A
+        // slashful prefix needs a declared remote, even if its refspec is bad.
+        let Some(names) = &self.configured_names else {
+            return false;
+        };
+        if owner.contains('/') && !names.iter().flatten().flatten().any(|name| name == owner) {
+            return false;
+        }
+
+        !self.remotes.iter().any(|remote| {
+            remote
+                .name()
+                .ok()
+                .flatten()
+                .is_some_and(|name| name != owner)
+                && remote.refspecs().any(|spec| {
+                    spelled_by(&spec, alias).is_some() || spelled_by(&spec, destination).is_some()
+                })
+        })
     }
 
     fn writer_of(&self, remote_ref: &str) -> Option<&git2::Remote<'repo>> {

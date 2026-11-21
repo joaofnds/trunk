@@ -1,8 +1,10 @@
+use crate::commands::remote_tracking::{Remotes, is_remote_head_alias};
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::types::RebaseTodoItem;
 use crate::user_git::{UserGit, refusal};
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
+use std::cell::OnceCell;
 use std::collections::HashSet;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::error::TrunkError;
@@ -138,6 +140,10 @@ fn read_rebase_source(repo: &git2::Repository) -> Result<(RebaseSource, git2::Oi
 }
 
 fn branch_name_at(repo: &git2::Repository, oid: git2::Oid) -> Option<String> {
+    let remotes = OnceCell::new();
+    let read_remotes =
+        || remotes.get_or_init(|| optional_base_ref(Remotes::try_read(repo)).unwrap_or_default());
+
     [git2::BranchType::Local, git2::BranchType::Remote]
         .into_iter()
         .find_map(|kind| {
@@ -147,7 +153,7 @@ fn branch_name_at(repo: &git2::Repository, oid: git2::Oid) -> Option<String> {
                     let name = optional_base_ref(branch.name())??;
                     let reference = branch.get();
                     if kind == git2::BranchType::Remote
-                        && is_remote_head_alias(repo, name, reference)
+                        && is_remote_head_alias(reference, read_remotes)
                     {
                         return None;
                     }
@@ -164,20 +170,6 @@ fn optional_base_ref<T>(result: Result<T, git2::Error>) -> Option<T> {
     result
         .inspect_err(|error| eprintln!("Rebase base label lookup skipped: {error}"))
         .ok()
-}
-
-fn is_remote_head_alias(
-    repo: &git2::Repository,
-    name: &str,
-    reference: &git2::Reference<'_>,
-) -> bool {
-    reference.symbolic_target_bytes().is_some()
-        && name.strip_suffix("/HEAD").is_some_and(|remote| {
-            !remote.contains('/')
-                || optional_base_ref(repo.remotes()).is_some_and(|names| {
-                    names.iter().flatten().flatten().any(|name| name == remote)
-                })
-        })
 }
 
 /// The rebase range, newest first: every commit reachable from `source` and not from

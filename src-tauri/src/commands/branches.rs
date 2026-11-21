@@ -1,4 +1,4 @@
-use crate::commands::remote_tracking::{Remotes, spelled_by};
+use crate::commands::remote_tracking::{Remotes, is_remote_head_alias, spelled_by};
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use crate::types::{BranchInfo, DeletedBranch, RefsResponse, StashEntry};
 use crate::user_git::{UserGit, refusal};
@@ -1154,13 +1154,16 @@ fn remote_branches(repo: &git2::Repository) -> Result<Vec<BranchInfo>, TrunkErro
         .branches(Some(BranchType::Remote))?
         .filter_map(std::result::Result::ok)
         .filter_map(|(branch, _)| {
-            let name = branch.name().ok().flatten()?.to_owned();
-            if name.ends_with("/HEAD") {
+            let reference = branch.get();
+            if reference.symbolic_target_bytes().is_some()
+                && (is_remote_head_alias(reference, || &remotes)
+                    || reference.peel_to_commit().is_err())
+            {
                 return None;
             }
+            let name = branch.name().ok().flatten()?.to_owned();
 
-            let remote = branch
-                .get()
+            let remote = reference
                 .name()
                 .ok()
                 .and_then(|refname| remotes.name_of(refname));

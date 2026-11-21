@@ -455,6 +455,38 @@ fn an_inclusive_todo_names_a_remote_branch_whose_path_ends_in_head() {
 }
 
 #[test]
+fn an_unloadable_remote_keeps_its_head_alias_out_of_the_sidebar_and_rebase_label() {
+    let (ctx, oids) = make_three_commit_ctx();
+    let repo = ctx.repo();
+    repo.remote("my/fork", "file:///elsewhere").unwrap();
+    repo.config()
+        .unwrap()
+        .set_str("remote.my/fork.fetch", "refs/heads/*:refs/remotes/my/fork")
+        .unwrap();
+    assert!(repo.find_remote("my/fork").is_err());
+    repo.reference("refs/remotes/my/fork/topic", oids[0], false, "")
+        .unwrap();
+    repo.reference_symbolic(
+        "refs/remotes/my/fork/HEAD",
+        "refs/remotes/my/fork/topic",
+        false,
+        "",
+    )
+    .unwrap();
+
+    let refs = ctx.list_refs().unwrap();
+    let todo = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    let names: Vec<&str> = refs
+        .remote
+        .iter()
+        .map(|branch| branch.name.as_str())
+        .collect();
+    assert_eq!(todo.base_branch.as_deref(), Some("my/fork/topic"));
+    assert_eq!(names, ["my/fork/topic"]);
+}
+
+#[test]
 fn an_inclusive_todo_at_the_root_commit_has_no_base() {
     let (ctx, oids) = make_three_commit_ctx();
 

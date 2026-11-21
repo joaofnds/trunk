@@ -2714,6 +2714,122 @@ mod listing_remote_branches {
         repo_with_remote_fetching, repo_with_remote_topic, tip,
     };
 
+    #[test]
+    fn lists_a_direct_remote_branch_whose_name_ends_in_head() {
+        let ctx = repo_with_remote_topic("origin");
+        let repo = ctx.repo();
+        let commit = tip(&ctx, "feat");
+        repo.reference("refs/remotes/origin/release/HEAD", commit, false, "fetch")
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let branch = refs
+            .remote
+            .iter()
+            .find(|branch| branch.name == "origin/release/HEAD")
+            .expect("the remote branch is listed");
+        assert_eq!(branch.remote.as_deref(), Some("origin"));
+    }
+
+    #[test]
+    fn hides_the_head_alias_of_a_remote_with_a_slash_in_its_name() {
+        let ctx = repo_with_remote_topic("my/fork");
+        ctx.repo()
+            .reference_symbolic(
+                "refs/remotes/my/fork/HEAD",
+                "refs/remotes/my/fork/topic",
+                false,
+                "clone",
+            )
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let names: Vec<&str> = refs
+            .remote
+            .iter()
+            .map(|branch| branch.name.as_str())
+            .collect();
+        assert_eq!(names, ["my/fork/topic"]);
+    }
+
+    #[test]
+    fn lists_a_symbolic_tracking_ref_outside_the_remote_head_slot() {
+        let ctx = repo_with_remote_topic("origin");
+        let repo = ctx.repo();
+        repo.remote_with_fetch(
+            "origin/release",
+            "file:///elsewhere",
+            "+refs/heads/*:refs/remotes/fork-cache/*",
+        )
+        .unwrap();
+        repo.reference_symbolic(
+            "refs/remotes/origin/release/HEAD",
+            "refs/remotes/origin/topic",
+            false,
+            "fixture",
+        )
+        .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let branch = refs
+            .remote
+            .iter()
+            .find(|branch| branch.name == "origin/release/HEAD")
+            .expect("the symbolic tracking ref is listed");
+        assert_eq!(branch.remote.as_deref(), Some("origin"));
+    }
+
+    #[test]
+    fn lists_a_symbolic_head_slot_another_remote_fetches_into() {
+        let ctx = repo_with_remote_fetching(
+            "origin",
+            "+refs/heads/*:refs/remotes/cache/*",
+            "refs/remotes/cache/topic",
+        );
+        ctx.repo()
+            .reference_symbolic(
+                "refs/remotes/cache/HEAD",
+                "refs/remotes/cache/topic",
+                false,
+                "fixture",
+            )
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let branch = refs
+            .remote
+            .iter()
+            .find(|branch| branch.name == "cache/HEAD")
+            .expect("the mapped tracking ref is listed");
+        assert_eq!(branch.remote.as_deref(), Some("origin"));
+    }
+
+    #[test]
+    fn omits_a_dangling_symbolic_tracking_ref() {
+        let ctx = repo_with_remote_topic("origin");
+        ctx.repo()
+            .reference_symbolic(
+                "refs/remotes/origin/release/HEAD",
+                "refs/remotes/origin/missing",
+                false,
+                "fixture",
+            )
+            .unwrap();
+
+        let refs = ctx.list_refs().unwrap();
+
+        let names: Vec<&str> = refs
+            .remote
+            .iter()
+            .map(|branch| branch.name.as_str())
+            .collect();
+        assert_eq!(names, ["origin/topic"]);
+    }
+
     /// The sidebar groups remote branches by this field, and the first "/" in the name
     /// would put `my/fork/topic` under a remote called `my`.
     #[test]
