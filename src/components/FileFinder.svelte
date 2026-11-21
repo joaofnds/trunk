@@ -6,13 +6,14 @@
 // ignored files cannot appear here at all. The finder never reads the filesystem
 // itself; picking a row reports the path and the host opens it.
 
+import { onMount } from "svelte";
 import { rankFiles } from "../lib/file-finder.js";
 import { tallyEntries } from "../lib/review-filter.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
-	files: TrackedFile[];
+	files: TrackedFile[] | null;
 	// How many current-file comments each path already carries, so a user sees
 	// where the discussion already is before opening anything.
 	commentCounts?: Map<string, number>;
@@ -29,49 +30,177 @@ let {
 	onclose,
 }: Props = $props();
 
+const listId = "file-finder-list";
+const statusId = "file-finder-status";
 let query = $state("");
 let selectedIndex = $state(0);
-let dialogEl: HTMLDialogElement | undefined = $state();
-let listEl: HTMLDivElement | undefined = $state();
+let rowHeight = $state(0);
+let viewportHeight = $state(0);
+let scrollTop = $state(0);
+let dialogEl: HTMLDialogElement | undefined;
+let inputEl: HTMLInputElement | undefined;
+let listEl: HTMLDivElement | undefined;
+let rowProbe: HTMLDivElement | undefined;
 
-$effect(() => {
-	if (dialogEl && !dialogEl.open) dialogEl.showModal();
+onMount(() => {
+	const dialog = dialogEl;
+	const list = listEl;
+	const probe = rowProbe;
+	if (!dialog || !inputEl || !list || !probe) return;
+
+	dialog.showModal();
+	inputEl.focus({ preventScroll: true });
+
+	const measure = () => {
+		rowHeight = probe.getBoundingClientRect().height;
+		viewportHeight = list.clientHeight;
+		scrollTop = list.scrollTop;
+		keepSelectionVisible();
+	};
+	measure();
+
+	const observer = new ResizeObserver(measure);
+	observer.observe(list);
+	observer.observe(probe);
+
+	return () => {
+		observer.disconnect();
+		if (dialog.open) dialog.close();
+	};
 });
 
-const matches = $derived(rankFiles(files, query));
+const matches = $derived(files === null ? [] : rankFiles(files, query));
+const viewportTop = $derived(
+	Math.max(0, Math.min(scrollTop, matches.length * rowHeight - viewportHeight)),
+);
+const shown = $derived.by(() => {
+	if (rowHeight === 0 || matches.length === 0) return { start: 0, end: 0 };
+
+	const start = Math.min(
+		matches.length - 1,
+		Math.max(0, Math.floor((viewportTop - viewportHeight) / rowHeight)),
+	);
+	const end = Math.min(
+		matches.length,
+		Math.max(
+			start + 1,
+			Math.ceil((viewportTop + 2 * viewportHeight) / rowHeight),
+		),
+	);
+
+	return { start, end };
+});
+const visible = $derived(matches.slice(shown.start, shown.end));
+const activeOption = $derived(
+	selectedIndex >= shown.start && selectedIndex < shown.end
+		? optionId(selectedIndex)
+		: undefined,
+);
+
+function optionId(index: number): string {
+	return `${listId}-option-${index}`;
+}
 
 function handleInput(e: Event) {
 	query = (e.currentTarget as HTMLInputElement).value;
-	// A narrowed list makes the old index meaningless, and the top row is the
-	// one the new query ranked best.
 	selectedIndex = 0;
+	if (listEl) listEl.scrollTop = 0;
+	scrollTop = 0;
 }
 
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Escape") {
-		e.preventDefault();
-		e.stopPropagation();
-		onclose();
-	} else if (e.key === "ArrowDown") {
-		e.preventDefault();
-		moveSelection(Math.min(selectedIndex + 1, matches.length - 1));
-	} else if (e.key === "ArrowUp") {
-		e.preventDefault();
-		moveSelection(Math.max(selectedIndex - 1, 0));
-	} else if (e.key === "Enter") {
-		e.preventDefault();
-		const chosen = matches[selectedIndex];
-		if (chosen) onselect(chosen.path);
+function cancel(e: Event) {
+	e.preventDefault();
+	dialogEl?.close();
+	onclose();
+}
+
+function choose(path: string) {
+	dialogEl?.close();
+	onselect(path);
+}
+
+function keepSelectionVisible() {
+	if (rowHeight === 0 || viewportHeight === 0 || matches.length === 0) return;
+
+	const top = viewportTop / rowHeight;
+	const bottom = (viewportTop + viewportHeight) / rowHeight;
+	const firstVisible = Math.floor(top);
+	const lastVisible = Math.min(matches.length - 1, Math.ceil(bottom) - 1);
+	const firstWhole = Math.ceil(top);
+	const lastWhole = Math.min(lastVisible, Math.floor(bottom) - 1);
+	const hasWholeRow = firstWhole <= lastWhole;
+
+	if (selectedIndex < firstVisible) {
+		selectedIndex = hasWholeRow ? firstWhole : firstVisible;
+	} else if (selectedIndex > lastVisible) {
+		selectedIndex = hasWholeRow ? lastWhole : lastVisible;
 	}
 }
 
-function moveSelection(index: number) {
-	selectedIndex = index;
-	listEl?.children[index]?.scrollIntoView({ block: "nearest" });
+function syncScroll(top: number) {
+	if (scrollTop === top) return;
+
+	scrollTop = top;
+	keepSelectionVisible();
 }
 
-function autofocus(node: HTMLElement) {
-	node.focus();
+function handleKeydown(e: KeyboardEvent) {
+	if (e.isComposing) return;
+
+	if (e.key === "Escape") {
+		e.stopPropagation();
+		cancel(e);
+		return;
+	}
+
+	if (listEl) syncScroll(listEl.scrollTop);
+
+	if (e.key === "Enter") {
+		e.preventDefault();
+		const chosen = matches[selectedIndex];
+		if (chosen) choose(chosen.path);
+		return;
+	}
+
+	if (!listEl || rowHeight === 0 || matches.length === 0) return;
+
+	const page = Math.max(1, Math.floor(viewportHeight / rowHeight));
+	let step: number;
+	switch (e.key) {
+		case "ArrowDown":
+			step = 1;
+			break;
+		case "ArrowUp":
+			step = -1;
+			break;
+		case "PageDown":
+			step = page;
+			break;
+		case "PageUp":
+			step = -page;
+			break;
+		default:
+			return;
+	}
+
+	e.preventDefault();
+	selectedIndex = Math.max(
+		0,
+		Math.min(selectedIndex + step, matches.length - 1),
+	);
+
+	const top = selectedIndex * rowHeight;
+	const bottom = top + rowHeight;
+	if (top < listEl.scrollTop) {
+		listEl.scrollTop = top;
+	} else if (bottom > listEl.scrollTop + viewportHeight) {
+		listEl.scrollTop = bottom - viewportHeight;
+	}
+	scrollTop = listEl.scrollTop;
+}
+
+function handleScroll(e: Event & { currentTarget: HTMLDivElement }) {
+	syncScroll(e.currentTarget.scrollTop);
 }
 
 function rowLabel(file: TrackedFile): string {
@@ -94,38 +223,58 @@ function rowLabel(file: TrackedFile): string {
 	bind:this={dialogEl}
 	class="fixed inset-0 flex flex-col items-center backdrop:bg-backdrop w-auto h-auto max-w-none max-h-none m-0 p-0 border-none bg-transparent"
 	aria-label="Comment on a file"
-	oncancel={onclose}
+	oncancel={cancel}
 >
 	<div class="flex-1" aria-hidden="true"></div>
 	<div
 		class="flex flex-col rounded bg-surface-raised border border-border shadow-lg finder-box overflow-hidden relative flex-initial"
 	>
 		<input
+			bind:this={inputEl}
 			type="text"
 			role="combobox"
-			aria-expanded="true"
-			aria-controls="file-finder-list"
+			aria-expanded={matches.length > 0}
+			aria-controls={listId}
+			aria-autocomplete="list"
+			aria-activedescendant={activeOption}
+			aria-describedby={matches.length === 0 ? statusId : undefined}
 			aria-label="Find a tracked file to comment on"
 			placeholder="Comment on a file…"
 			value={query}
 			oninput={handleInput}
 			onkeydown={handleKeydown}
-			use:autofocus
-			class="bg-bg border-none border-b border-border text-text p-3 text-body leading-normal outline-none"
+			class="shrink-0 bg-bg border-none border-b border-border text-text p-3 text-body leading-normal focus:outline-2 focus:-outline-offset-2 focus:outline-accent"
 		>
 
 		<div
+			bind:this={rowProbe}
+			class="finder-row-probe absolute invisible"
+			aria-hidden="true"
+		></div>
+		<div
 			bind:this={listEl}
-			id="file-finder-list"
+			id={listId}
 			role="listbox"
 			aria-label="Tracked files"
-			class="flex-1 min-h-0 overflow-y-auto text-callout leading-normal"
+			hidden={matches.length === 0}
+			tabindex={-1}
+			onscroll={handleScroll}
+			class="finder-list flex-1 min-h-0 overflow-y-auto text-callout leading-normal"
 		>
-			{#each matches as file, i (file.path)}
+			<div
+				aria-hidden="true"
+				style:height={`${shown.start * rowHeight}px`}
+			></div>
+			{#each visible as file, offset (file.path)}
+				{@const index = shown.start + offset}
 				<ListOption
-					selected={i === selectedIndex}
+					id={optionId(index)}
+					tabindex={-1}
+					selected={index === selectedIndex}
 					aria-label={rowLabel(file)}
-					onclick={() => onselect(file.path)}
+					aria-posinset={index + 1}
+					aria-setsize={matches.length}
+					onclick={() => choose(file.path)}
 				>
 					{#if file.changed}
 						<span
@@ -151,24 +300,44 @@ function rowLabel(file: TrackedFile): string {
 					{/if}
 				</ListOption>
 			{/each}
-
-			{#if matches.length === 0}
-				<div
-					role="presentation"
-					class="p-3 text-callout leading-normal text-text-muted"
-				>
-					No tracked file matches
-				</div>
-			{/if}
+			<div
+				aria-hidden="true"
+				style:height={`${(matches.length - shown.end) * rowHeight}px`}
+			></div>
 		</div>
+		{#if matches.length === 0}
+			<div
+				id={statusId}
+				role="status"
+				class="p-3 text-callout leading-normal text-text-muted"
+			>
+				{files === null ? "Loading tracked files…" : "No tracked file matches"}
+			</div>
+		{/if}
 	</div>
 	<div class="flex-3" aria-hidden="true"></div>
 </dialog>
 
 <style>
 .finder-box {
+	--finder-row-height: calc(
+		var(--text-callout) *
+		var(--leading-normal) +
+		4 *
+		var(--u)
+	);
 	width: calc(130 * var(--u));
+	max-width: 100%;
 	max-height: 60vh;
+}
+
+.finder-row-probe,
+.finder-list :global([role="option"]) {
+	height: var(--finder-row-height);
+}
+
+.finder-list {
+	overflow-anchor: none;
 }
 
 .dot-slot {

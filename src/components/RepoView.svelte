@@ -469,13 +469,22 @@ let stagingPanelRef = $state<StagingPanel | null>(null);
 // The picked file opens in the full-file view under its own diff kind, which
 // carries no view oid, so no comment renders against it and the Comment
 // affordance stays gated until the content pin lands (TRUNK-154.3).
-let finderOpen = $state(false);
-let finderFiles = $state.raw<TrackedFile[]>([]);
+interface FileFinderRequest {
+	repo: string;
+	files: TrackedFile[] | null;
+}
+
+interface FileFinderReview {
+	activeReviewId: string | null;
+	shownReviewId: string | null;
+}
+
+let finder = $state.raw<FileFinderRequest | null>(null);
+let finderReview = $state.raw<FileFinderReview | null>(null);
 let selectedCurrentFile = $state<string | null>(null);
 let currentFileDiffs = $state.raw<FileDiff[]>([]);
 let currentFileLoading = $state(false);
 let currentFileError = $state<string | null>(null);
-let finderLoadSeq = 0;
 
 // The open current file is read by two callers — the finder's pick and every
 // repository change under it — through one coalesced owner, so a burst of
@@ -495,16 +504,52 @@ let currentFileGeneration = 0;
 let pendingCurrentFile: CurrentFileLoad | null = null;
 const currentFileRefresh = createCoalescedTask(scheduler, readCurrentFile);
 
+function restoredFinderReview(): FileFinderReview | null {
+	if (reviewComments.revision === 0) return null;
+
+	return {
+		activeReviewId: reviewComments.activeReviewId,
+		shownReviewId: reviewComments.shownReviewId,
+	};
+}
+
+function finderScopeMatches(request: FileFinderRequest): boolean {
+	return (
+		repoViewActive &&
+		finderAvailable &&
+		request.repo === repoPath &&
+		(finderReview === null ||
+			(finderReview.activeReviewId === reviewComments.activeReviewId &&
+				finderReview.shownReviewId === reviewComments.shownReviewId))
+	);
+}
+
+function closeFileFinder() {
+	finder = null;
+	finderReview = null;
+}
+
 async function openFileFinder() {
-	const seq = ++finderLoadSeq;
+	if (!finderAvailable || finder !== null) return;
+
+	const request: FileFinderRequest = {
+		repo: repoPath,
+		files: null,
+	};
+	finderReview = restoredFinderReview();
+	finder = request;
+
 	try {
 		const files = await safeInvoke<TrackedFile[]>("list_tracked_files", {
-			path: repoPath,
+			path: request.repo,
 		});
-		if (seq !== finderLoadSeq) return;
-		finderFiles = files;
-		finderOpen = true;
+		if (finder === request && finderScopeMatches(request)) {
+			finder = { ...request, files };
+		}
 	} catch (e) {
+		if (finder !== request || !finderScopeMatches(request)) return;
+
+		closeFileFinder();
 		reportErrorToast(e, "Could not list this repository's files");
 	}
 }
@@ -560,7 +605,7 @@ function prepareCurrentFileRead(path: string, reportError: boolean): void {
 
 async function openCurrentFile(filePath: string) {
 	cancelPendingCommitSelection();
-	finderOpen = false;
+	closeFileFinder();
 	currentFileGeneration += 1;
 	currentFileDiffs = [];
 	prepareCurrentFileRead(filePath, true);
@@ -775,6 +820,21 @@ let reviewListPane = $state<HTMLDivElement | null>(null);
 const reviewPanelShown = $derived(
 	reviewMode && !(reviewSession.state.rightPaneMode === "diff" && showDiff),
 );
+const finderAvailable = $derived(
+	tabActive && reviewActive && reviewPanelShown && !showRebaseEditor,
+);
+const finderShown = $derived(finder !== null && finderScopeMatches(finder));
+
+$effect(() => {
+	if (!finder) return;
+
+	if (!finderShown) {
+		closeFileFinder();
+	} else if (finderReview === null) {
+		finderReview = restoredFinderReview();
+	}
+});
+
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // The graph stays mounted under whatever covers the center pane, as a background
 // tab stays mounted under the active one, so closing a diff returns to the rows
@@ -3196,13 +3256,13 @@ async function handleRebaseStart(
 	</main>
 </div>
 
-{#if finderOpen}
+{#if finder && finderShown}
 	<FileFinder
-		files={finderFiles}
+		files={finder.files}
 		commentCounts={presentation.byCurrentFile}
 		commentTallies={presentation.tallyByCurrentFile}
 		onselect={openCurrentFile}
-		onclose={() => (finderOpen = false)}
+		onclose={closeFileFinder}
 	/>
 {/if}
 

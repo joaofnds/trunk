@@ -16,6 +16,7 @@ import {
 } from "../../tests/app/harness/dom.js";
 import { makeCommit, makeMergeSides } from "../__tests__/helpers/factories.js";
 import { RepositoryReadHost } from "../__tests__/helpers/repository-read-host.js";
+import { aReview } from "../__tests__/helpers/review-fixture.js";
 import { aSessionCommit } from "../__tests__/helpers/session-commit-fixture.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
@@ -287,6 +288,112 @@ describe("RepoView staging selection", () => {
 			expect(screen.getByRole("button", { name: action })).toBeVisible();
 		},
 	);
+});
+
+describe("review file finder", () => {
+	it("preserves the query through startup review hydration", async () => {
+		const restored = aReview({ title: "Restored review" });
+		const other = aReview({ id: "OTHER001", title: "Other review" });
+		host.seedResponse("list_reviews", [restored, other]);
+		host.seedResponse("get_active_review", restored.id);
+		const initialReview = host.holdNextReply("get_active_review");
+		const view = await openRepository();
+		await initialReview.entered;
+		await view.rerender({ reviewActive: true });
+		const files = host.holdNextReply("list_tracked_files");
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+		await files.entered;
+		const input = screen.getByRole("combobox", { name: /Find a tracked file/ });
+		await fireEvent.input(input, { target: { value: "second" } });
+
+		initialReview.release(restored.id);
+		await drainReplies();
+		files.release([
+			{ path: "first.txt", changed: false },
+			{ path: "second.txt", changed: false },
+		]);
+
+		expect(input).toHaveFocus();
+		expect(input).toHaveValue("second");
+		expect(
+			await screen.findByRole("option", { name: "second.txt" }),
+		).toBeVisible();
+		expect(screen.queryByRole("option", { name: "first.txt" })).toBeNull();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Show review ${other.id}` }),
+		);
+
+		expect(
+			screen.queryByRole("combobox", { name: /Find a tracked file/ }),
+		).toBeNull();
+	});
+
+	it("accepts a query while the tracked files are loading", async () => {
+		const view = await openRepository();
+		await view.rerender({ reviewActive: true });
+		const files = host.holdNextReply("list_tracked_files");
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+		await files.entered;
+
+		const input = screen.getByRole("combobox", { name: /Find a tracked file/ });
+		expect(input).toHaveFocus();
+		await fireEvent.input(input, { target: { value: "second" } });
+		await fireEvent.keyDown(input, { key: "ArrowDown" });
+		files.release([
+			{ path: "first.txt", changed: false },
+			{ path: "second.txt", changed: false },
+		]);
+
+		expect(
+			await screen.findByRole("option", { name: "second.txt", selected: true }),
+		).toBeVisible();
+		expect(screen.queryByRole("option", { name: "first.txt" })).toBeNull();
+		expect(input).toHaveFocus();
+	});
+
+	it("keeps a dismissed finder closed when an older listing fails", async () => {
+		const view = await openRepository();
+		await view.rerender({ reviewActive: true });
+		const files = host.holdNextReply("list_tracked_files");
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+		await files.entered;
+
+		await fireEvent.keyDown(
+			screen.getByRole("combobox", { name: /Find a tracked file/ }),
+			{ key: "Escape" },
+		);
+		files.reject({ code: "not_open", message: "Repository closed" });
+		await drainReplies();
+
+		expect(
+			screen.queryByRole("dialog", { name: "Comment on a file" }),
+		).toBeNull();
+		expect(toasts.items).toEqual([]);
+	});
+
+	it("drops an older listing when leaving and returning to the review tab", async () => {
+		const view = await openRepository();
+		await view.rerender({ reviewActive: true });
+		const older = host.holdNextReply("list_tracked_files");
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+		await older.entered;
+
+		await view.rerender({ tabActive: false, reviewActive: false });
+		await view.rerender({ tabActive: true, reviewActive: true });
+		host.seedResponse("list_tracked_files", [
+			{ path: "current.txt", changed: false },
+		]);
+		await fireEvent.click(await screen.findByText(/Comment on a file/));
+		const input = screen.getByRole("combobox", { name: /Find a tracked file/ });
+		await screen.findByRole("option", { name: "current.txt" });
+		older.release([{ path: "stale.txt", changed: false }]);
+		await drainReplies();
+
+		expect(screen.queryByRole("option", { name: "stale.txt" })).toBeNull();
+		expect(screen.getByRole("option", { name: "current.txt" })).toBeVisible();
+		expect(input).toHaveFocus();
+	});
 });
 
 describe("RepoView commit selection", () => {

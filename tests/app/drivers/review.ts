@@ -40,7 +40,8 @@ const MARK_DONE = "Mark done";
 const DISMISS = "Dismiss";
 const COMMENT_ON_FILE = "Comment on a file…";
 const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
-const FINDER_ROW = '[aria-label="Tracked files"] [role="option"]';
+const FINDER_LIST = '[aria-label="Tracked files"]';
+const FINDER_ROW = `${FINDER_LIST} [role="option"]`;
 const SELECTABLE_LINE = "[data-gutter-grip]";
 const FULL_FILE_COMMENT = '[aria-label="Comment on selected lines"]';
 const JUMP_TO_CODE = `[aria-label="Jump to code"], ${SCOPE_TAG}`;
@@ -544,6 +545,19 @@ export class ReviewDriver {
 
 	finderVisible(): boolean {
 		return document.querySelector(FINDER_INPUT) !== null;
+	}
+
+	finderScrollTop(): number {
+		return document.querySelector(FINDER_LIST)?.scrollTop ?? 0;
+	}
+
+	async pressFinderKey(key: "PageDown" | "Enter"): Promise<void> {
+		const field = await waitFor("the focused finder field", () =>
+			document.querySelector<HTMLInputElement>(`${FINDER_INPUT}:focus`),
+		);
+		field.dispatchEvent(
+			new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+		);
 	}
 
 	finderBadge(): { count: number; background: string } | null {

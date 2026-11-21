@@ -460,7 +460,21 @@
       case "finder-open":
         action = () => button("Comment on a file…").click();
         feedback = () => all('[aria-label="Find a tracked file to comment on"]').length === 1;
-        ready = () => feedback() && all('#file-finder-list [role="option"]').length === spec.fileCount;
+        ready = () => {
+          if (!feedback()) return false;
+
+          const rows = all('#file-finder-list [role="option"]');
+          const first = rows[0];
+          if (!first) return false;
+
+          const total = first.getAttribute("aria-setsize");
+          if (total === null) return rows.length === spec.fileCount;
+
+          const viewportHeight = first.closest("#file-finder-list").clientHeight;
+          const rowHeight = first.getBoundingClientRect().height;
+          return Number(total) === spec.fileCount && viewportHeight > 0 && rowHeight > 0 &&
+            rows.length >= Math.min(spec.fileCount, Math.ceil(viewportHeight / rowHeight));
+        };
         break;
       case "finder-search":
         action = () => setInput(one('[aria-label="Find a tracked file to comment on"]'), spec.path);

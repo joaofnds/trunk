@@ -1,5 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	restoreLayout,
+	setLayout,
+	stubLayout,
+} from "../__tests__/helpers/layout-stub.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import FileFinder from "./FileFinder.svelte";
 
@@ -8,6 +14,13 @@ const FILES: TrackedFile[] = [
 	{ path: "src/beta.ts", changed: true },
 	{ path: "src/gamma.ts", changed: false },
 ];
+
+const ROW_HEIGHT = 30;
+const VIEWPORT_HEIGHT = 120;
+const LARGE_LIST = Array.from({ length: 2000 }, (_, index) => ({
+	path: `src/file-${String(index).padStart(4, "0")}.ts`,
+	changed: false,
+}));
 
 function open(
 	props: Partial<{
@@ -24,19 +37,17 @@ function open(
 	return { ...result, onselect, onclose };
 }
 
-// jsdom lays nothing out and has no scrollIntoView, so the stub records which
-// row the finder asked to bring into view.
-let scrolledIntoView: Element[] = [];
-
 beforeEach(() => {
-	scrolledIntoView = [];
-	Element.prototype.scrollIntoView = function (this: Element) {
-		scrolledIntoView.push(this);
-	};
+	stubLayout({
+		height: VIEWPORT_HEIGHT,
+		measure: (el) =>
+			el.matches(".finder-row-probe") ? { height: ROW_HEIGHT } : undefined,
+	});
 });
 
 afterEach(() => {
-	Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+	restoreLayout();
+	vi.unstubAllGlobals();
 });
 
 function rowPaths(): string[] {
@@ -105,6 +116,43 @@ describe("FileFinder", () => {
 		expect(rowPaths()).toEqual(["src/beta.ts", "src/alpha.ts", "src/gamma.ts"]);
 	});
 
+	it("mounts only a viewport-sized window while keeping the last result clickable", async () => {
+		const { onselect } = open({ files: LARGE_LIST });
+		const list = screen.getByRole("listbox");
+		const lastPath = LARGE_LIST[LARGE_LIST.length - 1].path;
+		const mountedRows = rowPaths().length;
+
+		list.scrollTop = LARGE_LIST.length * ROW_HEIGHT - VIEWPORT_HEIGHT;
+		await fireEvent.scroll(list);
+		await fireEvent.click(screen.getByRole("option", { name: lastPath }));
+
+		expect(mountedRows).toBeLessThanOrEqual((2 * VIEWPORT_HEIGHT) / ROW_HEIGHT);
+		expect(onselect).toHaveBeenCalledWith(lastPath);
+	});
+
+	it("mounts more results when the viewport grows", async () => {
+		let resize = () => {};
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				constructor(measure: () => void) {
+					resize = measure;
+				}
+				observe() {}
+				disconnect() {}
+			},
+		);
+		open({ files: LARGE_LIST });
+		const list = screen.getByRole("listbox");
+		const mountedRows = rowPaths().length;
+
+		setLayout(list, { height: 2 * VIEWPORT_HEIGHT });
+		resize();
+		await tick();
+
+		expect(rowPaths().length).toBeGreaterThan(mountedRows);
+	});
+
 	it("narrows the list as the query is typed", async () => {
 		open();
 
@@ -136,19 +184,53 @@ describe("FileFinder", () => {
 	});
 
 	it.each([
-		["down", ["ArrowDown"], "src/alpha.ts"],
-		["up", ["ArrowDown", "ArrowUp"], "src/beta.ts"],
+		{ keys: ["Enter"], chosen: 13 },
+		{ keys: ["ArrowDown", "Enter"], chosen: 14 },
 	])(
-		"brings the row the arrow moves %s to into view",
-		async (_way, keys, path) => {
-			open();
+		"opens row $chosen after wheel scrolling and pressing $keys",
+		async ({ keys, chosen }) => {
+			const { onselect } = open({ files: LARGE_LIST });
+			const list = screen.getByRole("listbox");
 			const input = screen.getByRole("combobox");
 
+			list.scrollTop = 12.5 * ROW_HEIGHT;
+			await fireEvent.scroll(list);
 			for (const key of keys) await fireEvent.keyDown(input, { key });
 
-			expect(scrolledIntoView.at(-1)).toHaveTextContent(path);
+			expect(onselect).toHaveBeenCalledWith(LARGE_LIST[chosen].path);
+			expect(list.scrollTop).toBe(12.5 * ROW_HEIGHT);
 		},
 	);
+
+	it("scrolls far enough to show the last row when paged down to it", async () => {
+		const files = LARGE_LIST.slice(0, 9);
+		open({ files });
+		const input = screen.getByRole("combobox");
+
+		await fireEvent.keyDown(input, { key: "PageDown" });
+		await fireEvent.keyDown(input, { key: "PageDown" });
+
+		const selected = screen.getByRole("option", { selected: true });
+		expect(selected).toHaveTextContent(files[8].path);
+		expect(screen.getByRole("listbox").scrollTop).toBe(
+			files.length * ROW_HEIGHT - VIEWPORT_HEIGHT,
+		);
+		expect(selected).toHaveAttribute("aria-posinset", "9");
+		expect(selected).toHaveAttribute("aria-setsize", "9");
+		expect(input).toHaveAttribute("aria-activedescendant", selected.id);
+		expect(input).toHaveFocus();
+	});
+
+	it("keeps the search input as the only tab stop", () => {
+		open();
+		const input = screen.getByRole("combobox");
+		const list = screen.getByRole("listbox");
+		const results = screen.getAllByRole<HTMLElement>("option");
+
+		expect(input.tabIndex).toBe(0);
+		expect(list.tabIndex).toBe(-1);
+		expect(results.map((row) => row.tabIndex)).toEqual([-1, -1, -1]);
+	});
 
 	it("moves the selection up with the arrow key", async () => {
 		open();
