@@ -1581,6 +1581,50 @@ function handleCompareClose() {
 	clearCompare();
 }
 
+interface LoadedCompare {
+	readonly files: FileDiff[];
+	readonly stat: DiffStat | null;
+	readonly baseDetail: CommitDetailType | null;
+	readonly targetDetail: CommitDetailType;
+}
+
+async function loadCompare(
+	repo: string,
+	pair: ComparePair,
+): Promise<LoadedCompare> {
+	const [files, stat, baseDetail, targetDetail] = await Promise.all([
+		safeInvoke<FileDiff[]>("list_compare_files", {
+			path: repo,
+			baseOid: pair.baseOid,
+			targetOid: pair.targetOid,
+		}),
+		safeInvoke<DiffStat>("compare_stat", {
+			path: repo,
+			baseOid: pair.baseOid,
+			targetOid: pair.targetOid,
+		}).catch(() => null),
+		pair.baseOid
+			? safeInvoke<CommitDetailType>("get_commit_detail", {
+					path: repo,
+					oid: pair.baseOid,
+				})
+			: Promise.resolve(null),
+		safeInvoke<CommitDetailType>("get_commit_detail", {
+			path: repo,
+			oid: pair.targetOid,
+		}),
+	]);
+
+	return { files, stat, baseDetail, targetDetail };
+}
+
+function showLoadedCompare(loaded: LoadedCompare) {
+	compareFileDiffs = loaded.files;
+	compareStat = loaded.stat;
+	compareBaseDetail = loaded.baseDetail;
+	compareTargetDetail = loaded.targetDetail;
+}
+
 // Resolves true when the pair's files loaded and the pair is still the one shown.
 async function applyCompare(pair: ComparePair | null): Promise<boolean> {
 	navigationIntent += 1;
@@ -1596,38 +1640,17 @@ async function applyCompare(pair: ComparePair | null): Promise<boolean> {
 	}
 	if (!repoPath) return false;
 	try {
-		const [files, stat, baseDetail, targetDetail] = await Promise.all([
-			safeInvoke<FileDiff[]>("list_compare_files", {
-				path: repoPath,
-				baseOid: pair.baseOid,
-				targetOid: pair.targetOid,
-			}),
-			safeInvoke<DiffStat>("compare_stat", {
-				path: repoPath,
-				baseOid: pair.baseOid,
-				targetOid: pair.targetOid,
-			}).catch(() => null),
-			pair.baseOid
-				? safeInvoke<CommitDetailType>("get_commit_detail", {
-						path: repoPath,
-						oid: pair.baseOid,
-					})
-				: Promise.resolve(null),
-			safeInvoke<CommitDetailType>("get_commit_detail", {
-				path: repoPath,
-				oid: pair.targetOid,
-			}),
-		]);
+		const loaded = await loadCompare(repoPath, pair);
 		if (gen !== compareGeneration) return false;
 
-		compareFileDiffs = files;
-		compareStat = stat;
-		compareBaseDetail = baseDetail;
-		compareTargetDetail = targetDetail;
+		showLoadedCompare(loaded);
 		// A file picked from the previous pair's list while this one loaded
 		// closes when this pair leaves it alone.
 		const openFile = selectedCompareFile;
-		if (openFile !== null && !files.some((file) => file.path === openFile)) {
+		if (
+			openFile !== null &&
+			!loaded.files.some((file) => file.path === openFile)
+		) {
 			closeCompareFile();
 		}
 		return true;
@@ -1661,19 +1684,88 @@ function firstParentOfLoaded(oid: string): string | null {
 	return graphDisplayItems.find((c) => c.oid === oid)?.parent_oids[0] ?? null;
 }
 
+// The pair a swap still loading will show, so a second swap turns back from it.
+let pendingSwap: { gen: number; pair: ComparePair } | null = null;
+
 // The open file stays open across a swap, now diffed the other way. A rename
 // lists under its new name in one direction and its old name in the other.
+// The pair on screen stays until the swapped list and the open file's swapped
+// diff have both loaded, so the swap lands in one step.
 async function handleCompareSwap() {
-	const openFile = selectedCompareFile;
-	const swapped = await applyCompare(
-		swapCompare({ selectedOid: requestedCommitOid, compare }).compare,
-	);
-	if (!swapped || openFile === null || selectedCompareFile !== null) return;
+	const from =
+		pendingSwap?.gen === compareGeneration ? pendingSwap.pair : compare;
+	const pair = swapCompare({
+		selectedOid: requestedCommitOid,
+		compare: from,
+	}).compare;
+	if (pair === null || !repoPath) return;
 
-	const reopened = compareFileDiffs.find(
-		(file) => file.path === openFile || file.old_path === openFile,
-	);
-	if (reopened) await handleCompareFileSelect(reopened.path);
+	navigationIntent += 1;
+	const repo = repoPath;
+	const gen = ++compareGeneration;
+	pendingSwap = { gen, pair };
+	const diffSeq = ++compareDiffLoadSeq;
+	const swappedPath = (files: FileDiff[], path: string | null) =>
+		path === null
+			? null
+			: (files.find((file) => file.path === path || file.old_path === path)
+					?.path ?? null);
+	let loaded: LoadedCompare;
+	try {
+		loaded = await loadCompare(repo, pair);
+	} catch (e) {
+		if (gen !== compareGeneration) return;
+
+		reportErrorToast(e, "Failed to load comparison");
+		clearCompare();
+		return;
+	}
+	if (gen !== compareGeneration) return;
+
+	const openPath = swappedPath(loaded.files, selectedCompareFile);
+	const options = buildDiffOptions();
+	let diff: FileDiff | undefined;
+	let diffError: string | null = null;
+	if (openPath !== null && diffSeq === compareDiffLoadSeq) {
+		try {
+			[diff] = await requestCompareFileDiff(
+				repo,
+				pair.baseOid,
+				pair.targetOid,
+				openPath,
+				options,
+			);
+		} catch (error) {
+			diffError = loadErrorMessage(error);
+		}
+		if (gen !== compareGeneration) return;
+	}
+
+	const settled = diffSeq === compareDiffLoadSeq;
+	pendingSwap = null;
+	compare = pair;
+	showLoadedCompare(loaded);
+	const reopened = settled
+		? openPath
+		: swappedPath(loaded.files, selectedCompareFile);
+	if (reopened === null) {
+		if (selectedCompareFile !== null) closeCompareFile();
+		return;
+	}
+	selectedCompareFile = reopened;
+	if (!settled) {
+		await reloadCompareFile(reopened, buildDiffOptions());
+		return;
+	}
+	if (diff && compare !== null) {
+		compareLoadedDiffs = withLoadedDiff(
+			compareLoadedDiffs,
+			{ source: compare, path: reopened },
+			{ diff, options },
+		);
+	}
+	compareDiffLoading = false;
+	compareDiffError = diffError;
 }
 
 // Fetch one file's Base → Target diff for the pair shown when it was asked

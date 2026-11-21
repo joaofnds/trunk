@@ -5587,6 +5587,91 @@ describe("RepoView", () => {
 			expect(await screen.findByText(`${to} TO ${from}`)).toBeTruthy();
 		});
 
+		it("keeps the open diff on screen until the swapped diff loads", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const swappedDiff = Promise.withResolvers<FileDiff[]>();
+			let diffs = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				diffs += 1;
+				if (diffs === 2) return swappedDiff.promise;
+				return Promise.resolve([makeFileDiffWithContent("f.ts", "FIRST WAY")]);
+			});
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("FIRST WAY")).toBeTruthy();
+
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+			await vi.waitFor(() => expect(diffs).toBe(2));
+			await flush();
+
+			expect(screen.getByText("FIRST WAY")).toBeTruthy();
+			expect(screen.queryByText("Loading diff…")).toBeNull();
+			swappedDiff.resolve([makeFileDiffWithContent("f.ts", "OTHER WAY")]);
+			expect(await screen.findByText("OTHER WAY")).toBeTruthy();
+		});
+
+		it("swaps back for a second click before the first swap lands", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			const swap = await screen.findByLabelText("Swap comparison direction");
+
+			await fireEvent.click(swap);
+			await fireEvent.click(swap);
+			await flush();
+
+			expect(compareCalls().at(-1)?.[1]).toMatchObject({
+				baseOid: "oid-1",
+				targetOid: "oid-3",
+			});
+		});
+
+		it("says why the swapped diff did not load", async () => {
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					contentMode: "hunk" as const,
+					oncontentmodechange: vi.fn(),
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let diffs = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				diffs += 1;
+				if (diffs === 2) return Promise.reject(new Error("swap diff failed"));
+				return Promise.resolve([makeFileDiffWithContent("f.ts", "FIRST WAY")]);
+			});
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("FIRST WAY")).toBeTruthy();
+
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.queryByText("FIRST WAY")).toBeNull();
+		});
+
 		it("reopens a renamed file under its name in the swapped direction", async () => {
 			render(RepoView, {
 				props: {
