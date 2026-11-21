@@ -14,6 +14,8 @@ function image(overrides: Partial<FileDiff> = {}): FileDiff {
 		is_binary: true,
 		old_size: 1200,
 		new_size: 3400,
+		old_id: null,
+		new_id: null,
 		hunks: [],
 		...overrides,
 	};
@@ -74,6 +76,27 @@ describe("ImageDiff", () => {
 		expect(screen.getByRole("img", { name: "After" })).toHaveAttribute(
 			"src",
 			"trunk-asset://asset/?repo=%2Fr&rev=working-tree&path=assets%2Flogo.png&v=4",
+		);
+	});
+
+	it("names the content in the address of a side that moves, so a staged picture is never the cached one", () => {
+		render(ImageDiff, {
+			props: {
+				repoPath: "/r",
+				file: image({ old_id: "c0ffee", new_id: "f00d" }),
+				before: { type: "head" },
+				after: { type: "index" },
+				version: 4,
+			},
+		});
+
+		expect(screen.getByRole("img", { name: "Before" })).toHaveAttribute(
+			"src",
+			"trunk-asset://asset/?repo=%2Fr&rev=head&path=assets%2Flogo.png&v=c0ffee",
+		);
+		expect(screen.getByRole("img", { name: "After" })).toHaveAttribute(
+			"src",
+			"trunk-asset://asset/?repo=%2Fr&rev=index&path=assets%2Flogo.png&v=f00d",
 		);
 	});
 

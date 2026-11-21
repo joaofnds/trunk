@@ -66,14 +66,14 @@ function revToken(rev: RevSpec): string {
 
 /**
  * The asset protocol's URL for a file at a rev. A rev that moves carries the
- * version, so the webview asks again after each refresh rather than drawing
- * the copy it cached.
+ * version, which names the content where it is known, so the webview draws
+ * the copy it cached only when that copy is the content asked for.
  */
 export function assetUrl(asset: {
 	repo: string;
 	rev: RevSpec;
 	path: string;
-	version: number;
+	version: string | number;
 }): string {
 	const { repo, rev, path, version } = asset;
 	const url = `trunk-asset://asset/?repo=${encodeURIComponent(repo)}&rev=${encodeURIComponent(revToken(rev))}&path=${encodeURIComponent(path)}`;

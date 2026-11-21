@@ -208,19 +208,28 @@ fn file_diff_of(delta: &git2::DiffDelta<'_>) -> FileDiff {
         is_binary: delta.old_file().is_binary() || delta.new_file().is_binary(),
         old_size: None,
         new_size: None,
+        old_id: None,
+        new_id: None,
         hunks: Vec::new(),
     }
 }
 
-/// libgit2 fills a delta's sizes only once it has read the content, so a delta
-/// read straight from the diff's list reports 0 for a file that is not empty.
-fn read_sizes(file_diff: &mut FileDiff, delta: &git2::DiffDelta<'_>) {
+/// libgit2 fills a delta's sizes, and a working-tree side's id, only once it
+/// has read the content, so a delta read straight from the diff's list reports
+/// 0 bytes for a file that is not empty.
+fn read_sides(file_diff: &mut FileDiff, delta: &git2::DiffDelta<'_>) {
     file_diff.old_size = size_of(&delta.old_file());
     file_diff.new_size = size_of(&delta.new_file());
+    file_diff.old_id = id_of(&delta.old_file());
+    file_diff.new_id = id_of(&delta.new_file());
 }
 
 fn size_of(file: &git2::DiffFile<'_>) -> Option<u64> {
     file.exists().then(|| file.size())
+}
+
+fn id_of(file: &git2::DiffFile<'_>) -> Option<String> {
+    (file.exists() && !file.id().is_zero()).then(|| file.id().to_string())
 }
 
 /// Capture one delta's oids and new path from inside a `foreach` file callback.
@@ -341,7 +350,7 @@ fn diff_one_file(
         // sets it once the patch has loaded the content, which only now happened.
         let delta = patch.delta();
         file_diff.is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-        read_sizes(&mut file_diff, &delta);
+        read_sides(&mut file_diff, &delta);
         file_diff.hunks = hunks_of(&patch)?;
     }
 
@@ -440,7 +449,7 @@ fn walk_diff(
     diff.foreach(
         &mut |delta, _progress| {
             let mut file_diff = file_diff_of(&delta);
-            read_sizes(&mut file_diff, &delta);
+            read_sides(&mut file_diff, &delta);
             delta_sides.borrow_mut().push(delta_sides_of(&delta));
             file_diffs.borrow_mut().push(file_diff);
             true
@@ -1420,6 +1429,8 @@ fn binary_current_file_diff(file_path: &str) -> FileDiff {
         is_binary: true,
         old_size: None,
         new_size: None,
+        old_id: None,
+        new_id: None,
         hunks: vec![],
     }
 }
@@ -1460,6 +1471,8 @@ fn build_current_file_diff(file_path: &str, bytes: Vec<u8>) -> FileDiff {
         is_binary: false,
         old_size: None,
         new_size: None,
+        old_id: None,
+        new_id: None,
         hunks,
     }];
     let sides = vec![SideContent {
@@ -1989,6 +2002,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks,
         }
     }
@@ -2016,6 +2031,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -1 +1 @@".to_string(),
                 old_start: 1,
@@ -2092,6 +2109,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -1 +1 @@".to_string(),
                 old_start: 1,
@@ -2193,6 +2212,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -3,0 +3,2 @@".to_string(),
                 old_start: 3,
@@ -2262,6 +2283,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -2 +2 @@".to_string(),
                 old_start: 2,
@@ -2334,6 +2357,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![
                 DiffHunk {
                     header: "@@ -2 +2 @@".to_string(),
@@ -2406,6 +2431,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -1 +1 @@".to_string(),
                 old_start: 1,
@@ -2464,6 +2491,8 @@ mod enrich_tests {
             is_binary: false,
             old_size: None,
             new_size: None,
+            old_id: None,
+            new_id: None,
             hunks: vec![DiffHunk {
                 header: "@@ -2,2 +2,2 @@".to_string(),
                 old_start: 2,

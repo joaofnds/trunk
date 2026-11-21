@@ -32,6 +32,8 @@ const selectedReadme: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [],
 };
 
@@ -42,6 +44,8 @@ const pureRename: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [],
 };
 
@@ -122,6 +126,8 @@ describe("DiffViewer's wrapper", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [],
 		};
 
@@ -152,6 +158,8 @@ describe("DiffViewer's wrapper", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [],
 		};
 
@@ -188,6 +196,8 @@ describe("DiffViewer while a diff is loading", () => {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks: [
 			{
 				header: "@@ -1,0 +1,1 @@",
@@ -241,6 +251,8 @@ describe("DiffViewer while a diff is loading", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [],
 		};
 
@@ -260,6 +272,8 @@ describe("DiffViewer while a diff is loading", () => {
 			is_binary: true,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [],
 		};
 
@@ -297,6 +311,8 @@ describe("DiffViewer on a binary image", () => {
 		is_binary: true,
 		old_size: 1200,
 		new_size: 3400,
+		old_id: null,
+		new_id: null,
 		hunks: [],
 	};
 
@@ -604,6 +620,8 @@ describe("DiffViewer's comment composer", () => {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks: [
 			{
 				header: "@@ -1,1 +1,1 @@",
@@ -683,6 +701,8 @@ describe("DiffViewer when the reader switches view", () => {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks,
 	});
 	// Forty five-line hunks, a hundred lines apart, so the hunk headers above

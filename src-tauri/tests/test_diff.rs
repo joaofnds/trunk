@@ -1679,6 +1679,31 @@ fn an_unstaged_binary_file_reports_its_size_in_the_index_and_on_disk() {
 }
 
 #[test]
+fn an_unstaged_binary_file_names_the_content_on_each_side() {
+    let (ctx, _) = binary_change();
+    let on_disk = [0x89, b'P', 0x00, 0x03];
+    std::fs::write(ctx.repo_path().join("logo.png"), on_disk).unwrap();
+    let repo = git2::Repository::open(ctx.repo_path()).unwrap();
+    let in_index = repo
+        .index()
+        .unwrap()
+        .get_path(std::path::Path::new("logo.png"), 0)
+        .unwrap()
+        .id;
+    let on_disk_id = git2::Oid::hash_object(git2::ObjectType::Blob, &on_disk).unwrap();
+
+    let diffs = ctx.diff_unstaged("logo.png").unwrap();
+
+    assert_eq!(
+        (diffs[0].old_id.as_deref(), diffs[0].new_id.as_deref()),
+        (
+            Some(in_index.to_string().as_str()),
+            Some(on_disk_id.to_string().as_str())
+        ),
+    );
+}
+
+#[test]
 fn an_unstaged_file_of_raw_bytes_is_flagged_binary() {
     let (ctx, _) = binary_change();
     std::fs::write(ctx.repo_path().join("logo.png"), [0x89, b'P', 0x00, 0x03]).unwrap();

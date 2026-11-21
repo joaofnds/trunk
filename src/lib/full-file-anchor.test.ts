@@ -51,6 +51,8 @@ function file(status: DiffStatus, path: string, lines: DiffLine[]): FileDiff {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks: [
 			{
 				header: "@@ -1,4 +1,4 @@",
@@ -207,6 +209,8 @@ describe("fileSelectableIndices", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				hunk([addLine(1, "h1-a"), deleteLine(2, "h1-del")]),
 				hunk([addLine(50, "h2-a"), addLine(51, "h2-b")]),

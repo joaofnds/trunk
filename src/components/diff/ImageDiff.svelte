@@ -10,7 +10,7 @@ interface Props {
 	/** Null for a file opened on its own, which has no other side. */
 	before: RevSpec | null;
 	after: RevSpec;
-	/** Changes on each refresh, so an image that moves is read again. */
+	/** Changes on each refresh. It versions a side whose content has no id. */
 	version: number;
 }
 
@@ -31,7 +31,7 @@ const hasAfter = $derived(file.status !== "Deleted");
 					repo: repoPath,
 					rev: before,
 					path: file.old_path ?? file.path,
-					version,
+					version: file.old_id ?? version,
 				})}
 				size={file.old_size}
 			/>
@@ -39,7 +39,12 @@ const hasAfter = $derived(file.status !== "Deleted");
 		{#if hasAfter}
 			<ImageSide
 				label={before === null ? "Current" : "After"}
-				url={assetUrl({ repo: repoPath, rev: after, path: file.path, version })}
+				url={assetUrl({
+					repo: repoPath,
+					rev: after,
+					path: file.path,
+					version: file.new_id ?? version,
+				})}
 				size={file.new_size}
 			/>
 		{/if}

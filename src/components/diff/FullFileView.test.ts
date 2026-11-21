@@ -51,6 +51,8 @@ const modifiedFile: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -10,3 +10,4 @@",
@@ -106,6 +108,8 @@ const emptyFile: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [],
 };
 
@@ -490,6 +494,8 @@ describe("FullFileView", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,10 +1,10 @@",
@@ -563,6 +569,8 @@ describe("FullFileView", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,3000 +1,3000 @@",
@@ -614,6 +622,8 @@ describe("FullFileView", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,3000 +1,3000 @@",
@@ -749,6 +759,8 @@ describe("FullFileView", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,5000 +1,5000 @@",
@@ -776,6 +788,8 @@ describe("FullFileView", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,0 +1,1 @@",

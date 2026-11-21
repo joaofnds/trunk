@@ -58,6 +58,8 @@ function file(path: string, hunks: DiffHunk[], isBinary = false): FileDiff {
 		is_binary: isBinary,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks,
 	};
 }
@@ -241,6 +243,8 @@ describe("buildInlineRows", () => {
 			...file("assets/logo.png", [], true),
 			old_size: 6,
 			new_size: 8,
+			old_id: null,
+			new_id: null,
 		};
 
 		const model = buildInlineRows([binary], { ...fullMode, fileHeaders: true });
@@ -491,6 +495,8 @@ describe("buildSplitRows", () => {
 			...file("assets/logo.png", [], true),
 			old_size: 6,
 			new_size: 8,
+			old_id: null,
+			new_id: null,
 		};
 
 		const model = buildSplitRows([binary], { ...fullMode, fileHeaders: true });

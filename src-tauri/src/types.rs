@@ -275,6 +275,10 @@ pub struct FileDiff {
     /// a commit's file list, which reads no content.
     pub old_size: Option<u64>,
     pub new_size: Option<u64>,
+    /// The git blob id of the file's content on each side, absent where its
+    /// size is, so a reader can tell two versions apart without their bytes.
+    pub old_id: Option<String>,
+    pub new_id: Option<String>,
     pub hunks: Vec<DiffHunk>,
 }
 

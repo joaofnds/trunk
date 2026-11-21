@@ -171,6 +171,8 @@ const testDiff: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -1,3 +1,4 @@",
@@ -242,6 +244,8 @@ const binaryDiff: FileDiff = {
 	is_binary: true,
 	old_size: 1200,
 	new_size: 3400,
+	old_id: null,
+	new_id: null,
 	hunks: [],
 };
 
@@ -252,6 +256,8 @@ const untrackedDiff: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -0,0 +1,1 @@",
@@ -279,6 +285,8 @@ const testDiffWithMergedSpans: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -1,1 +1,1 @@",
@@ -1506,6 +1514,8 @@ describe("VIEW-04: a large full-file payload", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,5000 +1,5000 @@",
@@ -2340,6 +2350,8 @@ const addedFileDiff: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -0,0 +1,2 @@",
@@ -2374,6 +2386,8 @@ const hunksOfDifferentLengths: FileDiff = {
 	is_binary: false,
 	old_size: null,
 	new_size: null,
+	old_id: null,
+	new_id: null,
 	hunks: [
 		{
 			header: "@@ -1,0 +1,2 @@",
@@ -2619,6 +2633,8 @@ describe("DiffPanel drag-to-select", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,3000 +1,3000 @@",
@@ -3857,6 +3873,8 @@ describe("Discard File button", () => {
 			is_binary: false,
 			old_size: null,
 			new_size: null,
+			old_id: null,
+			new_id: null,
 			hunks: [
 				{
 					header: "@@ -1,1 +1,1 @@",
@@ -4040,6 +4058,8 @@ describe("DiffPanel hunk actions on a changed file", () => {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks: [rewrite],
 	};
 	// An editor inserted a line at the top while the confirmation was open, so
@@ -4464,6 +4484,8 @@ describe("DiffPanel hunk navigation", () => {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks: [
 			{
 				header: "@@ -1,2 +1,2 @@",

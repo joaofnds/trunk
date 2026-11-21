@@ -35,6 +35,8 @@ function file(path: string, content?: string): FileDiff {
 		is_binary: false,
 		old_size: null,
 		new_size: null,
+		old_id: null,
+		new_id: null,
 		hunks:
 			content === undefined
 				? []

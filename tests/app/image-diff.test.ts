@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,6 +18,15 @@ const EDITED_BINARIES: RepoSpec = {
 		{ step: "file", path: "bundle.zip", content: "PK\u0000\u0001\u0002" },
 	],
 };
+
+/** The blob id git gives this content, which is what names it in an address. */
+function blobId(content: string): string {
+	const bytes = Buffer.from(content);
+	return createHash("sha1")
+		.update(`blob ${bytes.length}\0`)
+		.update(bytes)
+		.digest("hex");
+}
 
 describe("the diff of a binary file", () => {
 	afterEach(teardown);
@@ -58,6 +68,27 @@ describe("the diff of a binary file", () => {
 			return after && after.caption === "After 12 bytes" ? after : null;
 		});
 		expect(refreshed.src).not.toBe(first.src);
+	});
+
+	it("shows the staged picture once the image is staged, never the copy the index held before", async () => {
+		const app = await setup({ repo: EDITED_BINARIES });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("logo.png");
+		const indexBefore = await waitFor(
+			"the unstaged image's index side",
+			() => app.diffPane.imageSides()[0] ?? null,
+		);
+
+		await app.staging.stageFile("logo.png");
+		await app.staging.openStagedFile("logo.png");
+
+		const staged = await waitFor("the staged image's index side", () => {
+			const after = app.diffPane.imageSides()[1];
+			return after?.src.includes("rev=index") ? after : null;
+		});
+		expect(indexBefore.src).toContain(`&v=${blobId("PNG\u0000ab")}`);
+		expect(staged.src).toContain(`&v=${blobId("PNG\u0000abcd")}`);
 	});
 
 	it("names the size on each side of a binary file it cannot picture", async () => {
