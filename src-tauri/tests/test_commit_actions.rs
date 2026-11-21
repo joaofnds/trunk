@@ -495,6 +495,23 @@ fn undo_stays_offered_once_the_checked_out_branch_is_renamed() {
     assert!(ctx.check_undo_available().unwrap());
 }
 
+#[test]
+fn undo_is_not_offered_in_a_repository_that_keeps_no_reflog() {
+    let (ctx, _, _) = build_two_commit_ctx();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("core.logAllRefUpdates", false)
+        .unwrap();
+    std::fs::remove_dir_all(ctx.repo_path().join(".git/logs")).unwrap();
+    std::fs::write(ctx.repo_path().join("third.txt"), "third").unwrap();
+    ctx.stage_file("third.txt").unwrap();
+
+    ctx.create_commit("Third commit", None).unwrap();
+
+    assert!(!ctx.check_undo_available().unwrap());
+}
+
 fn terminal_git(ctx: &TestContext, args: &[&std::ffi::OsStr]) {
     let output = std::process::Command::new("git")
         .args(args)

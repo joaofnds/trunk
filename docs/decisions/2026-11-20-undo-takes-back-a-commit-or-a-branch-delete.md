@@ -73,6 +73,10 @@ branch deletes. Undoing a checkout, a pull or an amend would need a log of the
 actions Trunk took and the state each replaced, and nothing in this rule stands
 in the way of adding one.
 
+A repository with `core.logAllRefUpdates` set to false keeps no reflog for HEAD,
+so the walk finds no commit and Undo is never offered for its commits. The same
+log of Trunk's actions would cover it.
+
 ## Rejected
 
 Offering Undo only for commits made in this app session. It forgets the undo when
