@@ -1,3 +1,4 @@
+import type { GraphResponse } from "../../../src/lib/types.js";
 import type { TauriFake } from "../fakes/index.js";
 import type { EventHandler } from "./host-client.js";
 
@@ -262,12 +263,18 @@ export class TauriInternals {
 		const { path: _path, ...named } = args;
 		const detail = Object.keys(named).length ? ` ${JSON.stringify(named)}` : "";
 		this.record(`sent ${cmd}${detail}`);
-		const answered = () => {
+		const answered = (value?: unknown) => {
 			this.inFlight -= 1;
-			this.record(`answered ${cmd}`);
+			this.record(`answered ${cmd}${graphContent(value)}`);
 		};
-		answer.then(answered, answered);
+		answer.then(answered, () => answered());
 		return answer;
+	}
+
+	/** Puts a step of the test itself in the trail, so the trail orders the
+	 *  test's reads against the application's commands. */
+	mark(step: string): void {
+		this.record(`test: ${step}`);
 	}
 
 	private transformCallback(
@@ -316,6 +323,16 @@ export class TauriInternals {
 		this.trail.push(entry);
 		if (this.trail.length > TRAIL_LENGTH) this.trail.shift();
 	}
+}
+
+/** What a graph answer held, so a stale screen can be told from a stale answer. */
+function graphContent(value: unknown): string {
+	if (typeof value !== "object" || value === null) return "";
+	const { commits, revision, checked } = value as Partial<GraphResponse>;
+	if (!Array.isArray(commits) || typeof revision !== "number") return "";
+	const subjects = commits.map((commit) => commit.summary);
+
+	return ` ${JSON.stringify({ revision, checked, subjects })}`;
 }
 
 function pluginOf(cmd: string): string {

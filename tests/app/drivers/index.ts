@@ -209,8 +209,9 @@ export class AppDriver {
 				this.quiet() ? true : null,
 			);
 			await tick();
-			if (this.quiet()) return;
+			if (this.quiet()) break;
 		}
+		this.internals.mark("settled");
 	}
 
 	/**
