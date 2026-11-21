@@ -223,8 +223,8 @@ async function undoCommit(path: string, expectedHeadOid: string) {
 
 // A branch made since under the same name, or a commit the repository no
 // longer has, refuses every later try too, so the entry goes rather than staying
-// on offer to fail the same way. A redo delete meets the same once the branch is
-// checked out somewhere, which is a new action on it.
+// on offer to fail the same way. A redo delete meets the same once a worktree
+// checks the branch out, rebases it or bisects from it, which is a new action on it.
 const UNDO_NEVER_LANDS = new Set(["branch_exists", "restore_missing"]);
 const REDO_NEVER_LANDS: Record<RedoEntry["kind"], Set<string>> = {
 	commit: new Set(["redo_missing"]),
@@ -232,7 +232,7 @@ const REDO_NEVER_LANDS: Record<RedoEntry["kind"], Set<string>> = {
 		"redo_missing",
 		"redo_stale",
 		"cannot_delete_head",
-		"branch_in_use",
+		"worktree_changed",
 	]),
 };
 

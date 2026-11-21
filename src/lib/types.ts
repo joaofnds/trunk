@@ -121,7 +121,6 @@ export type RemovalRisk =
 /** What deleting a local branch would have to do about the worktree holding it. */
 export type BranchHold =
 	| { kind: "not_held" }
-	| { kind: "held_by_main" }
 	| { kind: "offer"; name: string; path: string }
 	| { kind: "warn"; name: string; path: string; reasons: RemovalRisk[] }
 	| {
@@ -131,7 +130,9 @@ export type BranchHold =
 				| "mismatched"
 				| "several_holders"
 				| "open_in_tab"
+				| "checked_out"
 				| "rebasing"
+				| "bisecting"
 				| "missing";
 	  };
 

@@ -118,7 +118,6 @@ export function deletePrompt(
 
 	switch (hold.kind) {
 		case "not_held":
-		case "held_by_main":
 			return {
 				kind: "ask",
 				message: `Delete branch '${branch}'${withLost}?${unchecked}`,
@@ -181,8 +180,12 @@ function refusalText(
 			return `Cannot delete '${branch}'. More than one worktree uses it:\n\n${paths.map((path) => `- ${path}`).join("\n")}`;
 		case "open_in_tab":
 			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")}, which has it checked out, is open in a tab. Close that tab, then delete again.`;
+		case "checked_out":
+			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")} has it checked out. Check out another branch there, then delete again.`;
 		case "rebasing":
 			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")} is rebasing it. Finish or abort the rebase there, then delete again.`;
+		case "bisecting":
+			return `Cannot delete '${branch}' while the worktree at ${paths.join(", ")} is bisecting from it. End the bisect there, then delete again.`;
 		case "missing":
 			return `Cannot delete '${branch}'. Git still counts it as used by the worktree at ${paths.join(", ")}, whose directory is missing.`;
 	}

@@ -124,12 +124,11 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
 /// # Errors
 ///
 /// Returns `not_open` when `path` names no open repository, `cannot_delete_head` when
-/// `branch_name` is the checked-out branch, `branch_in_use` when another worktree has it
-/// checked out or is rebasing or bisecting it, the git error when the branch is missing
+/// `branch_name` is the checked-out branch, the git error when the branch is missing
 /// or it or its settings will not delete, every error `trunk_git::worktree::remove`
-/// names, `worktree_changed` when no removal was accepted and a linked worktree now
-/// holds the branch, and `branch_not_deleted` when the worktree went but the branch
-/// would not.
+/// names, `worktree_changed` when no removal was accepted and a worktree has the branch
+/// checked out or is rebasing or bisecting it, and `branch_not_deleted` when the
+/// worktree went but the branch would not.
 pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
@@ -182,7 +181,7 @@ fn delete_found(
     let head = head_target(repo)?;
     let settings = if let Some(worktree) = worktree {
         trunk_git::worktree::remove(repo, branch_name, worktree, &open_tabs(state_map))?;
-        delete_local(repo, branch, branch_name).map_err(|error| {
+        delete_unused(repo, branch, branch_name, state_map).map_err(|error| {
             TrunkError::new(
                 "branch_not_deleted",
                 format!(
@@ -192,8 +191,7 @@ fn delete_found(
             )
         })?
     } else {
-        trunk_git::worktree::ensure_no_linked_holder(repo, branch_name, &open_tabs(state_map))?;
-        delete_local(repo, branch, branch_name)?
+        delete_unused(repo, branch, branch_name, state_map)?
     };
     let deletion = deletions.keep(Deletion {
         path: path.to_owned(),
@@ -276,22 +274,15 @@ impl Deletions {
 // of "feature.x" with it. libgit2 moves only the ref here, and the settings are
 // changed one exact name at a time.
 
-/// Delete `branch` and its settings, handing the settings back, refusing while another
-/// worktree has it checked out or is rebasing or bisecting it.
-fn delete_local(
+/// Delete `branch` and its settings, handing the settings back, refusing while any
+/// worktree has it checked out or is rebasing or bisecting it, as git does.
+fn delete_unused(
     repo: &git2::Repository,
     branch: &mut git2::Branch<'_>,
     name: &str,
+    state_map: &OpenRepos,
 ) -> Result<Settings, TrunkError> {
-    if let Some(holder) = trunk_git::worktree::held_elsewhere(repo, name)? {
-        return Err(TrunkError::new(
-            "branch_in_use",
-            format!(
-                "Cannot delete '{name}' while the worktree at {} uses it",
-                holder.display()
-            ),
-        ));
-    }
+    trunk_git::worktree::ensure_not_held(repo, name, &open_tabs(state_map))?;
 
     SettingsEdit::apply(repo, |edit| {
         let settings = edit.clear(name)?;

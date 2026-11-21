@@ -18,8 +18,6 @@ pub struct WorktreeRemoval {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BranchHold {
     NotHeld,
-    /// The main worktree has it checked out, which libgit2 refuses to delete.
-    HeldByMain,
     Offer {
         name: String,
         path: String,
@@ -45,8 +43,12 @@ pub enum Refusal {
     SeveralHolders,
     /// The tab's watcher and any remote operation it runs live on this directory.
     OpenInTab,
+    /// The main worktree has it checked out, and Trunk never removes the main worktree.
+    CheckedOut,
     /// Deleting the branch under a rebase makes `git rebase --continue` fail.
     Rebasing,
+    /// `git bisect reset` checks the branch out again when the bisect ends.
+    Bisecting,
     /// Git still counts the branch as used by a worktree whose directory is gone, as when
     /// it sits on an unmounted drive.
     Missing,
@@ -79,7 +81,9 @@ impl Refusal {
             Self::OpenInTab => {
                 format!("the worktree at {paths} is open in a tab: close it, then delete again")
             }
+            Self::CheckedOut => format!("the worktree at {paths} has the branch checked out"),
             Self::Rebasing => format!("the worktree at {paths} is rebasing the branch"),
+            Self::Bisecting => format!("the worktree at {paths} is bisecting from the branch"),
             Self::Missing => format!("the worktree at {paths}, which uses the branch, is missing"),
         }
     }
@@ -143,11 +147,40 @@ struct LinkedWorktree {
     gitfile: PathBuf,
     root: PathBuf,
     missing: bool,
-    rebasing: bool,
 }
 
-/// Find who holds `branch` and, for a linked worktree, what removing it would lose.
-/// `open_tabs` are the locations of the repositories open in Trunk.
+/// A worktree that uses a branch, and every way it does.
+struct User {
+    worktree: Worktree,
+    uses: Vec<BranchUse>,
+}
+
+enum Worktree {
+    Main { git_dir: PathBuf, root: PathBuf },
+    Linked(LinkedWorktree),
+}
+
+impl Worktree {
+    fn git_dir(&self) -> &Path {
+        match self {
+            Self::Main { git_dir, .. } => git_dir,
+            Self::Linked(linked) => &linked.admin,
+        }
+    }
+
+    fn root(&self) -> &Path {
+        match self {
+            Self::Main { root, .. } => root,
+            Self::Linked(linked) => &linked.root,
+        }
+    }
+}
+
+/// Find which worktrees use `branch`, the tab's own included.
+///
+/// When one linked worktree has it checked out, also find whether removing that worktree
+/// would free it, and what removing it would lose. `open_tabs` are the locations of the
+/// repositories open in Trunk.
 ///
 /// # Errors
 ///
@@ -157,20 +190,11 @@ pub fn assess(
     branch: &str,
     open_tabs: &[PathBuf],
 ) -> Result<BranchHold, TrunkError> {
-    let target = format!("refs/heads/{branch}");
-    let common = repo.commondir();
-
-    if !Repository::open(common)?.is_bare()
-        && branches_used(common).contains(&(BranchUse::CheckedOut, target.clone().into_bytes()))
-    {
-        return Ok(BranchHold::HeldByMain);
-    }
-
-    let mut holders = linked_holders(repo, &target)?;
-    if holders.len() > 1 {
-        let mut paths: Vec<String> = holders
+    let mut users = users(repo, &format!("refs/heads/{branch}"))?;
+    if users.len() > 1 {
+        let mut paths: Vec<String> = users
             .iter()
-            .map(|holder| holder.root.display().to_string())
+            .map(|user| user.worktree.root().display().to_string())
             .collect();
         paths.sort();
         return Ok(BranchHold::Refuse {
@@ -178,41 +202,59 @@ pub fn assess(
             reason: Refusal::SeveralHolders,
         });
     }
-    let Some(holder) = holders.pop() else {
+    let Some(user) = users.pop() else {
         return Ok(BranchHold::NotHeld);
     };
 
-    let refusal = if holder.rebasing {
-        Some(Refusal::Rebasing)
-    } else if holder.missing {
-        Some(Refusal::Missing)
-    } else if !points_back(&holder) {
-        Some(Refusal::Mismatched)
-    } else if open_tabs.iter().any(|tab| tab.starts_with(&holder.root)) {
-        Some(Refusal::OpenInTab)
-    } else {
-        None
+    let path = user.worktree.root().display().to_string();
+    let holder = match removable(&user, open_tabs) {
+        Ok(holder) => holder,
+        Err(reason) => {
+            return Ok(BranchHold::Refuse {
+                paths: vec![path],
+                reason,
+            });
+        }
     };
-    if let Some(reason) = refusal {
-        return Ok(BranchHold::Refuse {
-            paths: vec![holder.root.display().to_string()],
-            reason,
-        });
-    }
 
-    let reasons = risks(&holder);
-    let path = holder.root.display().to_string();
+    let reasons = risks(holder);
+    let name = holder.name.clone();
     if reasons.is_empty() {
-        Ok(BranchHold::Offer {
-            name: holder.name,
-            path,
-        })
+        Ok(BranchHold::Offer { name, path })
     } else {
         Ok(BranchHold::Warn {
-            name: holder.name,
+            name,
             path,
             reasons,
         })
+    }
+}
+
+/// The linked worktree whose removal would free the branch `user` holds, or why
+/// removing it would be wrong whatever the user agrees to.
+fn removable<'a>(user: &'a User, open_tabs: &[PathBuf]) -> Result<&'a LinkedWorktree, Refusal> {
+    let rebasing = user
+        .uses
+        .iter()
+        .any(|how| matches!(how, BranchUse::Rebasing | BranchUse::MovedByRebase));
+    if rebasing {
+        return Err(Refusal::Rebasing);
+    }
+    if user.uses.contains(&BranchUse::Bisecting) {
+        return Err(Refusal::Bisecting);
+    }
+
+    let Worktree::Linked(holder) = &user.worktree else {
+        return Err(Refusal::CheckedOut);
+    };
+    if holder.missing {
+        Err(Refusal::Missing)
+    } else if !points_back(holder) {
+        Err(Refusal::Mismatched)
+    } else if open_tabs.iter().any(|tab| tab.starts_with(&holder.root)) {
+        Err(Refusal::OpenInTab)
+    } else {
+        Ok(holder)
     }
 }
 
@@ -224,57 +266,30 @@ pub fn assess(
 ///
 /// Returns the git error when the repository's worktrees will not list.
 pub fn held_elsewhere(repo: &Repository, branch: &str) -> Result<Option<PathBuf>, TrunkError> {
-    let target = format!("refs/heads/{branch}");
     let own = repo.path().canonicalize().ok();
-    let uses_target = |git_dir: &Path| {
-        git_dir.canonicalize().ok() != own
-            && branches_used(git_dir)
-                .iter()
-                .any(|(_, name)| name.as_slice() == target.as_bytes())
-    };
 
-    let common = repo.commondir();
-    if uses_target(common) {
-        let main = Repository::open(common)?;
-        if let Some(root) = main.workdir() {
-            return Ok(Some(root.to_path_buf()));
-        }
-    }
-
-    for name in repo
-        .worktrees()?
-        .iter()
-        .filter_map(|name| name.ok().flatten())
-    {
-        let admin = common.join("worktrees").join(name);
-        if uses_target(&admin) {
-            let root = recorded_gitfile(&admin)
-                .and_then(|gitfile| gitfile.parent().map(resolve_what_exists))
-                .unwrap_or(admin);
-            return Ok(Some(root));
-        }
-    }
-
-    Ok(None)
+    Ok(users(repo, &format!("refs/heads/{branch}"))?
+        .into_iter()
+        .find(|user| user.worktree.git_dir().canonicalize().ok() != own)
+        .map(|user| user.worktree.root().to_path_buf()))
 }
 
-/// Check that no linked worktree took `branch` after the user was asked to delete it
-/// with none to remove.
+/// Check that no worktree uses `branch`, as when the user was asked to delete it.
 ///
 /// # Errors
 ///
-/// Returns `worktree_changed` when a linked worktree now holds the branch, and the git
-/// error when the repository's worktrees will not list.
-pub fn ensure_no_linked_holder(
+/// Returns `worktree_changed` when a worktree uses the branch, so the user is asked
+/// again, and the git error when the repository's worktrees will not list.
+pub fn ensure_not_held(
     repo: &Repository,
     branch: &str,
     open_tabs: &[PathBuf],
 ) -> Result<(), TrunkError> {
     match assess(repo, branch, open_tabs)? {
-        BranchHold::NotHeld | BranchHold::HeldByMain => Ok(()),
+        BranchHold::NotHeld => Ok(()),
         _ => Err(TrunkError::new(
             "worktree_changed",
-            format!("a worktree now holds {branch}, so nothing was deleted"),
+            format!("a worktree now uses {branch}, so nothing was deleted"),
         )),
     }
 }
@@ -409,9 +424,24 @@ fn collect_left_behind(dir: &Path, limit: usize, left: &mut Vec<String>) {
     }
 }
 
-fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>, TrunkError> {
+/// Every worktree that uses `target`: the main one unless the repository is bare, then
+/// each linked one git lists.
+fn users(repo: &Repository, target: &str) -> Result<Vec<User>, TrunkError> {
     let common = repo.commondir();
-    let mut holders = Vec::new();
+    let mut found = Vec::new();
+
+    let uses = uses_of(common, target);
+    if !uses.is_empty()
+        && let Some(workdir) = Repository::open(common)?.workdir()
+    {
+        found.push(User {
+            worktree: Worktree::Main {
+                git_dir: common.to_path_buf(),
+                root: resolve_what_exists(workdir),
+            },
+            uses,
+        });
+    }
 
     for name in repo
         .worktrees()?
@@ -419,29 +449,14 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
         .filter_map(|name| name.ok().flatten())
     {
         let admin = common.join("worktrees").join(name);
-        let mut held = false;
-        let mut rebasing = false;
-        for (how, branch) in branches_used(&admin) {
-            if branch != target.as_bytes() {
-                continue;
-            }
-            match how {
-                BranchUse::CheckedOut => held = true,
-                BranchUse::Rebasing | BranchUse::MovedByRebase => {
-                    held = true;
-                    rebasing = true;
-                }
-                BranchUse::Bisecting => {}
-            }
-        }
-        if !held {
+        let uses = uses_of(&admin, target);
+        if uses.is_empty() {
             continue;
         }
 
         let Some(gitfile) = recorded_gitfile(&admin) else {
             continue;
         };
-
         let Some(recorded) = gitfile.parent() else {
             continue;
         };
@@ -450,17 +465,27 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
         let missing = resolved.is_err();
         let root = resolved.unwrap_or_else(|_| resolve_what_exists(recorded));
 
-        holders.push(LinkedWorktree {
-            name: name.to_owned(),
-            admin,
-            gitfile,
-            root,
-            missing,
-            rebasing,
+        found.push(User {
+            worktree: Worktree::Linked(LinkedWorktree {
+                name: name.to_owned(),
+                admin,
+                gitfile,
+                root,
+                missing,
+            }),
+            uses,
         });
     }
 
-    Ok(holders)
+    Ok(found)
+}
+
+fn uses_of(git_dir: &Path, target: &str) -> Vec<BranchUse> {
+    branches_used(git_dir)
+        .into_iter()
+        .filter(|(_, name)| name.as_slice() == target.as_bytes())
+        .map(|(how, _)| how)
+        .collect()
 }
 
 /// `path` with its longest existing prefix resolved, as git names a worktree whose
@@ -468,7 +493,7 @@ fn linked_holders(repo: &Repository, target: &str) -> Result<Vec<LinkedWorktree>
 fn resolve_what_exists(path: &Path) -> PathBuf {
     for existing in path.ancestors() {
         if let (Ok(resolved), Ok(rest)) = (existing.canonicalize(), path.strip_prefix(existing)) {
-            return resolved.join(rest);
+            return resolved.components().chain(rest.components()).collect();
         }
     }
     path.to_path_buf()

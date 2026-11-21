@@ -28,13 +28,6 @@ describe("deletePrompt", () => {
 		});
 	});
 
-	it("asks the plain question when the main worktree holds it", () => {
-		expect(deletePrompt("topic", { kind: "held_by_main" }, 0)).toEqual({
-			kind: "ask",
-			message: "Delete branch 'topic'?",
-		});
-	});
-
 	it.each([
 		[
 			1,
@@ -143,8 +136,13 @@ describe("deletePrompt", () => {
 		).toContain(" /work/a�b.");
 	});
 
-	describe("when removing the worktree is refused", () => {
+	describe("when a worktree's use of the branch refuses the delete", () => {
 		it.each([
+			[
+				"checked_out",
+				[PATH],
+				"Cannot delete 'topic' while the worktree at /work/wt has it checked out. Check out another branch there, then delete again.",
+			],
 			[
 				"mismatched",
 				[PATH],
@@ -164,6 +162,11 @@ describe("deletePrompt", () => {
 				"rebasing",
 				[PATH],
 				"Cannot delete 'topic' while the worktree at /work/wt is rebasing it. Finish or abort the rebase there, then delete again.",
+			],
+			[
+				"bisecting",
+				[PATH],
+				"Cannot delete 'topic' while the worktree at /work/wt is bisecting from it. End the bisect there, then delete again.",
 			],
 			[
 				"missing",

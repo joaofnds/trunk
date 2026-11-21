@@ -93,6 +93,16 @@ impl TestContext {
         branches::branch_hold_inner(self.path(), name, self.state_map())
     }
 
+    /// Which worktree holds `name`, asked from the worktree at `location`, opened in its own tab
+    pub fn branch_hold_in(
+        &mut self,
+        location: &std::path::Path,
+        name: &str,
+    ) -> Result<BranchHold, TrunkError> {
+        self.open_in_tab(location);
+        branches::branch_hold_inner(&location.display().to_string(), name, self.state_map())
+    }
+
     /// How many commits deleting `name` would leave on no branch, tag or HEAD
     pub fn commits_only_on(&self, name: &str) -> Result<usize, TrunkError> {
         branches::commits_only_on_branch_inner(self.path(), name, self.state_map())

@@ -1889,7 +1889,7 @@ describe("Toolbar undo of a branch delete", () => {
 		["the branch is already gone", "redo_missing"],
 		["the branch has moved since the undo", "redo_stale"],
 		["the branch is checked out here", "cannot_delete_head"],
-		["another worktree uses the branch", "branch_in_use"],
+		["a worktree uses the branch", "worktree_changed"],
 	])("drops a redo once %s", async (_, code) => {
 		const message = `refused with ${code}`;
 

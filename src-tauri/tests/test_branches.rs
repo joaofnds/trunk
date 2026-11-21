@@ -2110,28 +2110,86 @@ mod deleting_a_branch_a_linked_worktree_holds {
         }
     }
 
+    fn main_root(ctx: &TestContext) -> String {
+        ctx.repo_path()
+            .canonicalize()
+            .unwrap()
+            .display()
+            .to_string()
+    }
+
+    /// Commit an edit in the worktree at `path`, then start a bisect there and leave HEAD
+    /// detached, as a bisect does once it checks out a commit to test.
+    fn start_bisect(path: &std::path::Path) {
+        std::fs::write(path.join("README.md"), "bisected").unwrap();
+        let committed = git_in(path, &["commit", "-qam", "bisected"]);
+        let started = git_in(path, &["bisect", "start", "HEAD", "HEAD~1"]);
+        let detached = git_in(path, &["switch", "-q", "--detach"]);
+
+        for step in [committed, started, detached] {
+            assert!(step.status.success(), "{step:?}");
+        }
+    }
+
     #[test]
     fn leaves_the_worktree_when_the_main_worktree_holds_the_branch_too() {
         let mut ctx = repo_with_branch("wt-branch");
         let path = ctx.add_linked_worktree("wt", "wt-branch");
         set_admin_head(&ctx, "wt", "main");
 
+        let mut both = vec![main_root(&ctx), path.display().to_string()];
+        both.sort();
+
         let hold = ctx.branch_hold("main").unwrap();
         let result = ctx.delete_branch_removing("main", &removal("wt", &path, true));
 
-        assert_eq!(hold, BranchHold::HeldByMain);
+        assert_eq!(
+            hold,
+            BranchHold::Refuse {
+                paths: both,
+                reason: Refusal::SeveralHolders,
+            }
+        );
         assert_eq!(result.unwrap_err().code, "cannot_delete_head");
         assert_eq!(worktree_names(&ctx), ["wt"]);
     }
 
     #[test]
-    fn keeps_a_branch_the_main_worktree_has_checked_out_when_deleted_from_a_linked_tab() {
+    fn refuses_from_a_linked_tab_a_branch_the_main_worktree_has_checked_out() {
         let mut ctx = repo_with_branch("wt-branch");
         let path = ctx.add_linked_worktree("wt", "wt-branch");
 
+        let hold = ctx.branch_hold_in(&path, "main").unwrap();
         let result = ctx.delete_branch_in(&path, "main");
 
-        assert_eq!(result.unwrap_err().code, "branch_in_use");
+        assert_eq!(
+            hold,
+            BranchHold::Refuse {
+                paths: vec![main_root(&ctx)],
+                reason: Refusal::CheckedOut,
+            }
+        );
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
+        ctx.assert_branch_exists("main");
+    }
+
+    #[test]
+    fn refuses_from_a_linked_tab_a_branch_the_main_worktree_is_rebasing() {
+        let mut ctx = repo_with_branch("wt-branch");
+        let path = ctx.add_linked_worktree("wt", "wt-branch");
+        stop_mid_rebase(ctx.repo_path(), &["-i", "HEAD~1"]);
+
+        let hold = ctx.branch_hold_in(&path, "main").unwrap();
+        let result = ctx.delete_branch_in(&path, "main");
+
+        assert_eq!(
+            hold,
+            BranchHold::Refuse {
+                paths: vec![main_root(&ctx)],
+                reason: Refusal::Rebasing,
+            }
+        );
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
         ctx.assert_branch_exists("main");
     }
 
@@ -2148,25 +2206,74 @@ mod deleting_a_branch_a_linked_worktree_holds {
         let result =
             trunk_git::worktree::remove(&from_third, "main", &removal("wt", &path, true), &[]);
 
-        assert_eq!(result.unwrap_err().code, "worktree_changed");
+        assert_eq!(result.unwrap_err().code, "worktree_refused");
         assert!(path.join("README.md").exists());
     }
 
     #[test]
-    fn leaves_a_branch_a_worktree_is_only_bisecting_as_not_held() {
-        let ctx = repo_with_branch("wt-branch");
+    fn refuses_a_branch_a_linked_worktree_is_bisecting() {
+        let mut ctx = repo_with_branch("wt-branch");
         let path = ctx.add_linked_worktree("wt", "wt-branch");
-        std::fs::write(path.join("README.md"), "bisected").unwrap();
-        let committed = git_in(&path, &["commit", "-qam", "bisected"]);
-        let started = git_in(&path, &["bisect", "start", "HEAD", "HEAD~1"]);
-        let detached = git_in(&path, &["switch", "-q", "--detach"]);
+        start_bisect(&path);
 
         let hold = ctx.branch_hold("wt-branch").unwrap();
+        let result = ctx.delete_branch("wt-branch");
 
-        for step in [committed, started, detached] {
-            assert!(step.status.success(), "{step:?}");
+        assert_eq!(
+            hold,
+            BranchHold::Refuse {
+                paths: vec![path.display().to_string()],
+                reason: Refusal::Bisecting,
+            }
+        );
+        assert_eq!(result.unwrap_err().code, "worktree_changed");
+        ctx.assert_branch_exists("wt-branch");
+    }
+
+    mod when_the_tabs_own_worktree_uses_the_branch {
+        use super::*;
+
+        #[test]
+        fn refuses_a_branch_it_is_rebasing_and_the_rebase_still_finishes() {
+            let mut ctx = repo_with_branch("wt-branch");
+            ctx.checkout_branch("wt-branch").unwrap();
+            stop_mid_rebase(ctx.repo_path(), &["-i", "HEAD~1"]);
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+            let result = ctx.delete_branch("wt-branch");
+            let finished = git_in(ctx.repo_path(), &["rebase", "--continue"]);
+
+            assert_eq!(
+                hold,
+                BranchHold::Refuse {
+                    paths: vec![main_root(&ctx)],
+                    reason: Refusal::Rebasing,
+                }
+            );
+            assert_eq!(result.unwrap_err().code, "worktree_changed");
+            assert!(finished.status.success(), "{finished:?}");
+            ctx.assert_branch_exists("wt-branch");
         }
-        assert_eq!(hold, BranchHold::NotHeld);
+
+        #[test]
+        fn refuses_a_branch_it_is_bisecting() {
+            let mut ctx = repo_with_branch("wt-branch");
+            ctx.checkout_branch("wt-branch").unwrap();
+            start_bisect(ctx.repo_path());
+
+            let hold = ctx.branch_hold("wt-branch").unwrap();
+            let result = ctx.delete_branch("wt-branch");
+
+            assert_eq!(
+                hold,
+                BranchHold::Refuse {
+                    paths: vec![main_root(&ctx)],
+                    reason: Refusal::Bisecting,
+                }
+            );
+            assert_eq!(result.unwrap_err().code, "worktree_changed");
+            ctx.assert_branch_exists("wt-branch");
+        }
     }
 
     #[test]
