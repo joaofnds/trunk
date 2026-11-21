@@ -63,6 +63,7 @@ import {
 	ReviewVisibility,
 } from "../lib/review-visibility.svelte.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
+import { singleClick } from "../lib/single-click.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
 import type {
@@ -1085,7 +1086,8 @@ registerUpdateBlocker(() =>
 					<Button
 						variant="primary"
 						size="base"
-						onclick={() => startNewReview(repoPath, reviewComments)}
+						onclick={(e) =>
+							singleClick(e, () => startNewReview(repoPath, reviewComments))}
 					>
 						<Plus size={13} aria-hidden="true" />New review
 					</Button>

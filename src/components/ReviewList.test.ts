@@ -169,6 +169,20 @@ describe("ReviewList", () => {
 		expect(reviewComments.shownReviewId).toBe(OPEN.id);
 	});
 
+	it("starts one review for a double click on New", async () => {
+		seedReviews([aReview()]);
+		await renderList();
+		const create = screen.getByRole("button", { name: "New review" });
+
+		await fireEvent.click(create, { detail: 1 });
+		await fireEvent.click(create, { detail: 2 });
+		await flush();
+
+		expect(
+			calledCommands().filter((command) => command === "create_review"),
+		).toHaveLength(1);
+	});
+
 	it("marks the shown review, and only it, as current", async () => {
 		twoReviews();
 		await renderList();

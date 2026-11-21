@@ -21,6 +21,7 @@ import {
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { reviewTitle } from "../lib/review-title.js";
 import { selectOnOpen } from "../lib/select-on-open.js";
+import { singleClick } from "../lib/single-click.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { Review } from "../lib/types.js";
 import Badge from "../lib/ui/Badge.svelte";
@@ -232,7 +233,8 @@ registerUpdateBlocker(() =>
 		<Button
 			size="sm"
 			variant="ghost"
-			onclick={() => startNewReview(repoPath, reviewComments)}
+			onclick={(e) =>
+				singleClick(e, () => startNewReview(repoPath, reviewComments))}
 			aria-label="New review"
 			title="New review (becomes active)"
 		>

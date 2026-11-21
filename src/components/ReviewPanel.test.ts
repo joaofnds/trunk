@@ -1402,6 +1402,22 @@ describe("empty states", () => {
 		expect(callArgs("create_review")).toEqual({ path: "/repo", title: null });
 	});
 
+	it("starts one review for a double click on New review", async () => {
+		installReads({ reviews: [], activeReviewId: null });
+		renderPanel();
+		await flush();
+		const create = within(
+			screen.getByRole("region", { name: "No reviews in this repository" }),
+		).getByRole("button", { name: "New review" });
+
+		await fireEvent.click(create, { detail: 1 });
+		await fireEvent.click(create, { detail: 2 });
+
+		expect(
+			calledCommands().filter((command) => command === "create_review"),
+		).toHaveLength(1);
+	});
+
 	it("draws no thread tally for a review without threads", async () => {
 		installReads({ commits, comments: [] });
 		renderPanel();
