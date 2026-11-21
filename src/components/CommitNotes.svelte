@@ -1,6 +1,7 @@
 <script lang="ts">
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
+import { copyText } from "../lib/clipboard.js";
 import { createDraft, type Draft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
@@ -110,6 +111,7 @@ async function saveNote(delivery: Delivery) {
 			<ComposerFrame
 				activeReview={null}
 				{activeReviewId}
+				oncopyreviewid={copyText}
 				placeholder="Leave a note on this commit…"
 				bind:text={draft.text}
 				busy={noteSaving}

@@ -12,6 +12,7 @@ interface Props {
 	/** The active review's id and title, null while the host has not read them. */
 	activeReview: Pick<Review, "id" | "title"> | null;
 	activeReviewId: string | null;
+	oncopyreviewid?: (id: string) => void;
 	/** What the landing line calls the review a comment starts when none is active. */
 	newReviewName?: string;
 	placeholder: string;
@@ -38,6 +39,7 @@ let {
 	heading,
 	activeReview,
 	activeReviewId,
+	oncopyreviewid,
 	newReviewName = "a new review",
 	placeholder,
 	text = $bindable(),
@@ -54,6 +56,7 @@ let {
 }: Props = $props();
 
 const headingId = $props.id();
+const landingReviewId = $derived(activeReview?.id ?? activeReviewId);
 </script>
 
 <!--
@@ -65,11 +68,20 @@ const headingId = $props.id();
 		<span class="composer-preview" id={headingId}>{@render heading()}</span>
 		<p class="composer-landing">
 			Lands in
-			{#if activeReview}
-				<Badge variant="label">{activeReview.id}</Badge>
-				<span class="composer-landing-name">{reviewTitle(activeReview)}</span>
-			{:else if activeReviewId}
-				<Badge variant="label">{activeReviewId}</Badge>
+			{#if landingReviewId}
+				{#if oncopyreviewid}
+					<Badge
+						title="Copy review ID"
+						tabindex={0}
+						onclick={() => oncopyreviewid(landingReviewId)}
+						>{landingReviewId}</Badge
+					>
+				{:else}
+					<Badge variant="label">{landingReviewId}</Badge>
+				{/if}
+				{#if activeReview}
+					<span class="composer-landing-name">{reviewTitle(activeReview)}</span>
+				{/if}
 			{:else}
 				<span class="composer-landing-name">{newReviewName}</span>
 			{/if}

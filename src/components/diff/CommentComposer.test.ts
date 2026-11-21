@@ -1,7 +1,10 @@
+import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeClipboard } from "../../../tests/app/fakes/clipboard.js";
 import { FakeScheduler } from "../../../tests/app/fakes/scheduler.js";
+import { aReview } from "../../__tests__/helpers/review-fixture.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { createReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
@@ -9,8 +12,9 @@ import { _resetToasts, toasts } from "../../lib/toast.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 import CommentComposer from "./CommentComposer.svelte";
 
-// Shared Tauri mock (provides plugin-dialog `ask`, etc.)
-import "../../__tests__/helpers/tauri-mock";
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+	ask: vi.fn().mockResolvedValue(false),
+}));
 
 vi.mock("../../lib/invoke.js", async (importActual) => ({
 	...(await importActual<typeof import("../../lib/invoke.js")>()),
@@ -309,6 +313,46 @@ describe("CommentComposer", () => {
 		renderComposer({ activeReview: null, activeReviewId: "r3m9" });
 
 		expect(screen.getByText(/Lands in/)).toHaveTextContent("Lands in r3m9");
+	});
+
+	describe("copying the landing review ID", () => {
+		const activeReviewId = "R3M9K7PW";
+
+		afterEach(() => clearMocks());
+
+		it.each([
+			{
+				state: "with the review title",
+				activeReview: aReview({
+					id: activeReviewId,
+					title: "Graph lane colors",
+				}),
+			},
+			{ state: "with only the ID", activeReview: null },
+		])(
+			"copies the active review ID from the badge $state",
+			async ({ activeReview }) => {
+				const clipboard = new FakeClipboard();
+				mockIPC((command, args) => {
+					if (command !== "plugin:clipboard-manager|write_text") return;
+
+					return clipboard.answer(
+						"write_text",
+						args as Record<string, unknown>,
+					);
+				});
+				renderComposer({ activeReview, activeReviewId });
+
+				await fireEvent.click(
+					screen.getByRole("button", { name: activeReviewId }),
+				);
+
+				expect(clipboard.text).toBe(activeReviewId);
+				expect(toasts.items.map(({ message }) => message)).toEqual([
+					`Copied ${activeReviewId}`,
+				]);
+			},
+		);
 	});
 
 	it("says a comment with no active review starts a new one", () => {

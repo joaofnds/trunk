@@ -19,7 +19,7 @@ import { onDestroy, tick, untrack } from "svelte";
 import { fromAction } from "svelte/attachments";
 import { SvelteSet } from "svelte/reactivity";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
-import { copySha } from "../lib/clipboard.js";
+import { copySha, copyText } from "../lib/clipboard.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
@@ -966,7 +966,12 @@ registerUpdateBlocker(() =>
 							>
 						</h1>
 					{/if}
-					<Badge variant="label">{shownReview.id}</Badge>
+					<Badge
+						title="Copy review ID"
+						tabindex={0}
+						onclick={() => copyText(shownReview.id)}
+						>{shownReview.id}</Badge
+					>
 					<StatePill review={shownReview.state} />
 				{/if}
 			</div>
@@ -1350,6 +1355,7 @@ registerUpdateBlocker(() =>
 										<ComposerFrame
 											activeReview={reviewComments.activeReview}
 											{activeReviewId}
+											oncopyreviewid={copyText}
 											placeholder="Whole-commit note… Markdown supported"
 											bind:text={noteDraft.text}
 											busy={noteSaving}
