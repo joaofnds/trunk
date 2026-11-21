@@ -1,0 +1,1067 @@
+{
+  "schema": 1,
+  "experiment": "E21",
+  "task": "TRUNK-440",
+  "date": "2026-11-21",
+  "flows": [
+    "I01",
+    "I02",
+    "I17"
+  ],
+  "hypothesis": "A warm A/B/A tab switch while reading a populated archive retains the shown review, the keyboard cursor, and the reading position, as closing a jump-to-code diff does.",
+  "fixture": {
+    "scope": "Synthetic-only. Two generated repositories and a private schema-16 review store per launch. Each repository has three revisions. A has ten 96-line TypeScript files changed at each revision and B has one 12-line file changed at each revision. The worktree and index use the third revision. Neither repository has a remote. Periodic fetch is disabled.",
+    "archivedThreads": 15,
+    "archivedReplies": 20,
+    "controlThreads": 1,
+    "target": {
+      "path": "file-0002.ts",
+      "line": 32,
+      "marker": "file 2 revision 1 line 31",
+      "oid": "281aa3f8611017871e90baecf4a2aefd883882c7",
+      "side": "New"
+    },
+    "orphan": "review-thread-14",
+    "orphanOracle": "The thread on retired.ts displays the Orphaned badge with a File gone tooltip and no Jump to code link.",
+    "secondaryControl": {
+      "review": "Synthetic other repository review",
+      "thread": "other-control-thread"
+    }
+  },
+  "builds": {
+    "committedBaseline": {
+      "runtime": "macOS drive instance, real WKWebView DOM with production frontend and debug Rust",
+      "sourceCommit": "6fd5a28842db47747123ac6a5b4821a801cc6574",
+      "sourceTree": "25da7a5e63d46c2d3f323e85086c7431d8886a28",
+      "sameBuildInputsAt": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+      "binarySha256": "d23bb3c83c368bcac9bd8a430c17af820e12063587e48c65d5fc014347efd029"
+    },
+    "checkedCandidate": {
+      "runtime": "macOS drive instance, real WKWebView DOM with production frontend and debug Rust",
+      "baseCommit": "c6a5dd638618bfeeb6083e02cd4bb94597472e56",
+      "sourceTree": "bc1addbdd63e13b383f196b1d04ca6f0238f255d",
+      "binarySha256": "45d7fd51edbcbcff3148641353c7960029a52b87e104c19619fb2b60d4ce5808",
+      "sourceCommit": "52da110de3884215e2aa476c226974ed77c9dfd0",
+      "sourceEvidence": "The replay binary was built before the commit. Its captured source tree equals the tree of sourceCommit."
+    }
+  },
+  "baseline": {
+    "result": {
+      "anchorExpected": {
+        "line": 32,
+        "marker": "file 2 revision 1 line 31",
+        "oid": "281aa3f8611017871e90baecf4a2aefd883882c7",
+        "path": "file-0002.ts",
+        "side": "New"
+      },
+      "anchorObserved": {
+        "adjacentInlineRow": true,
+        "code": {
+          "bottom": 90,
+          "top": 72
+        },
+        "commitShortOid": "281aa3f",
+        "file": "file-0002.ts",
+        "inlineThread": "review-thread-12",
+        "line": 32,
+        "marker": "file 2 revision 1 line 31",
+        "side": "New",
+        "thread": {
+          "bottom": 340,
+          "top": 98
+        },
+        "viewport": {
+          "bottom": 800,
+          "top": 72
+        }
+      },
+      "diffReturn": {
+        "expected": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "scrollTop": 2146,
+          "targetOffset": 382
+        },
+        "observed": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "review": "Synthetic archived review",
+          "scrollTop": 2146,
+          "tab": "review-repo",
+          "targetOffset": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        }
+      },
+      "firstJAfterTabs": "review-thread-01",
+      "jPath": [
+        "review-thread-01",
+        "review-thread-02",
+        "review-thread-04",
+        "review-thread-05",
+        "review-thread-07",
+        "review-thread-08",
+        "review-thread-10",
+        "review-thread-11",
+        "review-thread-12"
+      ],
+      "orphanObserved": {
+        "badge": "Orphaned",
+        "id": "review-thread-14",
+        "tooltip": "File gone. Only the saved excerpt survives."
+      },
+      "tabControl": {
+        "archiveExpanded": null,
+        "cursor": null,
+        "focus": null,
+        "review": "Synthetic other repository review",
+        "scrollTop": 0,
+        "tab": "other-repo",
+        "targetOffset": null,
+        "threadIds": [
+          "other-control-thread"
+        ],
+        "viewportHeight": 648
+      },
+      "tabReturn": {
+        "observed": {
+          "archiveExpanded": "false",
+          "cursor": null,
+          "focus": null,
+          "review": "Synthetic archived review",
+          "scrollTop": 0,
+          "tab": "review-repo",
+          "targetOffset": 2528,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        "preserved": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "scrollTop": 2146,
+          "targetOffset": 382
+        },
+        "reset": {
+          "archiveExpanded": "false",
+          "cursor": null,
+          "focus": null,
+          "scrollTop": 0,
+          "targetOffset": 2528
+        }
+      },
+      "tabReturnVerdict": "reset",
+      "expectedTabReturn": "reset"
+    },
+    "resultSha256": "67f77ee7d47ae7d19bee9893a39ea547afbd4251d7b21d9615b4226fa5f6dba5",
+    "observationsSha256": "48de98b1c22b782f01bdac1ec2e3890510da6ae43f107ced4f50f6fbf63c68d5",
+    "build": "committedBaseline"
+  },
+  "limitations": [
+    "The archived review follows the selected review read after the active review batch. The control can use the active batch directly. Their thread counts also differ. The comparison cannot isolate the effect of the thread count.",
+    "Three warm samples per path. Physical input, actual displayed pixels, background settlement and resource use remain unmeasured. The drive window is unfocused, so foreground reply read-state behavior is outside the replay.",
+    "The workload represents a bounded example. Frequency of review navigation and behavior at larger review sizes remain unmeasured."
+  ],
+  "reproduction": {
+    "workingDirectory": "Repository root. Extract the tightened sources into the same directory directly under .boris.",
+    "extract": [
+      "mkdir -p .boris/e21-replay",
+      "jq -jr '.reproduction.files[\"replay-tightened.py\"]' docs/performance-data/review-navigation-2026-11-21.json > .boris/e21-replay/replay-tightened.py",
+      "jq -jr '.reproduction.files[\"scenario-tightened.js\"]' docs/performance-data/review-navigation-2026-11-21.json > .boris/e21-replay/scenario-tightened.js"
+    ],
+    "build": "Check out the before and after source commits in separate disposable source directories. In each checkout run mise exec -- bun install --frozen-lockfile and mise exec -- just drive-build. Keep the resulting binary paths separate.",
+    "beforeSource": "Check out 6fd5a28842db47747123ac6a5b4821a801cc6574 for the pre-fix functional replay.",
+    "before": "mise exec -- python3 -B .boris/e21-replay/replay-tightened.py <absolute-before-drive-binary> .boris/e21-replay/before --expect reset",
+    "after": "mise exec -- python3 -B .boris/e21-replay/replay-tightened.py <absolute-after-drive-binary> .boris/e21-replay/after --expect preserved",
+    "requirements": "Use fresh output directories. The fixture generator and drive helpers come from the repository. Each launch removes its disposable repositories and private process data.",
+    "filesSha256": {
+      "replay-tightened.py": "74a202c2e3c4052a02f00f9e754bc7a254783ee07ec37c2d276515b7547c25d5",
+      "scenario-tightened.js": "216b757081a5f298b9ae37759f5d4c7c6a584a6b6768f7d3ed4f72cfe1b77dcc"
+    },
+    "files": {
+      "replay-tightened.py": "#!/usr/bin/env python3\n\"\"\"Replay review navigation in a drive instance with a synthetic store and repositories.\"\"\"\n\nimport argparse\nfrom contextlib import closing\nimport hashlib\nimport importlib.util\nimport json\nimport os\nfrom pathlib import Path\nimport re\nimport sqlite3\nimport subprocess\nimport sys\nimport tempfile\nimport time\n\nHERE = Path(__file__).resolve().parent\nROOT = HERE.parents[1]\nsys.path.insert(0, str(ROOT / 'scripts/diff-scroll'))\nfrom run import evaluate, request, save, until\n\nsys.path.insert(0, str(ROOT / 'scripts/interaction-performance'))\nfrom processes import stop_app\n\nFIXTURE = ROOT / 'scripts/interaction-performance/fixture.py'\nfixture_spec = importlib.util.spec_from_file_location('interaction_fixture', FIXTURE)\nfixture_module = importlib.util.module_from_spec(fixture_spec)\nfixture_spec.loader.exec_module(fixture_module)\n\nARCHIVE = 'Synthetic archived review'\nCONTROL = 'Synthetic control review'\nOTHER_CONTROL = 'Synthetic other repository review'\nTARGET = 'review-thread-12'\nORPHAN = 'review-thread-14'\nSTAMP = 1_700_001_000\n\n\ndef seed_store(data, repository, commits, other_repository, other_head):\n    schema = (ROOT / 'src-tauri/review/src/reviewdb/schema.rs').read_text()\n    migrations = dict(re.findall(r'const V(\\d+): &str = r\"\\n(.*?)\\n\";', schema, re.S))\n    version = int(re.search(r'CURRENT_VERSION: i64 = (\\d+);', schema)[1])\n    assert version == 16, 'Recheck the fixture inserts against the new review schema'\n    anchors = {}\n    with closing(sqlite3.connect(data / 'reviews.db')) as store, store:\n        for migration in range(1, version + 1):\n            store.executescript(migrations[str(migration)])\n        store.execute(f'PRAGMA user_version = {version}')\n        store.execute('PRAGMA foreign_keys = ON')\n        store.executemany('INSERT INTO reviews VALUES (?, ?, ?, ?, ?, ?)', [\n            ('control', str(repository), CONTROL, STAMP, STAMP, 0),\n            ('archive', str(repository), ARCHIVE, STAMP + 1, STAMP + 1, 1),\n            ('other-control', str(other_repository), OTHER_CONTROL, STAMP, STAMP, 0),\n        ])\n        store.executemany('INSERT INTO active_review VALUES (?, ?)', [\n            (str(repository), 'control'), (str(other_repository), 'other-control'),\n        ])\n        store.execute('''INSERT INTO threads\n            (id, review_id, body, channel, state, anchor_kind, commit_oid, created_at, updated_at)\n            VALUES ('other-control-thread', 'other-control', 'Other repository fixture', 'human', 'open', 'commit', ?, ?, ?)''',\n            (other_head, STAMP, STAMP))\n        store.execute('''INSERT INTO threads\n            (id, review_id, body, channel, state, anchor_kind, commit_oid, created_at, updated_at)\n            VALUES ('control-thread', 'control', 'Control fixture only', 'human', 'open', 'commit', ?, ?, ?)''',\n            (commits[2], STAMP, STAMP))\n        for n in range(15):\n            thread = f'review-thread-{n:02}'\n            revision = 2 if n < 10 else 1\n            path = f'file-{n % 10:04}.ts' if thread != ORPHAN else 'retired.ts'\n            line = 20 + n\n            marker = f'file {n % 10} revision {revision} line {line - 1}'\n            excerpt = f'+export const value{line - 1} = \"{marker}\";'\n            anchors[thread] = {'path': path, 'line': line, 'marker': marker,\n                               'oid': commits[revision], 'side': 'New'}\n            store.execute('''INSERT INTO threads\n                (id, review_id, body, channel, state, stale, anchor_kind, commit_oid, file_path,\n                 source, side, start_line, end_line, excerpt, created_at, updated_at)\n                VALUES (?, 'archive', ?, 'human', ?, ?, 'diff', ?, ?, 'Diff', 'New', ?, ?, ?, ?, ?)''',\n                (thread, f'Synthetic discussion {n:02}', 'open' if n % 3 or thread == TARGET else 'done',\n                 int(thread == ORPHAN), commits[revision], path, line, line, excerpt, STAMP + n, STAMP + n))\n            if n < 9 or thread == TARGET:\n                for reply in range(2):\n                    reply_stamp = STAMP + n + reply + 30\n                    store.execute('''INSERT INTO replies\n                        (id, thread_id, body, channel, created_at, updated_at, seen)\n                        VALUES (?, ?, ?, ?, ?, ?, ?)''',\n                        (f'{thread}-reply-{reply}', thread, f'Synthetic reply {reply} to discussion {n:02}',\n                         'agent' if reply == 0 else 'human', reply_stamp, reply_stamp,\n                         int(thread != TARGET or reply != 0)))\n        assert not list(store.execute('PRAGMA foreign_key_check'))\n    return anchors\n\n\ndef fixtures(directory):\n    primary = directory / 'review-repo'\n    secondary = directory / 'other-repo'\n    commits = fixture_module.create_fixture(primary, 10, 96)\n    other_commits = fixture_module.create_fixture(secondary, 1, 12)\n    data = directory / 'data'\n    data.mkdir()\n    save(data / 'trunk-prefs.json', {\n        'open_tabs': [{'id': path.name, 'repoPath': str(path), 'repoName': path.name}\n                      for path in (primary, secondary)],\n        'active_tab_id': primary.name,\n        'fetch_interval_ms': 0,\n    })\n    return data, seed_store(data, primary, commits, secondary, other_commits[2])\n\n\ndef wait_for_socket(directory, app):\n    deadline = time.monotonic() + 25\n    while not (directory / 'listening').exists():\n        if app.poll() is not None:\n            raise RuntimeError(f'Drive process exited {app.returncode} before readiness')\n        if time.monotonic() >= deadline:\n            raise RuntimeError('Drive listening socket never became ready')\n        time.sleep(0.05)\n\n\ndef run(binary, output, expected):\n    output.mkdir()\n    scenario = (HERE / 'scenario-tightened.js').read_bytes()\n    with binary.open('rb') as executable:\n        binary_digest = hashlib.file_digest(executable, 'sha256').hexdigest()\n    with tempfile.TemporaryDirectory(prefix='trunk-review-replay-', dir='/tmp') as scratch:\n        directory = Path(scratch).resolve()\n        data, anchors = fixtures(directory)\n        save(output / 'fixture.json', {\n            'binary': str(binary), 'binarySha256': binary_digest, 'archivedThreads': 15,\n            'archivedReplies': 20, 'controlThreads': 1, 'target': anchors[TARGET],\n            'orphan': ORPHAN, 'checkoutHead': subprocess.check_output(['git', 'rev-parse', 'HEAD'],\n                                                                     cwd=ROOT, text=True).strip(),\n            'scenarioSha256': hashlib.sha256(scenario).hexdigest(),\n            'secondaryControl': {'review': OTHER_CONTROL, 'thread': 'other-control-thread'},\n            'expected': expected,\n        })\n        environment = {**os.environ, 'TRUNK_DRIVE_DIR': str(directory), 'TRUNK_DATA_DIR': str(data)}\n        with (output / 'app.log').open('w') as log:\n            app = subprocess.Popen([str(binary)], env=environment, stdout=log, stderr=log)\n            try:\n                wait_for_socket(directory, app)\n                until(directory, 'window.__trunkDrive.list(\"button\").includes(\"Review\")')\n                evaluate(directory, scenario.decode())\n                inputs = json.dumps({'target': TARGET, 'orphan': ORPHAN, 'anchor': anchors[TARGET]})\n                try:\n                    result = evaluate(directory, f'window.reviewReplay.replay({inputs})')\n                finally:\n                    save(output / 'observations.json', evaluate(directory, 'window.reviewReplay.observations'))\n                result['expectedTabReturn'] = expected\n                save(output / 'result.json', result)\n            finally:\n                stop_app(app, lambda: request(directory, {'op': 'quit'}))\n    assert not directory.exists(), f'Temporary replay directory remains at {directory}'\n    print(json.dumps(result, indent=2), flush=True)\n    if result['tabReturnVerdict'] != expected:\n        raise SystemExit(f\"Expected {expected}; observed {result['tabReturnVerdict']}\")\n\n\nif __name__ == '__main__':\n    parser = argparse.ArgumentParser(description=__doc__)\n    parser.add_argument('binary', type=Path)\n    parser.add_argument('output', type=Path)\n    parser.add_argument('--expect', choices=('reset', 'preserved'), default='preserved')\n    args = parser.parse_args()\n    run(args.binary.resolve(strict=True), args.output.resolve(), args.expect)\n",
+      "scenario-tightened.js": "(() => {\n  const drive = window.__trunkDrive;\n  const observations = [];\n  const archive = 'Synthetic archived review';\n  const archivedIds = Array.from({length: 15}, (_, index) => `review-thread-${String(index).padStart(2, '0')}`);\n  const visible = element => element && element.getClientRects().length > 0 &&\n    getComputedStyle(element).visibility === 'visible';\n  const findVisible = selector => [...document.querySelectorAll(selector)].find(visible);\n  const panel = () => findVisible('[aria-label=\"Review threads\"]');\n  const body = () => panel()?.querySelector('.review-body');\n  const selectedTab = () => findVisible('[role=\"tab\"][aria-selected=\"true\"]')?.textContent.trim();\n  const equal = (actual, expected) => JSON.stringify(actual) === JSON.stringify(expected);\n  function requireValue(actual, expected, label) {\n    if (!equal(actual, expected)) {\n      throw Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);\n    }\n  }\n  const frame = () => new Promise(resolve => requestAnimationFrame(resolve));\n  async function paint() {\n    await frame();\n    await frame();\n  }\n\n  function archiveDisclosure() {\n    return [...document.querySelectorAll('button[aria-expanded]')]\n      .find(button => visible(button) && button.textContent.trim().startsWith('Archived'));\n  }\n\n  function reading(target) {\n    const pane = body();\n    const threads = [...(pane?.querySelectorAll('[data-thread-id]') ?? [])];\n    const card = threads.find(thread => thread.dataset.threadId === target);\n    const cursor = pane?.querySelector('[data-thread-id][aria-current=\"true\"]');\n    const active = document.activeElement;\n    return {\n      tab: selectedTab() ?? null,\n      review: panel()?.querySelector('h1')?.textContent.trim() ?? null,\n      threadIds: threads.map(thread => thread.dataset.threadId),\n      cursor: cursor?.dataset.threadId ?? null,\n      focus: pane?.contains(active) ? active.dataset.threadId ?? null : null,\n      scrollTop: pane?.scrollTop ?? null,\n      viewportHeight: pane?.clientHeight ?? null,\n      targetOffset: card ? card.getBoundingClientRect().top - pane.getBoundingClientRect().top : null,\n      archiveExpanded: archiveDisclosure()?.getAttribute('aria-expanded') ?? null,\n    };\n  }\n\n  async function record(label, target) {\n    await paint();\n    const value = reading(target);\n    observations.push({label, ...value});\n    return value;\n  }\n\n  function reviewReady(tab, title, ids) {\n    const view = reading();\n    return view.tab === tab && view.review === title && equal([...view.threadIds].sort(), ids);\n  }\n\n  async function waitForReview(tab, title, ids) {\n    await drive.until(`window.reviewReplay.reviewReady(...${JSON.stringify([tab, title, ids])})`);\n  }\n\n  function reviewRow(title) {\n    return [...document.querySelectorAll('button[title]')].find(button =>\n      visible(button) && button.title.startsWith('Click to show') && button.textContent.includes(title));\n  }\n\n  async function openArchive() {\n    await drive.click('button', 'Review');\n    await waitForReview('review-repo', 'Synthetic control review', ['control-thread']);\n    archiveDisclosure().click();\n    await drive.until('window.reviewReplay.hasArchiveRow()');\n    reviewRow(archive).click();\n    await waitForReview('review-repo', archive, archivedIds);\n  }\n\n  function inspectOrphan(id) {\n    const card = body()?.querySelector(`[data-thread-id=\"${id}\"]`);\n    const badge = card?.querySelector('.orphan-badge');\n    return badge?.textContent.trim() === 'Orphaned' && badge.title.startsWith('File gone.') &&\n      !card.querySelector('[aria-label=\"Jump to code\"]')\n      ? {id, badge: badge.textContent.trim(), tooltip: badge.title} : null;\n  }\n\n  async function focusThread(target) {\n    panel().focus({preventScroll: true});\n    const keys = [];\n    for (let index = 0; index < archivedIds.length; index++) {\n      drive.key('j');\n      await paint();\n      const next = reading(target).cursor;\n      if (!next || next === keys.at(-1)) throw Error(`J stopped at ${next} before ${target}`);\n      keys.push(next);\n      if (next === target) return keys;\n    }\n    throw Error(`J did not reach ${target}`);\n  }\n\n  function inspectDiff(target, anchor) {\n    const file = findVisible('[data-testid=\"diff-path\"]')?.textContent.trim();\n    const viewport = findVisible('.hunk-view .exact-virtual-viewport');\n    if (file !== anchor.path || !viewport || panel()) return null;\n    const line = [...viewport.querySelectorAll('.diff-line-add[data-line-path]')].find(row =>\n      row.dataset.linePath === anchor.path &&\n      row.querySelector(`[aria-label=\"Select added line ${anchor.line}\"]`) &&\n      row.querySelector('.diff-line-content')?.textContent.trim() ===\n        `export const value${anchor.line - 1} = \"${anchor.marker}\";`);\n    const inlineRow = line?.nextElementSibling;\n    const inline = inlineRow?.matches('.inline-comment-row') &&\n      inlineRow.querySelector(`[data-thread-id=\"${target}\"].comment-card-inline`);\n    if (!visible(line) || !visible(inline)) return null;\n\n    const detail = document.querySelector('[data-testid=\"commit-detail\"] [title=\"Copy SHA\"]');\n    const oid = detail?.textContent.trim();\n    const expectedOid = anchor.oid.slice(0, 7);\n    if (oid !== expectedOid) return null;\n\n    const viewportBounds = viewport.getBoundingClientRect();\n    const surfaceBounds = line.closest('.exact-virtual-surface').getBoundingClientRect();\n    const top = Math.max(viewportBounds.top, surfaceBounds.top, 0);\n    const bottom = Math.min(viewportBounds.top + viewport.clientHeight, surfaceBounds.bottom, innerHeight);\n    const code = line.getBoundingClientRect();\n    const thread = inline.getBoundingClientRect();\n    if (code.top < top || code.bottom > bottom || thread.top < code.bottom || thread.bottom > bottom) return null;\n    return {file, commitShortOid: oid, side: 'New', line: anchor.line, marker: anchor.marker,\n      inlineThread: target, adjacentInlineRow: true, viewport: {top, bottom},\n      code: {top: code.top, bottom: code.bottom}, thread: {top: thread.top, bottom: thread.bottom}};\n  }\n\n  function position(view) {\n    return {cursor: view.cursor, focus: view.focus, scrollTop: view.scrollTop,\n      targetOffset: view.targetOffset, archiveExpanded: view.archiveExpanded};\n  }\n\n  async function replay({target, orphan, anchor}) {\n    await openArchive();\n    const orphanObserved = await drive.until(`window.reviewReplay.inspectOrphan(${JSON.stringify(orphan)})`);\n    await record('archive selected', target);\n    const jPath = await focusThread(target);\n    drive.key('k');\n    await paint();\n    requireValue(reading(target).cursor, jPath.at(-2), 'K selects preceding thread');\n    drive.key('j');\n    const beforeDiff = await record('before Enter', target);\n    requireValue(beforeDiff.cursor, target, 'J restores target');\n    requireValue(beforeDiff.archiveExpanded, 'true', 'Archives are expanded before the jump');\n    requireValue(beforeDiff.scrollTop > 0, true, 'reading position is below the initial viewport');\n    requireValue(beforeDiff.targetOffset >= 0 && beforeDiff.targetOffset < beforeDiff.viewportHeight,\n      true, 'late thread starts inside the review viewport');\n    requireValue([...beforeDiff.threadIds].sort(), archivedIds, 'archive thread identities before the jump');\n\n    drive.key('Enter');\n    const diff = await drive.until(`window.reviewReplay.inspectDiff(...${JSON.stringify([target, anchor])})`);\n    observations.push({label: 'diff after Enter', ...diff});\n    await drive.click('button', 'Close diff');\n    await waitForReview('review-repo', archive, archivedIds);\n    const afterDiff = await record('after Close diff', target);\n    requireValue(position(afterDiff), {...position(beforeDiff), focus: target}, 'Close diff return position');\n\n    await drive.click('tab', 'other-repo');\n    await waitForReview('other-repo', 'Synthetic other repository review', ['other-control-thread']);\n    const b = await record('other repository control', target);\n    requireValue(b.threadIds, ['other-control-thread'], 'B owns its distinct review card');\n    requireValue(b.archiveExpanded, null, 'A archive disclosure is absent on B');\n    await drive.click('tab', 'review-repo');\n    await waitForReview('review-repo', archive, archivedIds);\n    const afterTabs = await record('after A/B/A', target);\n    drive.key('j');\n    const afterJ = await record('first J after A/B/A', target);\n    const actual = position(afterTabs);\n    const reset = {cursor: null, focus: null, scrollTop: 0,\n      targetOffset: afterDiff.targetOffset + afterDiff.scrollTop, archiveExpanded: 'false'};\n    const preserved = position(afterDiff);\n    let tabReturnVerdict = 'other';\n    if (equal(actual, reset) && afterJ.cursor === 'review-thread-01') tabReturnVerdict = 'reset';\n    if (equal(actual, preserved) && afterJ.cursor === 'review-thread-13') tabReturnVerdict = 'preserved';\n    return {anchorExpected: anchor, anchorObserved: diff, orphanObserved, jPath,\n      diffReturn: {expected: {...position(beforeDiff), focus: target}, observed: afterDiff},\n      tabControl: b, tabReturn: {reset, preserved, observed: afterTabs},\n      firstJAfterTabs: afterJ.cursor, tabReturnVerdict};\n  }\n\n  window.reviewReplay = {\n    replay, reviewReady, inspectDiff, inspectOrphan, observations,\n    hasArchiveRow: () => Boolean(reviewRow(archive)),\n  };\n  return true;\n})()\n"
+    },
+    "afterSource": "Check out 52da110de3884215e2aa476c226974ed77c9dfd0 for the post-fix functional replay."
+  },
+  "historical": {
+    "scope": "Earlier functional and timing receipts used the original observer. The tightened check supplies the functional verdict.",
+    "baselineIntegration": {
+      "functional": {
+        "admission": {
+          "receiptSha256": "4c478c8ce4db5d5fa3a847ed397c59e1d22982257a730dcafee0842a162137f9",
+          "entry": {
+            "verdict": "admitted",
+            "competing": []
+          },
+          "exit": {
+            "verdict": "admitted",
+            "competing": []
+          }
+        },
+        "result": {
+          "anchorExpected": {
+            "line": 32,
+            "marker": "file 2 revision 1 line 31",
+            "oid": "281aa3f8611017871e90baecf4a2aefd883882c7",
+            "path": "file-0002.ts",
+            "side": "New"
+          },
+          "anchorObserved": {
+            "commitShortOid": "281aa3f",
+            "file": "file-0002.ts",
+            "inlineThread": "review-thread-12",
+            "line": 32,
+            "marker": "file 2 revision 1 line 31",
+            "markerTop": 72,
+            "side": "New"
+          },
+          "diffReturn": {
+            "expected": {
+              "cursor": "review-thread-12",
+              "review": "Synthetic archived review",
+              "scrollTop": 2146
+            },
+            "observed": {
+              "archiveExpanded": "true",
+              "cursor": "review-thread-12",
+              "focusedElement": "review-thread-12",
+              "review": "Synthetic archived review",
+              "scrollHeight": 3258,
+              "scrollTop": 2146,
+              "selectedTab": "review-repo",
+              "targetTopInViewport": 382,
+              "threadIds": [
+                "review-thread-00",
+                "review-thread-01",
+                "review-thread-02",
+                "review-thread-03",
+                "review-thread-04",
+                "review-thread-05",
+                "review-thread-06",
+                "review-thread-07",
+                "review-thread-08",
+                "review-thread-09",
+                "review-thread-10",
+                "review-thread-11",
+                "review-thread-12",
+                "review-thread-13",
+                "review-thread-14"
+              ],
+              "viewportHeight": 648
+            }
+          },
+          "firstJAfterTabs": "review-thread-01",
+          "jPath": [
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12"
+          ],
+          "tabReturn": {
+            "expected": {
+              "cursor": "review-thread-12",
+              "review": "Synthetic archived review",
+              "scrollTop": 2146
+            },
+            "observed": {
+              "archiveExpanded": "false",
+              "cursor": null,
+              "focusedElement": null,
+              "review": "Synthetic archived review",
+              "scrollHeight": 3258,
+              "scrollTop": 0,
+              "selectedTab": "review-repo",
+              "targetTopInViewport": 2528,
+              "threadIds": [
+                "review-thread-00",
+                "review-thread-01",
+                "review-thread-02",
+                "review-thread-03",
+                "review-thread-04",
+                "review-thread-05",
+                "review-thread-06",
+                "review-thread-07",
+                "review-thread-08",
+                "review-thread-09",
+                "review-thread-10",
+                "review-thread-11",
+                "review-thread-12",
+                "review-thread-13",
+                "review-thread-14"
+              ],
+              "viewportHeight": 648
+            }
+          },
+          "windowFocused": false,
+          "targetAgentReplySeen": false
+        },
+        "observations": [
+          {
+            "archiveExpanded": "true",
+            "cursor": null,
+            "focusedElement": null,
+            "label": "one-thread control",
+            "review": "Synthetic control review",
+            "scrollHeight": 648,
+            "scrollTop": 0,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": null,
+            "threadIds": [
+              "control-thread"
+            ],
+            "viewportHeight": 648
+          },
+          {
+            "archiveExpanded": "true",
+            "cursor": null,
+            "focusedElement": null,
+            "label": "archive selected",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 0,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 2528,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          },
+          {
+            "archiveExpanded": "true",
+            "cursor": "review-thread-12",
+            "focusedElement": null,
+            "label": "before Enter on the late thread",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 2146,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 382,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          },
+          {
+            "commitShortOid": "281aa3f",
+            "file": "file-0002.ts",
+            "inlineThread": "review-thread-12",
+            "label": "diff after Enter",
+            "line": 32,
+            "marker": "file 2 revision 1 line 31",
+            "markerTop": 72,
+            "side": "New"
+          },
+          {
+            "archiveExpanded": "true",
+            "cursor": "review-thread-12",
+            "focusedElement": "review-thread-12",
+            "label": "after closing diff",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 2146,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 382,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          },
+          {
+            "archiveExpanded": null,
+            "cursor": null,
+            "focusedElement": null,
+            "label": "other tab",
+            "review": null,
+            "scrollHeight": 708,
+            "scrollTop": 0,
+            "selectedTab": "other-repo",
+            "targetTopInViewport": null,
+            "threadIds": [],
+            "viewportHeight": 708
+          },
+          {
+            "archiveExpanded": "false",
+            "cursor": null,
+            "focusedElement": null,
+            "label": "after A/B/A",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 0,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 2528,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          },
+          {
+            "archiveExpanded": "false",
+            "cursor": "review-thread-01",
+            "focusedElement": null,
+            "label": "first J after A/B/A",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 0,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 2528,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          }
+        ]
+      },
+      "warmSelection": {
+        "admission": {
+          "receiptSha256": "775095b0d9f089c68c0c105bf343cde857d125fefe41d7694a3614abd4d3384b",
+          "entry": {
+            "verdict": "admitted",
+            "competing": []
+          },
+          "exit": {
+            "verdict": "admitted",
+            "competing": []
+          }
+        },
+        "endpoint": "Review row click through correct title, card count, and sentinel thread in the DOM",
+        "samples": [
+          {
+            "correctThreadReadyMs": 18,
+            "threads": 15,
+            "title": "Synthetic archived review"
+          },
+          {
+            "correctThreadReadyMs": 4,
+            "threads": 1,
+            "title": "Synthetic control review"
+          },
+          {
+            "correctThreadReadyMs": 20,
+            "threads": 15,
+            "title": "Synthetic archived review"
+          },
+          {
+            "correctThreadReadyMs": 5,
+            "threads": 1,
+            "title": "Synthetic control review"
+          },
+          {
+            "correctThreadReadyMs": 15,
+            "threads": 15,
+            "title": "Synthetic archived review"
+          },
+          {
+            "correctThreadReadyMs": 3,
+            "threads": 1,
+            "title": "Synthetic control review"
+          }
+        ]
+      },
+      "committedConfirmation": {
+        "build": "committedBaseline",
+        "scope": "Functional replay. The two raw outputs are byte-for-byte identical to the historical baseline functional result and observations above.",
+        "outputFilesSha256": {
+          "result.json": "ff2f934e054e583b024786c788e7b0f46376875f05356301ab2ef52603de73c4",
+          "observations.json": "e87f7e39f7be75042fe81deebc50a45d8f37cd382273e80ef33c80b3310ea425"
+        }
+      }
+    },
+    "candidateIntegration": {
+      "scope": "Functional replay of the same synthetic fixture and scenario. The warm selection samples belong to the baseline.",
+      "result": {
+        "anchorExpected": {
+          "line": 32,
+          "marker": "file 2 revision 1 line 31",
+          "oid": "281aa3f8611017871e90baecf4a2aefd883882c7",
+          "path": "file-0002.ts",
+          "side": "New"
+        },
+        "anchorObserved": {
+          "commitShortOid": "281aa3f",
+          "file": "file-0002.ts",
+          "inlineThread": "review-thread-12",
+          "line": 32,
+          "marker": "file 2 revision 1 line 31",
+          "markerTop": 72,
+          "side": "New"
+        },
+        "diffReturn": {
+          "expected": {
+            "cursor": "review-thread-12",
+            "review": "Synthetic archived review",
+            "scrollTop": 2146
+          },
+          "observed": {
+            "archiveExpanded": "true",
+            "cursor": "review-thread-12",
+            "focusedElement": "review-thread-12",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 2146,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 382,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          }
+        },
+        "firstJAfterTabs": "review-thread-13",
+        "jPath": [
+          "review-thread-01",
+          "review-thread-02",
+          "review-thread-04",
+          "review-thread-05",
+          "review-thread-07",
+          "review-thread-08",
+          "review-thread-10",
+          "review-thread-11",
+          "review-thread-12"
+        ],
+        "tabReturn": {
+          "expected": {
+            "cursor": "review-thread-12",
+            "review": "Synthetic archived review",
+            "scrollTop": 2146
+          },
+          "observed": {
+            "archiveExpanded": "true",
+            "cursor": "review-thread-12",
+            "focusedElement": "review-thread-12",
+            "review": "Synthetic archived review",
+            "scrollHeight": 3258,
+            "scrollTop": 2146,
+            "selectedTab": "review-repo",
+            "targetTopInViewport": 382,
+            "threadIds": [
+              "review-thread-00",
+              "review-thread-01",
+              "review-thread-02",
+              "review-thread-03",
+              "review-thread-04",
+              "review-thread-05",
+              "review-thread-06",
+              "review-thread-07",
+              "review-thread-08",
+              "review-thread-09",
+              "review-thread-10",
+              "review-thread-11",
+              "review-thread-12",
+              "review-thread-13",
+              "review-thread-14"
+            ],
+            "viewportHeight": 648
+          }
+        },
+        "windowFocused": false,
+        "targetAgentReplySeen": false
+      },
+      "observations": [
+        {
+          "archiveExpanded": "true",
+          "cursor": null,
+          "focusedElement": null,
+          "label": "one-thread control",
+          "review": "Synthetic control review",
+          "scrollHeight": 648,
+          "scrollTop": 0,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": null,
+          "threadIds": [
+            "control-thread"
+          ],
+          "viewportHeight": 648
+        },
+        {
+          "archiveExpanded": "true",
+          "cursor": null,
+          "focusedElement": null,
+          "label": "archive selected",
+          "review": "Synthetic archived review",
+          "scrollHeight": 3258,
+          "scrollTop": 0,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": 2528,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focusedElement": null,
+          "label": "before Enter on the late thread",
+          "review": "Synthetic archived review",
+          "scrollHeight": 3258,
+          "scrollTop": 2146,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        {
+          "commitShortOid": "281aa3f",
+          "file": "file-0002.ts",
+          "inlineThread": "review-thread-12",
+          "label": "diff after Enter",
+          "line": 32,
+          "marker": "file 2 revision 1 line 31",
+          "markerTop": 72,
+          "side": "New"
+        },
+        {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focusedElement": "review-thread-12",
+          "label": "after closing diff",
+          "review": "Synthetic archived review",
+          "scrollHeight": 3258,
+          "scrollTop": 2146,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        {
+          "archiveExpanded": null,
+          "cursor": null,
+          "focusedElement": null,
+          "label": "other tab",
+          "review": null,
+          "scrollHeight": 708,
+          "scrollTop": 0,
+          "selectedTab": "other-repo",
+          "targetTopInViewport": null,
+          "threadIds": [],
+          "viewportHeight": 708
+        },
+        {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focusedElement": "review-thread-12",
+          "label": "after A/B/A",
+          "review": "Synthetic archived review",
+          "scrollHeight": 3258,
+          "scrollTop": 2146,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-13",
+          "focusedElement": "review-thread-12",
+          "label": "first J after A/B/A",
+          "review": "Synthetic archived review",
+          "scrollHeight": 3258,
+          "scrollTop": 2344,
+          "selectedTab": "review-repo",
+          "targetTopInViewport": 184,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        }
+      ]
+    },
+    "builds": {
+      "baseline": {
+        "runtime": "macOS drive instance, real WKWebView DOM with production frontend and debug Rust",
+        "baseCommit": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "sourceTree": "684cc1de1d1fd2a48ca446d0d485e16f5e1a9afd",
+        "binarySha256": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+        "provenance": "The historical functional and timing runs used this exact integration build. E20 identifies the same binary and its build inputs."
+      },
+      "candidate": {
+        "runtime": "macOS drive instance, real WKWebView DOM with production frontend and debug Rust",
+        "baseCommit": "8dbec7da5f216dfc412a2fc87f961136155029cb",
+        "sourceTree": "3d6536e841166ae2281b68a72a34cc70fb41c435",
+        "binarySha256": "06d906f235ca634b2a42d19481b466dd0d2ccf0eed6365333e2ca966020e3d51"
+      }
+    },
+    "protocol": {
+      "functional": "Start a drive window with A active. Open Review, expand Archived, and select Synthetic archived review. Record the 15 rendered thread IDs and check the missing-file badge. Focus the review region, take J to thread 12, and check K then J return to that thread. Press Enter, confirm the exact commit SHA prefix, added-side line, source sentinel, and inline thread DOM. Click Close diff and read the distinctive review title, the card cursor and focus, and scrollTop after two animation frames. Switch A to B to A by clicking the tabs. Repeat the same reading after the archive is ready and check where the first J goes.",
+      "warmSelection": "In a separate drive instance, open the active review and expand Archived. Warm both review selections. Alternate selecting the archive and selecting the active control for three pairs. Read performance.now() in the page immediately before the review row click and once the requested title, exact card count and a laid-out sentinel card are observed. A laid-out card may be below the viewport.",
+      "admission": "Baseline functional and readiness runs used separate serial launches. The native window was coordinated after the integrated checks and picker capture ended. Entry and exit executable and argument snapshots screened build and test activity. Receipts retain digests and verdicts. Activity entirely between snapshots can escape detection."
+    },
+    "excludedPilots": [
+      "functional-1 stopped at a reply insert binding error before the app launched.",
+      "functional-2 used the wrong badge label predicate and timed out at the orphan check.",
+      "functional-3 targeted a settled thread folded by default and did not reach the jump.",
+      "functional-4 reproduced the tab reset and diff return but did not assert a SHA prefix or read the added-side line number. The final replay adds both assertions."
+    ],
+    "timingReplay": {
+      "scope": "Extract the two original sources to a directory directly under .boris. Run replay.py with the historical 4de11c15 binary, a fresh output directory and --timed.",
+      "format": "Base64 of gzip-compressed UTF-8 JSON mapping the two filenames to source strings",
+      "filesSha256": {
+        "replay.py": "dcba75db7dc7942623ec82cb53ba4622678a82ea046c7ccca8e5399a4bd2a565",
+        "scenario.js": "1e2fec23f1b0be43d6e790f33f5039c752aaa60e8588c3ab0fad93efa49af8e0"
+      },
+      "filesGzipBase64": "H4sIAAAAAAAA/6U8i3LbRpK/MtbVBkAMQpQc5ypMaBVjy2s7seSiFOeqJB0KJEYibBBAAFAWi+G/Xz9mgMGDlDbHXa+BQU9PT7+7Z7ybg1xmcbD2svXBSBz817PDVZEfzqLkUCb3IluXizR5cZ1cH+B/pgQqcnkfyW8iCe6ju6CM0kREiQhEmEf3Eh6LMkjmUnyLygWMFuukXMgymouiTHMpgiQEBFlaRPAaycJj1LBEEi2zNC9FkN9lQV7I6+Q2T5dinialfCjjaCYUwDyG2cmdK5JVHKvP1exFUCwAtnrnv2DEW5VRXA1/KdJ6xbRQa2VBuTAW+gSvFVAuq8firzgq5Yv6fTXL8nQui6IeWtfPpVxmt1Fczy+jpcQNvzudnooxLWP7PoL4vuPlskjje2k7HrBBJrC16fn5JcAhuBorro5urhNYxEOSPWC6zEt76AKTc5vAD4VVzPMoK4vDMLq9HcBLGseW4+itMsF+EC6joiAhMnFLGRSrXC5hFf9blITpNzUjX1Uw8j6IV0EpXeDKXytZlLBwcA+vq4SY/GTSIhBeHsxRiQaZzG/TfInK0yFTFnpp0KLMD7IMF3n7/n8u/yAWPhHv4W30UMLmQNstWIBf/CKTc8DR1BQPR32kgQUTp3PSddsycPsKheUKRYtTo12m4SqWXcQ8zqhxEdukw2mS5cVpEMrckw9ADE+0m/gdZMRk+vrd+8/ICOuisrcgny/AIkNlr7Dh1+dnl9Pz35tgaECgGjXU5WT671PUN4uHBuUil0E4ODqGj+fTT+8mZz0ff4CPF5eTj5/g25H/38OhPxwewZ8h0nedhPJWFFKGPnkBOwzKwK39wNoFMpbLqCyc0XUi4FfMF3IZAK5aZfL5oAxWeXTIKx/CgHoMZ4cM7+WFhQYUhD46BdthZMvoLifhFYAwjOalDSpwC7odxLGdW8CBohSf7evr8LkzEt+BogJcDk7pOrG970+ca3SAP4OQeRUk3LtwFPJ7mZP5gJwTQlxI5Dzgff3HdHp6dul/Pp1evD8/G4noxx9wR7ROjc4BW1a4ggKNpUYJrPzRFdZUAuD8qwCJCSV9wXZViOAuQJdL3xLwyso5M2pLoU3mizTHzW+2PELOWflRW7kzD/iQSGAOCgc5zqgKL5yBPQJt7MFd/kvJCX9gXTWLMRbkQXIn7SO32shzceQYE0jAiIT0elVKNlu7ltMVOovq1dH86Uy0b61P08m/P07ECtjh17LYqMettXOqngnky+gu8b/KNbLo/GznFPAha9t6f3ZxOr0U788uzxW3C/F58vsfpxfCPnFF478OSPmquXHbUhZnsUusjcBxhbJQV5ApVX8NHbeNRFl3HxLlDdRsZH7j8chEtpuzjX2iu7uXvlIuc7e4Q7tDQrVHZzd+q7EC+5Gitc0odBWPfXycpSG6ikUAihrjzikGsXr7X8GgtR/xUwSfA8oSfE4A8WmVherZaa6hN6NJVh7NMjYBj6+Vl9TmlybxGscXK1AKfEgzmfAcXN8yNMCy2sJTvu7q+KYpaJNZaFSmMb1sGxCTCQp723LFm2Q0PN5aTWgEUaZxLKJbQP2LOBoKGRdSHDVBMWwTWox7gE38CyBHwx+2XllYOFet/AxshaMBYQEqyiiXIUI1EcZRgmHweAj6lzQ/LYP8q8yr1YRabVvTu9FPW8azof8diKP2DuXDXOZZSbieywfOFMmzY7Ii63kAcX2w4ZW36NebeJSzvOJd3qAvsZAl1og4AyJGTPCGf8EbI4J3fmjJuudngW4CuFYCvT/QBauIQsRsnUEg3u7xl08yHvw9zYDgr3ifHVECRJvv2VyRrvI5IgHaCVVe+swamYT6iWXzRIvEn+FiDFd3Ylgc25eFyW399obfiIEdV9wxROIQ8w42aeREYVTMV5wVK2vSFs628y/xQoB9ahMcC5UzsSGEKehHH6swQajnsPE4bp8msKYx81os1J48MR6dFgeVgf/UR+SoSxj6GiwD17W/OW67G/0jOMjigmUGplFRAH8Yw3PxYtg/c68G42SoBncbD2ky76VPk/sVy8WcM+lRL/3bFbd360tFz621YXK2A9r5YEN/oar0qRRzR8GIMu3TsT2uwwruoCAj9WNMIE/lviuLMETTfNmD11DJZ5UaV+oAQ0PHVC6VoCZpCWpZlPajGZVPmWuVBkCMWOWJ9rF1aaDCamGHEELmlEQo/cvyCBzrmhJ39anOTZHzqfLfhQRvH/aApiCB3IRU9oaRolFKeaxEuqiz1dKQMUH1+tOPagv751RUuJRqHatJlFK36MIxq/7sLb/CZ12yYDldJeIllN5fB1kubwsPGxcg600tE3JMfhnMCggdVxuLogvV3kmwxAiFW//EEQwTNfzkqOEzgDCht7tUBV0EJQbgIWrGVLt1bgwls1S2CCT5TAzDMz0G3K0s5wuf6mmI0f4SNzBUANumxnDB2KkgK0p0+Vir1LcAwheQ7Rfp/Kssa82CQJdlWr1C0HyVn2BXBopz0O00iea2A67s+KUqlxaYnKDW2w0Rog3IBGooqDrlA7wUtuk3wVhhKS9Locx0RFQQhjOIDi3fmgcR2PEUmydLeZrnaQ7e5Q2101T/A9w/lGih2CA+Zsk8DeVWzCQam0ADhl0UhVm7YKrW3tOrcbXlx4lQNFS7FMxKqDOhuoKl5yBPWnptLktrFrGUmT30hi8NkYAa27MoIYGlqzJbgYNGaHCV2IYCca0S6qsEsWYjgzVtg4pXxuOh7ttWDhUqFqjsiIJZbG6OIf0wupMFpoeqQ+hRVsOjdj0Rs7BFcPzyRxDpQj6o7+bKup3nXUps7ADuN1onbLTR6GGsLLZ2UnGwHoDVwibG1mG5zJhcKHsDsACD1lq7VFtQgRhdQQOYTKAu7nucqFF8oUNhbqLm6kZY152QZTLPlMPgF3QZ/HTB/Bk1OVsnauElp6MAcfSyFXwqmCkHfIA5HtalljETBiGXvJMlvOicnOPTTRtnmmeQBwAcp1SIDqMO7PYdVnIjo0Hr0RefGWFfWXdUq2E4GVDTGV/enU7eWO1F/vFv/i0cYw8LVF0+lOPLfCUdD9gaZXa7qreKuQSORmnFYa2rrJK2TR3jwxoQ5KcbXrN1CaJ3Glpr4N8auiCT+yhPE2zxYnnz/fdp4akx2P7l9I+z3/w30/efT/0376dKCWqdqkEmlxMTAtTRMQIIGYuhcui64hRdJRvtNzYCGGp5IgAEsgyZfaIJV4Yu3mB1cT82NoKlRwiLjQEfPcs8x+dW8lfm657E9pFY0Z1AfW4TzOJWuef7ZPrkOD1Kka4PZqsS3O/1geNFyTxehSAmPEtB3wCDVg963V83V9gne252PhGRJpW9E5/psEh6aVFRJNxRD5CUu2cGSu67qgj8gadaxaiATyZSLdNPJ/5aTq6KitrN8ZJ9fIJEegepUQLY0L0iDi9cLbPC3tSuiV2S2+eE2Gt13dd2B/X9uql/9UHNeA+/KedoxVIuE4zDMntPRcTHdnqtPfTgb68Ib3tlyMHQ3jBbtztFeQuGHsf7GNISdjorMI2k9rGW99PV35hs9RkS/lRjrLc/7gWFv8ojyhqtE6gN5DhPrT0ms6v5zpU/oOJIUffd93ECilwXXWazGrs4/f309SV9FW+n5x91kS3+JFcSYfPwBNu3UMqyaupSdmi5EEgoPYdsdZe6sPSvlC1MsEBFdq4vYEELG2ezNI3tPRV4x1wR315b3a0V+lzQhj+uiIPlLAxG+njSlP8G6iXssf21gtC/1bI2CtsKtkrpUZerZE+wBhupGhginsGIoBSbalS3J6FCgRLb8B28Lxf8SggMGx8j9nhVLFjenCyDEfs+Vku+j4W+5fu4gu9buijGVAXbpvqs3Jvkdyt0B5/oix2qIxXQ57Hvh+nc9x1zqheEoR+oObZO9yBFWWdyjInnPmiW2FOhBwMKHwDOZ6Zji9QU4yRmWwsZZ2MLyg5qqfNNgnma5uC4sYljujrBlmvtX42836D2fvsXfk0Ha1A9ZrLECqc+bw7ydJWEfOZWu1IWviYB1sXIoCihv5CWQlsMFjz47qlqRSfxmP7NVS7oEhZPFTpVmq+GdXmEz50a6To5cMWBkQ/gFQ4bfND4FWf03P/mixlj0ZOi/FxDmS4QgK9ujG8qad9/vmzA6zPlfQfNBji2PWd0VC5jlrTeQFX/6w/ffacfPfA5r8GdodOZo5V6sUzuwLO+EkMA0x4CoUC64BDDi3IdS1tNdzxaNQLvi800oFRRwYRtDfLwpPhzRWIBCNDCkcYrz/PAuEj3PPA0UBupr5MYPR8/Ozd02GyrBRwDdRYkEtnEMjMWsq0rkGkwiIOZjMc6Xawa/Qc3lokGm6EVFsJpOydNgmxLRbwBAjdmK98H8+mkxAWbK4rgTjqGGMAj2c/os4NEpN8Etwg0aJdpOTYHNE14Mv0pTyGrkLZScRxW7nmSREtSvLc4SQM4jDQo1sm8MkHYHfpTR9MVYOrOi9kM3ze2vaZzpwqJUt03UYFhmFLKlr7tl6zFKT2LSD4Ax0MZgkhutNaxwBkKN6pEr0YcVGN+9DAfw8NFXAe8wtLG4jDIy+JPyBJsa6KMzHL6d8Ip7p3NMbjaRa1dFIbDdcUcJR3YWiFD8l2J7KjKFaY4+jwxCm94o/NVjnePQBvRhdY6qJEq5UTnAdyzezAT79rIoQw8OQF/49w0sM2DHOlTSJmh+izjlRr2EFUhgXP0+j4kS1a8+Lkh0KrDwVYw2mkmiyMLBrtiQSIxh65qajZvGV4Gs1HLdMHNSWRTMAMuMfM0tMm9Jy2jt1aMKl4sg+xxVtTFP8itSPORFvpJl2vtNRXkKbvKkagsgTu7avzEQ+vB9KpHpk9Yha+kXabZSGlhNdABRZHhie47Gd0tSg0/J/fPYzuwNyeYY11Gk9rA6u+Tz2q5EWshWCuZ0gm9YuD5FXMDsLs6AIHdQgYqBgS5F2TUXFb5olPlRUZ9zukEEU5K0JAZZfYNv2O1dWZreoqW+4TsFHIrm8KKK1pegx2n8rANYyTPj5eimu5GwTRKrwxyWXujFgA/QFO3LWukwR0OjcuyAHxWGZXYkJ0DJ+koL4EUTcYtJ0dxsaasgupzJuwJH3N3YKIWlHEaE1Z0prPTW4B1VUhlr4PEoqrQh8pqdVaCILQRBPkVCiMZJDojsJG8poNviQ0F8zbNOQt4Gl9Ubvrh4vyM2o3JXXS7tq/65940YydljB43uXZU8bWUQMbILloPWOVYuyIVTUkV+f8s4NJUDLStAFv7iZ1xFmc2QisYJt6pS0WxwKJiR0yuWnZM9T4hsYvfIR1XVzLYqA/iQrbEhSnVuMMkLRXK0GyAcYX1EVszUKpM1d0zGIVyFljPGggi8MSvtJGCx8O6Gan4aDnelzRKbEv8LXRmoQkhFslwUtZ9JnB8xiVaLwHyHOXGtE2AgsyRn60k7El627QrY30wGVxDsHeDFbtUDGr4PZLh7mbTzTFXmGjNFrprSdXJvm2oQoZOeNu3xpq8DCsfTrV6x683xVtDA16d+Jk4liz5fyjeGlGvqB61+UVQKKJQP1tm3mI4JRB8mNNOTVXe5RGIvclgDVCEC4rMkOLkRrBgJqp7mVc6PcSjaDuWJXVQHuDL8Gf1+Is4eqmenz936pRPFUl8VNoJYh7nRz9raGYErGpbXyp59gfHytfeltSOeQSzkrMi5BmoN00EaX+g/lUG4g5KEipjBFvWZAc5kIVmrwCaEVgQlzj20tT6A1Zuir46N9bGhrMUpDq5MYs7ICuMQmqKwc7mC2NhIg0bmVFiXku+Xh0Pj34qQA46Wd0RDaIEr7eXeF9LcUufZLb8Il0LHLfya47XkHlSsKZ/34B9051JdUOfokQd+PfhbOUA9Wa75U51d/GR0OURfbjmIAhDXofekORu0UiBoK4Y4ZVCE3pYnVHj7E+BSiqYa/SPLTRcb/xScEx15RRQO4jFz1qo/v5bPFOcwke1WXhU9lupkBEFlDGEkJT+zizmaZ18q9Ha4HGexnc8yQCYFnrvZT9+wVKhWmRPzm1s9llNHmxGI/lFDM3XV3iZP5E5Vwq7txrKMoiwf9Mv/o6m8i2VAU+DLQlOaODL6zRbi4t3k55Ec4PycZXask8dqbdOjeUqZugzJyVuvp2pLpZWlQddAjEZrWdTSaZ4oa/WXABQeR7B0kz9vtp1XwFCFWRQSqiabexw74vKUD9DSCao/zQ9ZT/seEaRzl0+UKZWSkz4mwuYXn5XHcXHWNp38emf9mHb1q5U1WWlYPWqcK/vljc9OU9QqaRKGVy8R9ELpxHrBq3e7g60jzKOt8F5fQ+r+LNjpvnaFL6wQ9LNt27811lIHV2/Wru53oisvz0WWlVg1cAgZyLHC0p7gAcs1m9GICOjgrQfwxZmH1G6KkQrfevNAcw0AgNXtVstBRWqT/FCm0g5MMag6xp7RyhmPoAY1a6MSE1VSf297pC8Enht5rK5QrVLqC7vpQrMuSqSsaFBe+lskQjupK7GBh/VGzOcq3qwU3g2ovxNS4l2tRBGfMNb5UNMKLUVcHTbSaCRhQ13hfxTHi6NQrP+6wFGTfkzTyHJ4nHt3zHj/LLCW1s91tSpIF5jU4z4t7eK2GPbhur36hkzQ50gC3UDvkZhrmm6W/MmbL8bIQDBbrfPfzSwmVdw//8bBZTFjo1ODn89nHQo2mOiNO0MwtOHDkY2hw9iF+b+njFr0OlDRs5Vx0y3+fmcVBg/o0Sqj+SJqjf8NCXsI7GRFcKN7kpXzNJN245zcM2+aZ9r2LrKmohSrURbo885+48oqFD0EVB/3LM+yrZen0TwYaI/jAxx6RU0KLuat9yNNtrQUIrSYHXDbV/GUd0aasbkvhDb/RevvWH56Q2AIlhmsewvXyHc5Vy90tMv4gU/NUpXgmZcrdZdFN6I9FZcXT2ygxtXXO0j+ObGMa9/8loyDjI+H2psvE2BS/V6XWsKvWHlwhW8KgVHeiKYIt6S4PyAko2P8FGtua3RbRuVqTZKmYRZGuGxhGrWUO9szt08qF5Xdwu9gtAEY/tXLY7/BwRVa1eFTVXEvjn/iP+ekrfQUKmemIc3J1XsyvD6DWeErtnAdnXW4pr1btUJdBtRT2lyo8syUsenul9ctweV0B1tAEbiNqKbPa/a7Y9/0gIHRK3aqxKDJgnRdo+amZzBLAjvJOvt/wLKt1ho3kESTBgd45ReiGd0tLK3UPwAIRgTN7z5btLEroXlpdO7nI4Xtg7exDjY/h+MiRsw5kIAAA=="
+    },
+    "tightenedLifecyclePilot": {
+      "build": {
+        "runtime": "macOS drive instance, real WKWebView DOM with production frontend and debug Rust",
+        "baseCommit": "c6a5dd638618bfeeb6083e02cd4bb94597472e56",
+        "sourceTree": "75f010aaab6adad8ae57d27354eba287ecc4ccfb",
+        "binarySha256": "eac5e43f6859f44e5521bea9ec30ef4d9a8138c5176dbf5aa831f100a3ddcc4e"
+      },
+      "resultSha256": "3e1bce2edae2d50f7f199b43bd065507026082cc6a738c5b0cdb9780afcfd0d4",
+      "observationsSha256": "9fd5f6018fed4b12e8d009db5bbb5ec512ec1d16e52350730813669325ac4f40",
+      "scope": "The lifecycle pilot and the checked candidate produced identical tightened functional receipts."
+    }
+  },
+  "candidate": {
+    "build": "checkedCandidate",
+    "result": {
+      "anchorExpected": {
+        "line": 32,
+        "marker": "file 2 revision 1 line 31",
+        "oid": "281aa3f8611017871e90baecf4a2aefd883882c7",
+        "path": "file-0002.ts",
+        "side": "New"
+      },
+      "anchorObserved": {
+        "adjacentInlineRow": true,
+        "code": {
+          "bottom": 90,
+          "top": 72
+        },
+        "commitShortOid": "281aa3f",
+        "file": "file-0002.ts",
+        "inlineThread": "review-thread-12",
+        "line": 32,
+        "marker": "file 2 revision 1 line 31",
+        "side": "New",
+        "thread": {
+          "bottom": 340,
+          "top": 98
+        },
+        "viewport": {
+          "bottom": 800,
+          "top": 72
+        }
+      },
+      "diffReturn": {
+        "expected": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "scrollTop": 2146,
+          "targetOffset": 382
+        },
+        "observed": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "review": "Synthetic archived review",
+          "scrollTop": 2146,
+          "tab": "review-repo",
+          "targetOffset": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        }
+      },
+      "firstJAfterTabs": "review-thread-13",
+      "jPath": [
+        "review-thread-01",
+        "review-thread-02",
+        "review-thread-04",
+        "review-thread-05",
+        "review-thread-07",
+        "review-thread-08",
+        "review-thread-10",
+        "review-thread-11",
+        "review-thread-12"
+      ],
+      "orphanObserved": {
+        "badge": "Orphaned",
+        "id": "review-thread-14",
+        "tooltip": "File gone. Only the saved excerpt survives."
+      },
+      "tabControl": {
+        "archiveExpanded": null,
+        "cursor": null,
+        "focus": null,
+        "review": "Synthetic other repository review",
+        "scrollTop": 0,
+        "tab": "other-repo",
+        "targetOffset": null,
+        "threadIds": [
+          "other-control-thread"
+        ],
+        "viewportHeight": 648
+      },
+      "tabReturn": {
+        "observed": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "review": "Synthetic archived review",
+          "scrollTop": 2146,
+          "tab": "review-repo",
+          "targetOffset": 382,
+          "threadIds": [
+            "review-thread-00",
+            "review-thread-01",
+            "review-thread-02",
+            "review-thread-03",
+            "review-thread-04",
+            "review-thread-05",
+            "review-thread-06",
+            "review-thread-07",
+            "review-thread-08",
+            "review-thread-09",
+            "review-thread-10",
+            "review-thread-11",
+            "review-thread-12",
+            "review-thread-13",
+            "review-thread-14"
+          ],
+          "viewportHeight": 648
+        },
+        "preserved": {
+          "archiveExpanded": "true",
+          "cursor": "review-thread-12",
+          "focus": "review-thread-12",
+          "scrollTop": 2146,
+          "targetOffset": 382
+        },
+        "reset": {
+          "archiveExpanded": "false",
+          "cursor": null,
+          "focus": null,
+          "scrollTop": 0,
+          "targetOffset": 2528
+        }
+      },
+      "tabReturnVerdict": "preserved",
+      "expectedTabReturn": "preserved"
+    },
+    "resultSha256": "3e1bce2edae2d50f7f199b43bd065507026082cc6a738c5b0cdb9780afcfd0d4",
+    "observationsSha256": "9fd5f6018fed4b12e8d009db5bbb5ec512ec1d16e52350730813669325ac4f40"
+  },
+  "protocol": {
+    "functional": "Select the archive in A and match the exact set of 15 thread IDs. Use J, K and Enter on thread 12. Match the exact seven-character SHA, path, added-line label and complete code marker. The target card must be in the adjacent inline row, with both code and card inside the clipped diff viewport. Close diff must preserve the cursor, actual card focus, scroll offset, relative card offset and expanded archive. B must display its own review with only its own sentinel thread. Return to A, recheck all 15 IDs, match the expected positions and disclosure, then check the exact thread reached by the next J.",
+    "verdict": "The runner succeeds only when the tab-return outcome matches --expect. Use reset for the baseline, preserved for the candidate. Diff, diff-return and B-control checks must pass under either expectation.",
+    "scope": "Separate serial functional launches through drive. These replays collect no timing samples."
+  }
+}

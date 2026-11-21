@@ -1769,17 +1769,493 @@ tracked-file churn open. The [E18 record](performance-data/fetch-edit-overlap-20
 contains every admitted sample, binary digests, process-admission receipts,
 earlier exclusions and the probe sources.
 
+### E19: replay of the reported long-graph scroll hitch
+
+Flow I19, TRUNK-281, 2026-11-21. In the September WKWebView traces, three of
+twelve long-graph vertical phases across six launches had clusters of 11, 10
+and 10 `requestAnimationFrame` (rAF) intervals above 25 ms. The gaps in those
+clusters span 353, 356 and 291 ms from first to last. The longest strictly
+consecutive runs were 9, 6 and 10 intervals. The initial November rAF replay
+saw two isolated intervals above 25 ms in four long-graph vertical phases.
+A subsequent matched-motion cohort tested recurrence with long idle and short
+scroll controls at both requested display rates.
+
+The initial rAF and native wheel replays ran in a macOS 27.2.1 (26B131) drive
+app on an Apple M5 Pro. The virtual display request was 120 Hz, the 1280 × 770
+window reported a maximum of 120 FPS, and the actual display-mode rate was
+unspecified. The drive build used a production frontend and debug Rust from
+`6fd5a288`. The following revision `345af69e` changed only documentation. The
+source, build and fixture hashes are in the [E19 record](performance-data/scroll-replay-2026-11-21.json).
+
+#### Animation-frame replay
+
+Each launch warmed six mounted repository tabs with automatic fetch and graph
+Diff statistics disabled. The long tab was a detached Trunk clone at `345af69e`
+with 4,187 reachable commits. Its loaded history grew from 200 to 400 to 600
+commits during the trial. The short tab was a copy of the kitchen-sink fixture
+with 61 commits reachable across all refs. After 3 s idle, use the September
+probe's point lookup and dispatch synthetic wheel events with 2 px horizontal
+and 14 px vertical drift. Advance the viewport 14 px per frame for 4 s. Reverse at the
+ends of the scroll range. Pan the Message column for 4 s and leave a nonzero
+offset, then advance the viewport 14 px per frame for another 4 s. The measured
+offsets were −309 px on the long tab and −55 px on the short tab.
+
+Each cell gives the maximum rAF interval in ms and the number above 25 ms in
+parentheses. The six marked September long-tab idle phases had 181 intervals
+each and zero above 25 ms. Both horizontal pan phases also had zero above 25 ms
+in all six launches. Both types of vertical phase had a cluster in at least one
+launch. All four November tab observations passed entry and exit process admission.
+
+| September launch | Idle | Vertical drift | Vertical after pan |
+| --- | ---: | ---: | ---: |
+| Base 1 | 23 (0) | 18 (0) | 26 (1) |
+| Base 2 | 18 (0) | 26 (1) | 35 (11) |
+| Base 3 | 18 (0) | 22 (0) | 19 (0) |
+| Head 1 | 18 (0) | 37 (10) | 37 (10) |
+| Head 2 | 18 (0) | 18 (0) | 18 (0) |
+| Head 3 | 18 (0) | 22 (0) | 19 (0) |
+
+| November launch | Tab | Idle | Vertical drift | Vertical after pan |
+| --- | --- | ---: | ---: | ---: |
+| 2, short first | Short | 10 (0) | 21 (0) | 14 (0) |
+| 2, short first | Long | 20 (0) | 28 (1) | 19 (0) |
+| 3, long first | Long | 12 (0) | 26 (1) | 16 (0) |
+| 3, long first | Short | 22 (0) | 29 (1) | 23 (0) |
+
+In the separate September `joao-rerun.jsonl`, 76 of 2,552 gaps exceeded 25 ms,
+including 59 labeled `idle`. The sampler uses that label when no instrumentation
+span is open. This rerun has zero probe phase marks, so those labels cannot
+identify which gestures were underway or supply a matched idle control.
+
+September's `VITE_PERF` sampler records differences between rAF callback
+timestamp arguments and uses `Date.now()` to place samples between phase
+marks. The November probe buffers the same timestamp arguments in the page
+with a `performance.now()` reading immediately after the `await`. The second
+clock measures when the probe continued before taking the scroll step.
+Callback entry time and paint are unobserved. The November long-tab drift had
+one interval over 25 ms in each launch on both clocks. The maxima were 28 and
+26 ms from the arguments and 28 and 27 ms after awaiting rAF.
+
+The timestamp-argument median was 17 ms in each marked September long-tab idle
+and vertical phase and 8 ms in the corresponding November phases. At 14 px per
+callback, those medians imply about 824 and 1,750 px/s, respectively. The
+November traces show 1,675–1,682 px/s from sampled offsets and elapsed time in
+the four long-tab vertical phases. The replay applies roughly twice the
+scroll distance per second. September ran frontends `987eca38` and `b96d9f84`
+in the instrumented dev app and included a final horizontal Graph pan. The
+November drive probe omitted that phase and its first attempt timed out on a
+stale tab selector before measurement.
+
+#### Matched-motion rAF cohort
+
+Ten admitted pairs each ran one fresh drive process at a requested 60 Hz and
+one at 120 Hz. Both used the same frozen `trunk-drive` (`06d906f2`), whose
+SHA-256 matches the executable from the in-place `just drive-build`. The
+before and after fingerprints both yielded `3d6536e8` by taking `HEAD` and
+overlaying working changes in `src/`, `src-tauri/`, `scripts/` and `tests/`.
+Working changes elsewhere and other build inputs were outside that fingerprint.
+The exact binary is retained locally. The fingerprint tree is outside the
+reachable commit history. The 1280 × 770 windows reported maximum frame rates
+of 60 and 120 FPS respectively. The actual display-mode rate was unspecified.
+Native configuration readback recorded `preferNear60=false` and a nonpersistent
+website data store in both arms.
+
+Each launch warmed six repository tabs with automatic fetch and graph Diff
+statistics off. The long tab used the `deep-history` fixture with 843 commits
+across all refs and warmed the second graph page before measurement. The short
+tab used `kitchen-sink` with 61 commits across all refs. At the start of each
+phase, the 698 px viewport returned to the top. Its scroll height stayed at
+11,216 px on the long tab and 1,724 px on the short tab, keeping pagination
+outside the measured phases. Each launch ran a four-second long-tab idle
+phase and four-second unpanned vertical scroll phases on both tabs. The pair
+used the same phase order for both rates. Across pairs, the runner alternated
+refresh-rate order and rotated or reversed phase order.
+
+The probe sends a synthetic wheel event and advances `scrollTop` by up to
+14 px once per visited slot on a nominal 60-step/s grid. The slot is the
+elapsed rAF timestamp in seconds multiplied by 60, then rounded. Repeated
+slots produce one step, skipped slots receive no catch-up, and the probe
+reverses at the scroll boundary. In block 03 at 60 Hz, a 17 ms interval from
+2,008 to 2,025 ms advanced from slot 120 to 122, skipping slot 121. There were
+13 such two-slot advances after 17 ms intervals. Nineteen of the phase's 241
+eligible callbacks repeated a slot, leaving 222 steps and 3,108 px of travel
+despite an 18 ms maximum interval. The grid matches the target motion rate
+across arms. The realized workload still depends on timestamp rounding.
+Long-tab travel over four seconds was 3,108–3,374 px at the 60 Hz request and
+3,346–3,374 px at 120 Hz. The long-idle median rAF timestamp interval was 17 ms
+in every 60 Hz launch and 8 ms in every 120 Hz launch. Admission required those
+medians to fall within 14–20 ms and 6–11 ms respectively.
+
+A burst means at least ten rAF timestamp intervals strictly above 25 ms whose
+ending timestamps fit within an inclusive 400 ms window. Every admitted phase
+passed entry and exit process admission, stayed visible on the intended tab,
+and kept its viewport geometry. The second attempted pair stopped before
+the 60 Hz short scroll when process admission could not read a Node process's
+arguments. The complete 120 Hz half remains in the receipts, and the runner
+repeated both arms in the same planned slot.
+
+| Requested rate | Phase | Bursts / phases | Total intervals above 25 ms | Range of per-phase maxima (ms) |
+| --- | --- | ---: | ---: | ---: |
+| 60 Hz | Long scroll | 0/10 | 1 | 18–27 |
+| 60 Hz | Long idle | 0/10 | 5 | 21–37 |
+| 60 Hz | Short scroll | 0/10 | 0 | 18–23 |
+| 120 Hz | Long scroll | 0/10 | 0 | 10–24 |
+| 120 Hz | Long idle | 0/10 | 5 | 19–30 |
+| 120 Hz | Short scroll | 0/10 | 0 | 13–18 |
+
+No admitted phase had two intervals above 25 ms in the same 400 ms window.
+The paired comparisons against long idle and short scroll had zero discordant
+bursts at either rate. This cohort found no evidence that the September burst
+recurs above either control for fixed-depth, unpanned scrolls. With zero hits
+in ten long-scroll phases per rate, the one-sided 95% upper bound is 25.9% per
+rate under independent trials with a constant hit probability. The card's
+under-one-in-twenty stopping condition remains unresolved. This drive replay
+uses a different source snapshot, fixture, input schedule and instrumentation
+from the `just perf` re-baseline proposed in October. It also leaves paging,
+scrolling after a Message pan, the cause of the original burst, physical input
+and actual presentation unmeasured. No burst occurred to profile in a WebKit
+timeline. The 120 admitted entry and exit snapshots retain the executable
+inventory and recorded verdicts. The classifier used interpreter arguments at
+collection time. The receipts show its recorded decisions, while independent
+reclassification requires the omitted arguments. Activity between snapshots
+is unobserved.
+
+For the frozen binary, raw traces and process receipts, use the local cohort
+directory below. The analyzer reads the saved pair receipts offline. To replay
+the measured executable on macOS, run the second command separately with no
+other builds, tests or capture work. The runner targets ten admitted pairs
+within twelve attempts and 420 seconds, using a fresh output path.
+
+```sh
+matched=.boris/trunk-281-native/matched
+cohort="$matched/cohort-3d6536"
+mise exec -- python3 -B "$matched/analyze.py" "$cohort"
+mise exec -- python3 "$matched/run-matched.py" \
+  --binary "$cohort/trunk-drive" \
+  --revision 3d6536e841166ae2281b68a72a34cc70fb41c435 \
+  --sha256 06d906f235ca634b2a42d19481b466dd0d2ccf0eed6365333e2ca966020e3d51 \
+  --probe .boris/trunk-281-native/tools/native-probe.dylib \
+  --output "$matched/cohort-replay-1"
+```
+
+For a new cohort, start in a clean scratch checkout detached at committed
+`c6a5dd63`. Extract `matched_motion_rAF.replay_sources` to
+`.boris/trunk-281-native/matched/`. Use the initial replay's frozen E05 harness
+from `345af69e`, native probe and historical wheel helpers in the same relative
+locations under `.boris/trunk-281-native/`. Generate the fixtures with a fresh
+`--out` directory using the fixture generator below, adding `deep-history` to
+the case list. Copy `deep-history` to `matched/fixtures/long` and the other
+five repositories to their `matched/fixtures/` slot names. Compare their
+heads, all-ref commit counts and worktree states with `fixture-manifest.txt`.
+Run the following in Bash from that scratch checkout. The new receipt records
+the committed source and the new executable's digest.
+
+```sh
+set -euo pipefail
+revision=c6a5dd638618bfeeb6083e02cd4bb94597472e56
+test "$(git rev-parse HEAD)" = "$revision"
+test -z "$(git status --porcelain=v1)"
+matched="$PWD/.boris/trunk-281-native/matched"
+mise exec -- bun install --frozen-lockfile
+mise exec -- just drive-build
+binary="$PWD/src-tauri/target/debug/trunk-drive"
+digest=$(shasum -a 256 "$binary" | cut -d ' ' -f 1)
+out=$(mktemp -d "${TMPDIR:-/tmp}/trunk281-new.XXXXXXXX")
+mise exec -- python3 "$matched/run-matched.py" \
+  --binary "$binary" --revision "$revision" --sha256 "$digest" \
+  --probe "$matched/../tools/native-probe.dylib" --output "$out/cohort"
+```
+
+See the trial schedule, per-phase results, reconstruction inputs and receipt
+digests in the [E19 record](performance-data/scroll-replay-2026-11-21.json).
+
+#### Native wheel and captured pixels
+
+The E05 runner opened one scratch fixture with 400 history commits and a
+1,500-line added TypeScript file. Graph runs started 1,200 px down within the
+first 200 loaded commits. Diff runs started 12,000 px down. These native runs
+recorded `preferNear60=false` and a nonpersistent website data store. Four
+alternating gestures sent 100 events of 12 px at 8 ms intervals plus an end event
+each.
+Every admitted launch recorded 404 native deliveries, 400 matching nonzero
+browser wheel receipts, and four complete 1,200 px excursions or returns.
+
+The table reports timings in ms. Native lateness covers the entire delivery
+sequence. The other columns use the interior 100–700 ms of each gesture. The
+capture gap measures adjacent retained frames. Pixel intervals measure time
+between captured changes. Both text crops agree at the analyzer's threshold of
+3 mean absolute gray levels.
+
+| Launch | Max native lateness | Max wheel receipt gap | Max browser scroll-event gap | Median pixel interval | Max pixel interval | Max capture gap |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Graph 1 | 0.210 | 13 | 16 | 9.103 | 25.995 | 11.166 |
+| Graph 2 | 0.624 | 13 | 17 | 9.234 | 56.790 | 56.790 |
+| Diff 1 | 1.456 | 10 | 17 | 8.941 | 55.319 | 55.319 |
+| Diff 3 | 1.653 | 10 | 17 | 8.814 | 36.325 | 18.660 |
+
+The 56.790 ms graph gap and the 55.319 ms diff gap each overlap six browser
+wheel receipts and six progressing scroll offsets. This uses approximate
+alignment by elapsed time from the first native delivery and first browser
+wheel receipt, with 4 ms trimmed from both edges of the capture gap. The
+browser records show dispatch and scroll progress around those gaps. The
+ScreenCaptureKit recorder retained no complete frames inside either gap.
+Whether the app continued to present during those intervals remains unknown.
+Physical trackpad timing was outside both protocols.
+
+Graph 3 and short 1 and 2 failed entry workload admission. Diff 2 failed exit
+admission. Short 3 passed both snapshots but event 10 was 7.039 ms late against
+the 3 ms limit. The short native variant used 72 history commits and a 56 px
+origin to fit the same gestures. The short-repository comparison is limited to
+the rAF replay. Process admission samples activity at entry and exit.
+
+#### Replay and evidence
+
+Run from a fresh scratch checkout pinned to `345af69e`. The rAF wrapper
+refuses changes to either harness directory relative to that revision.
+The commands below use Bash and start in the checkout that holds the E19
+record. The [E05 instructions](../scripts/diff-scroll/README.md) describe
+macOS capture prerequisites and admission checks.
+
+```sh
+set -euo pipefail
+source_root=$(git rev-parse --show-toplevel)
+record="$source_root/docs/performance-data/scroll-replay-2026-11-21.json"
+revision=345af69e73195d6eb6556cc0ae6296a24c8cb90d
+scratch=$(mktemp -d "${TMPDIR:-/tmp}/trunk-e19.XXXXXXXX")
+git clone --no-hardlinks --no-checkout "$source_root" "$scratch/source"
+cd "$scratch/source"
+git switch --detach "$revision"
+test "$(git rev-parse HEAD)" = "$revision"
+git diff --exit-code "$revision" -- scripts/diff-scroll scripts/interaction-performance
+test -z "$(git status --porcelain=v1)"
+
+p="$PWD/.boris/trunk-281-native"
+long="$p/repos/long"
+mkdir -p "$p/tools" "$p/repos" "$p/native-graph-1/harness"
+python3 - "$record" "$p" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text())
+root = Path(sys.argv[2])
+for name, source in record['replay_sources'].items():
+    (root / name).write_text(source)
+(root / 'long-refs.tsv').write_text('\n'.join(record['long_fixture']['refs']) + '\n')
+PY
+cp -R scripts/diff-scroll scripts/interaction-performance "$p/native-graph-1/harness/"
+cp -R "$p/native-graph-1/harness" "$p/short-harness"
+patch -s "$p/short-harness/diff-scroll/cadence.py" "$p/short-harness.patch"
+```
+
+The original long fixture has detached HEAD, 4,187 commits reachable from HEAD
+and from all refs, and 136 refs. Its `origin/main` points to `345af69e`, while
+the source checkout's `origin/main` at review pointed to `cff9d0af`. Checking out
+the same commit alone leaves a clone's refs dependent on its source. If you
+have the saved fixture, run
+`cp -a "$source_root/.boris/trunk-281-native/repos/long" "$long"` and skip the
+following block. Otherwise, recreate the refs in an empty repository from the
+full scratch clone's object store. Git will refuse a required object that is missing.
+
+```sh
+test ! -e "$long"
+test "$(git rev-parse --is-shallow-repository)" = false
+test ! -e .git/objects/info/alternates
+git init -q --initial-branch=main "$long"
+cp -R .git/objects/. "$long/.git/objects/"
+awk -F '\t' '$3 == "" { print "create " $1 " " $2 }' "$p/long-refs.tsv" |
+  git -C "$long" update-ref --stdin
+while IFS=$'\t' read -r ref object symbolic_target; do
+  if [ -n "$symbolic_target" ]; then
+    git -C "$long" symbolic-ref "$ref" "$symbolic_target"
+  fi
+done < "$p/long-refs.tsv"
+git -C "$long" remote add origin "$source_root"
+git -C "$long" config --local branch.main.remote origin
+git -C "$long" config --local branch.main.merge refs/heads/main
+git -C "$long" switch --detach "$revision"
+```
+
+Verify either fixture against the manifest before building. Use a new output
+directory for the [fixture generator](fixtures.md), which replaces repositories
+in its output path. Compare the five copied fixtures' `HEAD`,
+`git rev-list --all --count` and `git status --porcelain=v1` outputs with
+`rAF_fixture_manifest` in the record.
+
+```sh
+test "$(git -C "$long" rev-parse HEAD)" = "$revision"
+test "$(git -C "$long" rev-parse --is-shallow-repository)" = false
+test -z "$(git -C "$long" branch --show-current)"
+test "$(git -C "$long" rev-list HEAD --count)" = 4187
+test "$(git -C "$long" rev-list --all --count)" = 4187
+test -z "$(git -C "$long" status --porcelain=v1)"
+git -C "$long" for-each-ref --format='%(refname)%09%(objectname)%09%(symref)' |
+  diff -u "$p/long-refs.tsv" -
+
+fixtures=$(mktemp -d "$scratch/fixtures.XXXXXXXX")
+mise exec -- cargo run --quiet --manifest-path src-tauri/Cargo.toml \
+  -p trunk-fixtures --bin fixtures -- build kitchen-sink nested-conflict \
+  rendered-markdown snapshot-impostor graph-lanes --out "$fixtures"
+cp -a "$fixtures/kitchen-sink" "$p/repos/short"
+cp -a "$fixtures/nested-conflict" "$p/repos/nested"
+cp -a "$fixtures/rendered-markdown" "$p/repos/markdown"
+cp -a "$fixtures/snapshot-impostor" "$p/repos/snapshot"
+cp -a "$fixtures/graph-lanes/02-local-ahead-no-remote" "$p/repos/lanes"
+```
+
+Build and freeze the tools from the pinned scratch source before measuring.
+If using the frozen tools from the original `.boris/trunk-281-native/tools/`
+instead, copy them into `$p/tools` and compare their digests with the record.
+A rebuilt binary can have a new digest. Record it with the new trial.
+
+```sh
+mise exec -- bun install --frozen-lockfile
+mise exec -- just drive-build
+cp src-tauri/target/debug/trunk-drive "$p/tools/trunk-drive"
+clang -dynamiclib -fobjc-arc -framework AppKit -framework WebKit \
+  -framework CoreGraphics scripts/diff-scroll/native-probe.m -o "$p/tools/native-probe.dylib"
+swiftc -parse-as-library -O scripts/diff-scroll/native-capture.swift -o "$p/tools/native-capture"
+shasum -a 256 "$p/tools/"{trunk-drive,native-probe.dylib,native-capture}
+```
+
+Run serially outside builds, tests, OCR and other capture work. Use a fresh
+output path for each launch. Native cadence exit 2 records an inconclusive
+attempt, whose receipts stay in that output directory.
+
+```sh
+out=$(mktemp -d "$scratch/runs.XXXXXXXX")
+bash "$p/replay.sh" graph "$out/native-graph-1" || test "$?" -eq 2
+bash "$p/replay.sh" diff "$out/native-diff-1" || test "$?" -eq 2
+bash "$p/replay.sh" short "$out/native-short-1" || test "$?" -eq 2
+bash "$p/replay.sh" raf-short-first "$out/raf-1"
+bash "$p/replay.sh" raf-long-first "$out/raf-2"
+mise exec -- python3 "$p/summarize.py" "$out"
+```
+
+For prior-run reanalysis, the original `.boris/trunk-281-native/` contains the
+raw November receipts and recordings, and `.boris/probe-scroll/perf-2026-09-24/app/`
+contains the September traces. `summarize.py` and `historical-summary.py`
+regenerate the saved trial summaries from those directories. The E19 record
+also holds the marked-long-phase and separate rerun counts.
+
+### E20: finding a tracked file and opening the intended repository or rebase plan
+
+On a disposable repository with 8,002 tracked paths, open Review and choose
+**Comment on a file…**. The finder at `345af69e` waited for the tracked-file
+reply before mounting its input. It then mounted all 8,002 options in a 435 px
+viewport. At `c6a5dd63` the finder focused the input while the list was loading
+and mounted 26 options when the first viewport filled.
+
+| Milliseconds from the gesture | Baseline `345af69e` | Final `c6a5dd63` |
+| --- | --- | --- |
+| Search input present | 114, 115 | 3, 3 |
+| First option laid out | 201, 202 | 43, 43 |
+| Enough options laid out to fill the viewport | 202, 203 | 50, 44 |
+| Input event for `file-1999` to the single matching option | 34, 34 | 2, 3 |
+
+Each trial used fresh macOS drive processes, a production frontend and debug
+Rust. The table records DOM observations in WKWebView from two trials per
+build that passed entry and exit process admission. A pilot observer stopped
+at one mounted option. Filling the 435 px viewport with 34 px rows required
+13. A baseline pilot failed entry admission during `bun test`. A candidate
+pilot failed exit admission during frontend checks.
+
+In an earlier candidate replay with 2,002 paths, zoom narrowed the window
+from 1,280 to 1,163 CSS px and reduced mounted options from 26 to 24. The
+search input kept focus and the mounted options had negative `tabIndex`.
+PageDown selected position 12. Clicking the last option after scrolling to it
+opened `project/file-1999.txt`. The first attempt to reopen the finder timed
+out while that diff was open. The successful replay pressed Escape, reopened
+the finder, filtered to `file-0123` and pressed Enter to open it. A separate
+scroll-to-end probe then pressed Enter with the input still focused. The
+earlier build opened the offscreen `change-1.txt`. The later build opened
+the visible, selected `project/file-1988.txt`. Physical Tab traversal, first
+displayed pixels, CPU and memory were outside these observations.
+
+In the same repository, the branch `release` pointed at C2 and the tag
+`release` pointed at its parent C1. Opening **Interactive Rebase** on C2
+displayed “onto release” at `345af69e`. It displayed “onto 655ba48”, the
+actual parent, at `c6a5dd63`. In the headless application test, opening
+C3 uses C2 as the base, where `decoy` names a tag at C2 and a branch at C3.
+Opening C2 uses its unreferenced parent C1. Each case asserts the exact toolbar
+text using the base commit's short SHA from the graph. The filtered calls from
+the context-menu choice through that toolbar read contain one `get_rebase_todo`
+and zero `list_refs` or `resolve_ref` calls. [Rebase preview regression](../tests/app/rebase-preview.test.ts)
+
+A separate native Start replay marked C2 to drop in a plan for `main`, then
+switched to `topic-000` at the same tip before pressing **Start Rebase**.
+At `345af69e`, Start rewrote `topic-000`, removing C2 from its history, while
+`main` kept its tip. At `c6a5dd63`, Start reported that the branch had changed
+and both refs kept their original tips. The application regression checks
+the same refusal on a same-tip `sibling` branch, the two full ref SHAs, the
+toast and the closed editor. An external Git process can still change HEAD
+after Trunk's final check and before Git reads it. [Start regression](../tests/app/rebase-preview.test.ts)
+
+A separate native I01 replay used three disposable repositories with distinct
+commits. It opened A and held B's `open_repo` callback in the webview after
+Rust opened B. A separate `head_oid` call confirmed B's exact commit while
+the UI still showed A. After choosing C, the probe waited for C's graph, A's
+close and the Recent write before releasing B. At `345af69e` the picker
+switched to B and closed C. At `c6a5dd63` it kept C selected and saved, closed B
+and returned `not_open` for B's HEAD. In the Escape case, the baseline switched
+to B and closed A. The final build kept A selected and saved and closed B, with
+zero writes to Recents or saved tabs. All eight checks passed in both final cases
+on the same executable used for the finder and rebase comparisons.
+[Repository-open regressions](../src/App.repository-open.test.ts)
+
+The committed comparison used drive binaries `d23bb3c8` and `54a2f8f4`. The
+baseline executable was built at `6fd5a288`, which has the same build inputs
+as `345af69e`. The finder fix landed in `8dbec7da` and the picker fix in
+`8c69f288`. The record includes the fixture, replay scripts, build fingerprints
+and earlier observations.
+[E20 record](performance-data/file-finder-rebase-2026-11-21.json)
+
+### E21: returning to a populated review
+
+I01, I02 and I17. The macOS drive replay used two disposable repositories and
+a private review store. The primary repository had three commits and ten short
+TypeScript files. Its archive held 15 synthetic threads, 20 replies and one
+thread on a missing file. Each repository had its own one-thread active review.
+The functional baseline used `6fd5a288` (`d23bb3c8`).
+
+Open Review, expand **Archived** and pick the synthetic archive. Use `J` and `K`
+to reach thread 12 below the initial viewport, then press Enter. The replay
+checked commit `281aa3f`, `file-0002.ts`, added line 32 and its adjacent inline
+thread inside the diff viewport. **Close diff** focused thread 12, kept its
+382 CSS px offset inside the review viewport and left scroll at 2,146 CSS px.
+The other tab showed its own review and thread. Returning kept the same 15
+archive thread IDs. The baseline cleared focus and cursor, reset scroll to 0
+and collapsed **Archived**. The next `J` landed on thread 01.
+
+The build from `52da110` (`45d7fd51`) reached the same diff and restored the
+same review position on **Close diff**. After switching tabs and back, thread
+12 kept the cursor, focus and 382 CSS px offset. Scroll stayed at 2,146 CSS px and
+**Archived** stayed open. The next `J` advanced to thread 13. Both builds showed
+**Orphaned** with a **File gone** tooltip for the missing file.
+
+In a separate serial launch of `4de11c15`, three warm archive selections
+reached the correct title, card count and laid-out target card in 18, 20 and
+15 ms. The one-thread active control took 4, 5 and 3 ms. The archive takes a
+second read after the active review batch, so this comparison cannot isolate
+thread-count cost. Both `4de11c15` runs passed entry and exit process admission.
+The samples cover DOM readiness. The other builds supplied functional checks.
+Physical input, presented frames, background settlement and resource use remain
+unmeasured. The unfocused drive window leaves foreground read-state behavior
+open, and the workload leaves review-size scaling and usage frequency open.
+The record contains the synthetic fixture generator, executable replay and raw
+observations needed to repeat the checks. [E21 record](performance-data/review-navigation-2026-11-21.json)
+
 ## Measured priority and continuation
 
 Frequency remains an assumption; no usage telemetry was collected.
 
 | Priority | Next decision | Impact/frequency, evidence and risk |
 | --- | --- | --- |
-| 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. Earlier competing-test confirmations remain excluded. Preserve the stationary row layout and configuration fallback. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
-| 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. Correctness risk requires held-response tests. |
+| 1 | Broaden I19 scrolling evidence while preserving the accepted behavior | The user made scrolling the priority. E05 changes captured diff-content cadence from 17.820 to 8.903 ms and accepts added process CPU in diff and graph scrolling. Painting checks pass at requested 60 and 120 Hz, including a replacement 90,000-line run with workload admission. Four admitted graph pairs have overlapping medians and capture gaps in both builds. E19 found zero historical bursts in ten matched long-scroll, idle and short-scroll trials at each requested rate. Preserve the stationary row layout and configuration fallback. Revisit the hitch when a new trace captures it. Physical trackpad timing, long-session cost and older-OS behavior remain open. High presentation risk. |
+| 2 | Preserve the reviewed selection and navigation contracts | Browsing is assumed frequent. E01 removes 116.5 ms in the width series and 129 ms in the delivered-source confirmation at 1,000 files. Warm ranges overlap; CPU, memory and highlight costs remain explicit. E17 and E20 cover switching files, repositories and rebase plans while an earlier request is pending. In E20 the 8,002-file finder filled its viewport in 44 to 50 ms. Keep the held-response regressions for selection order. |
 | Closed | Large-list rendering investigation, E06 | E06 retained the full list for its workload. At 5,000 changed files, `bb7d4b38` rendered the visible band plus one viewport on either side. In the M5 Pro drive app with a production frontend and debug Rust, the observed commit-open freeze fell from 382 to 40 ms. In E06, V1 improves first selection but blanks the viewport under controlled suspension; V2 adds scrolling CPU and footprint cost; V3 reduces plane height without removing that cost. Reopen only for a new causal hypothesis or representative workload. V2/V3 selection gains remain unmeasured. |
 | 5 | Measure the remaining per-file mutation paths at large-index scale | E09 measured each per-path command re-reading and rewriting the whole index, 8.5 to 13 ms a path on a 20,200-file repository, so a loop of 200 took 1.85 to 2.63 s where one batched command took 33 to 50 ms. Folder stage, unstage, resolve and discard now send one command. Overlapping in-app actions take turns at a per-repository write gate (E09), so none reports a lock failure or drops another's write. E14 cut the watcher's CPU under ignored build output to about a tenth. E16 measured a save at 20,000 tracked files reaching the list in 91 to 110 ms and found sharing one scan among its readers no faster; the largest repository in use has 8,655 files. In E18's refreshed 20,000-file fixture, the edit appeared within 167 ms in the no-fetch controls and when a local fetch overlapped the write. The server released the fetch after the write. Production scheduling and sustained tracked-file churn remain open. High Git correctness risk; use disposable repositories and exact content oracles. |
-| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. The deepest repository under `~/code` on this machine has 5,077 commits (2026-11-19). Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. Review size remains unbenchmarked, and history depth beyond the graph rebuild too; do not extrapolate E01. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. Both slow readings match the cost of a process's first git-binary action, which waited for the user's login shell to start: in the drive instance on 2026-11-19 the first `merge_branch_begin` took 180 to 185 ms against 28 ms for the second, and after `8a6efda3` started that shell at launch the first took 28 to 31 ms. The E10 readings themselves were not retaken. |
+| 6 | Deep history, review and operation flows | E09 covers bulk conflict resolution. E11 measured the graph rebuild after a commit at 30,000 commits falling from about 95 to 7.4 ms in the backend capture. E13 measured the layout a capture waits for at 300,000 commits falling from about 390 to about 160 ms; the first capture, about 1.09 s there and 112 to 136 ms at 30,000, is unchanged and is the open cost. E15 found libgit2 reads none of the commit-graph files git writes today, and that cutting the first capture needs a commit-graph reader of Trunk's own and commit facts read after the first page. The deepest repository under `~/code` on this machine has 5,077 commits (2026-11-19). Conflict-region count is measured in the backend and the editor's TypeScript, on generated conflicts on an Apple M5 Pro: after `a0f61f2a` the merge editor's read takes 11.5 ms at 20,000 lines and 500 conflicts and 57 ms at 100,000 lines and 2,500, most of the rest being libgit2's SHA-1, and a click's output rebuild takes under 1 ms and 2.3 to 4.8 ms there under bun. The webview's share, a reply about three times the file's size and an output textarea rewritten on each click, is unmeasured. [E21](#e21-returning-to-a-populated-review) checked tab return on a 15-thread archive. Review-size scaling and history depth beyond the graph rebuild remain unmeasured. E10 walked flows I01 to I18 on the fixture corpus for whether each result was the one the user meant; its timings are unrepeated drive-build readings, a later trace put commit usable at 29 to 163 ms, with the rest of its 650 to 1,400 ms reading being the watcher's deliberate refresh, which E12 cut from about 515 to 27 to 37 ms for an outside edit; the same timer put checkout, compare, hunk navigation, diff options, merge-editor actions, cherry-pick, revert, rebase, reset and stash under 100 ms on small fixtures, and a merge's message dialog at 171 ms. Both slow readings match the cost of a process's first git-binary action, which waited for the user's login shell to start: in the drive instance on 2026-11-19 the first `merge_branch_begin` took 180 to 185 ms against 28 ms for the second, and after `8a6efda3` started that shell at launch the first took 28 to 31 ms. The E10 readings themselves were not retaken. |
 | Last | Weigh highlighted full-file opens near the parse cap | E08's native A/B measured per-cluster windows cutting a highlighted 4,800-line TypeScript read from 216 to 252 ms to 18 to 31 ms in hunk mode and 138 to 163 ms in full mode. Plain text reads in 1 to 11 ms. Full mode still parses every new-side line, so it is now the largest open cost measured. Reducing it means highlighting less than the whole file up front, which changes the reply and the frontend. E08 observed usable full-file content in 153 to 175 ms on this fixture. Fresh near-cap opens in ordinary use have no frequency measurement. Retain the current reply and exact colors unless a recurring slow workflow warrants changing when syntax becomes visible. The review finder and a full-file read for anchoring a comment can also request this work independently of the display preference. The installed copy used hunk mode on 2026-11-19. The cap is 5,000 parsed lines per side. Sparse hunks in a larger file can retain highlighting. In full-file mode the new side exceeds the cap when it has more than 5,000 lines, while deleted lines can retain highlighting if their old-side windows fit. The first-read cost in each process is inferred and not isolated. E07's pilots found and fixed a mixed-mode display defect. Preserve existing reuse. Medium risk: a far hunk's colours rest on the 250-line lookback. |
 
 The evidence supports retaining current warm diff reuse, mounted-tab reuse,
@@ -1787,6 +2263,30 @@ coalesced refresh, and the search debounce. It does not support another cache or
 blanket debounce. Reopen rejected experiments only with a new bottleneck hypothesis.
 
 ## Review and regression evidence
+
+To check keyboard tab restoration, open three disposable repositories with
+different tip commits and select the first tab. Press Cmd+3, quit, and reopen
+the same profile. Repeat from the first tab with Ctrl+Tab. The native replays
+used synthetic WebKit key events. At `345af69e`, the selected graph changed,
+but the saved selection still named the first tab. After `drive quit`, a fresh
+process reopened that tab in both cases. At `6e1adf81`, the probe requested
+AppKit termination after observing the selected tab, without awaiting a
+preference write. A fresh process restored the third and second repositories
+respectively, each at the expected Git tip. Held-write application tests cover
+the ordering separately. [Tab persistence tests](../tests/app/tab-persistence.test.ts)
+
+For remote navigation, use a disposable repository with two or more commits
+and a configured remote named `origin`. Create `refs/remotes/origin/main` at
+the tip and `refs/remotes/origin/release/HEAD` at its parent, both as direct
+refs. Point the symbolic `refs/remotes/origin/HEAD` at `refs/remotes/origin/main`.
+Open the repository and expand the remote branches. At `345af69e`, the sidebar
+listed only **main** under **origin**. At `26889b95` it also showed
+**release/HEAD**. Clicking that row selected the parent commit. The symbolic
+default-branch alias stayed out of the list. [Branch listing tests](../src-tauri/tests/test_branches.rs)
+
+The steps above can be repeated from the named commits. The original drive
+scripts and receipts are local artifacts under `.boris/trunk440-sixth/`
+(`tab-native/` and `remote-head*.json`).
 
 Independent Codex reviewers covered Spec, Architecture, Security, Testing, Style
 and Refactoring. Their findings exposed competing file-selection, comparison and

@@ -1,0 +1,1348 @@
+{
+  "schema": 1,
+  "experiment": "E20",
+  "task": "TRUNK-440",
+  "date": "2026-11-21",
+  "flows": [
+    "I08",
+    "I16"
+  ],
+  "environment": {
+    "cpu": "Apple M5 Pro",
+    "memoryBytes": 51539607552,
+    "os": "macOS 27.2.1 (26B131)",
+    "runtime": "Native WKWebView with production frontend assets and debug Rust."
+  },
+  "builds": {
+    "recipe": "For the primary comparison, use clean disposable checkouts of the sourceCommit for committedBaseline and committedFinal. In each run mise exec -- bun install --frozen-lockfile, then mise exec -- just drive-build. Keep the two src-tauri/target/debug/trunk-drive outputs at separate absolute paths.",
+    "committedBaseline": {
+      "sourceCommit": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+      "sourceTree": "3ec5391905a4568615ed73afcc54d414de7584e7",
+      "measuredBinarySha256": "d23bb3c83c368bcac9bd8a430c17af820e12063587e48c65d5fc014347efd029",
+      "measuredBinaryBuiltFrom": "6fd5a28842db47747123ac6a5b4821a801cc6574",
+      "sourceComparison": "The executable built from 6fd5a288 has the same application and build inputs as 345af69e. The full revision diff touches GLOSSARY.md and three files under docs/."
+    },
+    "committedFinal": {
+      "sourceCommit": "c6a5dd638618bfeeb6083e02cd4bb94597472e56",
+      "sourceTree": "cb8a726698e3db3a38ba682228957ff0b494ddac",
+      "measuredBinarySha256": "54a2f8f49b7e2df6b9bb89303dc3feccfbec1e041f3618c2e9fb23116ec036ea",
+      "buildLogSha256": "27798505e4b392f529d0c89df6026076544f898c98b71725f822cca90c2477a0",
+      "sourceWitness": "Source-tree fingerprints captured before and after the drive build match the committed tree."
+    },
+    "finderCommit": "8dbec7da5f216dfc412a2fc87f961136155029cb",
+    "repositoryPickerCommit": "8c69f288bf305bc907627b0b0a480de9fc40d2e8",
+    "historical": {
+      "before": {
+        "sourceCommit": "6fd5a28842db47747123ac6a5b4821a801cc6574",
+        "sameBuildInputsAt": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "sourceComparison": "The full revision diff touched only GLOSSARY.md and three files under docs/.",
+        "measuredBinarySha256": "d23bb3c83c368bcac9bd8a430c17af820e12063587e48c65d5fc014347efd029"
+      },
+      "candidate": {
+        "baseCommit": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "measuredBinarySha256": "f547586cbdab16aa4dd00b27d34fcd13595aba64929dbede4236b90b5e682651",
+        "buildLogSha256": "e30fd0cdbe67ed4d837b69756ddc8b1e820433f1cec95715cb40f30b01f2e44f",
+        "viteEntryAsset": "index-5sX_hxld.js",
+        "sourceScope": "Historical finder, preview and picker candidate. The Vite build preceded the App.svelte and repository-tabs.svelte.ts edits in the later integration tree."
+      },
+      "pinnedIntegration": {
+        "baseCommit": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "sourceTree": "684cc1de1d1fd2a48ca446d0d485e16f5e1a9afd",
+        "sourcePatchSha256": "e691105e1d12862e548e50c72ed0709d9453b9b87b8747d109f048734dfb7ab5",
+        "binarySha256": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+        "buildLogSha256": "bea53689dc05c74f25badf21509e9195d6a8da801d3f6e9a054c7d4f6426dd43",
+        "viteEntryAsset": "index-C9mUaeg4.js",
+        "scope": "Historical integration picker and Start replay. The source tree and patch digest identify the captured source."
+      },
+      "startSafetyCandidate": {
+        "binarySha256": "06d906f235ca634b2a42d19481b466dd0d2ccf0eed6365333e2ca966020e3d51",
+        "sourceTree": "3d6536e841166ae2281b68a72a34cc70fb41c435",
+        "buildLogSha256": "fb7408e205f0de2953504d3b666a0c39e201798daa78a917519620d8d73bfcab",
+        "scope": "Historical candidate for the functional Start and scroll-then-Enter observations."
+      }
+    }
+  },
+  "protocol": {
+    "fixture": "Fresh SHA-1 repository per trial. C1 adds 8,000 numbered project files, C2 adds change-1.txt, C3 adds change-2.txt, and main and 60 topic branches point to C3. Local branch release points to C2 and tag release to C1. C1 short SHA is 655ba48.",
+    "startup": "Use separate drive launches for the rebase preview and finder within each trial. The drive client seeds isolated preferences and the runner waits for a graph row. The finder clock starts in the page after opening Review and waiting for Comment on a file.",
+    "inputMs": "From immediately before the finder click to the MutationObserver callback that first sees its combobox.",
+    "firstRowMs": "From the same start to the first callback that sees any result option and measures its height. The candidate can initially mount a single option while waiting for viewport dimensions.",
+    "rowsMs": "From the same start to the first callback with at least ceil(list.clientHeight / rowHeight) options. The observed 435 px list and 34 px rows require 13 options, including the partly visible row. The candidate mounted 26 with overscan.",
+    "narrow.ms": "Set file-1999 on the combobox, start the clock before dispatching the input event, then read the options after one microtask.",
+    "limits": "These are whole-millisecond page clock observations of the DOM, including synchronous layout reads for row geometry. The sample has two trials per build. Paint, native input dispatch, resource utilization and background settlement were outside the measured endpoints. Process admission screens for competing build/test processes at entry and exit and can miss work between snapshots.",
+    "pilotScope": "The primary table uses the committed comparison and the viewport-fill observer. An earlier cohort used the same endpoint. The first-option-only pilots are excluded.",
+    "rawRetention": "Raw committed and historical finder logs, both finder functional logs and full process-admission receipts are retained locally under .boris/trunk440-sixth/. This record carries their sample results and fingerprints."
+  },
+  "acceptedSamples": [
+    {
+      "trial": "committed-base1",
+      "build": "committedBaseline",
+      "logSha256": "d8b2e04b722ae3f9b6cb81735c92345fa2ec80a4aa78ae2fb91b75793675ff01",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877662996603958,
+            877663071700000
+          ],
+          "executableInventorySha256": "91cf1541308951f10f03cc988a193169fb6b958e641b680b1d33037646333754"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877665598442750,
+            877665681742708
+          ],
+          "executableInventorySha256": "796e8f15109aaa08003b0f26ff975882fff5f7a513745ab275af353b5a9f5073"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 201,
+        "focus": true,
+        "height": 34,
+        "inputMs": 114,
+        "last": "project/file-7999.txt",
+        "rows": 8002,
+        "rowsMs": 202,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 34,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "release"
+    },
+    {
+      "trial": "committed-candidate1",
+      "build": "committedFinal",
+      "logSha256": "0e3f287527911aafcfd4bc3962d441d9963f1c76aee821454cbbdb4a81031de9",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877665958823500,
+            877666029444833
+          ],
+          "executableInventorySha256": "31feb5329cdd6002ce51da7c1f64091fd1493284aeb0cfa609d6e46e67c92fdc"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877668181627000,
+            877668261830583
+          ],
+          "executableInventorySha256": "c73cf8ce351ae531c947eba128bb0321a6166665aecf532063e638f4608a254d"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 43,
+        "focus": true,
+        "height": 34,
+        "inputMs": 3,
+        "last": "project/file-0023.txt",
+        "rows": 26,
+        "rowsMs": 50,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 2,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "655ba48"
+    },
+    {
+      "trial": "committed-candidate2",
+      "build": "committedFinal",
+      "logSha256": "03ed91e80e09d09912ac240d8b8bbb344a748306ee1e90acb134a952fe828add",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877668526407000,
+            877668593702041
+          ],
+          "executableInventorySha256": "158e485cd892a2a48c6b4248dddbb5d5d8323e84ee08fc7b6cc98adb05471085"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877670798641041,
+            877670882393833
+          ],
+          "executableInventorySha256": "edeeb2062088c9a97851944c51a89f18dc04961c92d6536750ff96182634830c"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 43,
+        "focus": true,
+        "height": 34,
+        "inputMs": 3,
+        "last": "project/file-0023.txt",
+        "rows": 26,
+        "rowsMs": 44,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 3,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "655ba48"
+    },
+    {
+      "trial": "committed-base2",
+      "build": "committedBaseline",
+      "logSha256": "9ce7898744ceb64b729dde44a076a74560f9ec004041017385325502229d61d6",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877671172906708,
+            877671241482208
+          ],
+          "executableInventorySha256": "397ceda1f391b79180de1ae03497ddb5637e1419fef80411abe58aadce6d3bb4"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            877673560931041,
+            877673645682416
+          ],
+          "executableInventorySha256": "c4a60fa09eaf9ca740e997429a3a47e0937d65c4bae13f747f0c383821fb9ffa"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 202,
+        "focus": true,
+        "height": 34,
+        "inputMs": 115,
+        "last": "project/file-7999.txt",
+        "rows": 8002,
+        "rowsMs": 203,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 34,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "release"
+    }
+  ],
+  "finderFunctional": {
+    "fixture": "Separate candidate launch with 2,000 project files and the same two later paths, for 2,002 results.",
+    "logSha256": "cc18838cc01e0dab82ee494961b1ff457ef0001126557bbaee4b0840ba2e0db3",
+    "initial": {
+      "widthPx": 1280,
+      "listHeightPx": 435,
+      "rowHeightPx": 34,
+      "mounted": 26,
+      "positions": [
+        1,
+        26
+      ],
+      "mountedOptionsInTabOrder": 0,
+      "comboboxFocused": true
+    },
+    "afterZoomIn": {
+      "widthPx": 1163,
+      "listHeightPx": 391,
+      "rowHeightPx": 33.99147415161133,
+      "mounted": 24,
+      "positions": [
+        1,
+        24
+      ],
+      "mountedOptionsInTabOrder": 0,
+      "comboboxFocused": true
+    },
+    "pageDownSelectedPosition": 12,
+    "afterScrollToEnd": {
+      "mounted": 24,
+      "positions": [
+        1979,
+        2002
+      ],
+      "mountedOptionsInTabOrder": 0,
+      "comboboxFocused": true
+    },
+    "pointerOpenedPath": "project/file-1999.txt",
+    "keyboardOpenedPath": "project/file-0123.txt",
+    "tabOrderEvidence": "The native probe read mounted options' tabIndex and activeElement. The component test in src/components/FileFinder.test.ts asserts tabIndex 0 for the input and -1 for the list and options.",
+    "replay": "Use fixture(repo, 2000) from runnerPy and launch the candidate. Open Review and Comment on a file. Inspect #file-finder-list options for aria-posinset, aria-setsize and tabIndex, and compare activeElement with the combobox. Send drive key Meta+= and read window.innerWidth and list geometry after two requestAnimationFrame callbacks. Press PageDown and read aria-posinset on the selected option. Set the list scrollTop to scrollHeight, wait for option 2002, click it and read [data-testid=diff-path]. Send Escape to close that diff, reopen the finder, type file-0123, wait for one result, press Enter and read the path.",
+    "build": "historical.candidate",
+    "firstAttempt": {
+      "logSha256": "531f663c71e0f9488b4579a6369dc5e64bc36ac6ade540dd82727c1395eea254",
+      "result": "Opened project/file-1999.txt. A click to reopen the finder then timed out after 20,000 ms while the file diff was open."
+    },
+    "successfulReopen": "After opening the final option, the successful probe pressed Escape, reopened the finder, typed file-0123, and pressed Enter.",
+    "scrollThenEnter": {
+      "fixture": "One native probe per version on the 2,002-path fixture. Scroll the result list to its end by setting scrollTop while the combobox has focus, wait for the last option, then press Enter.",
+      "before": {
+        "logSha256": "8fe19d2d93bee359d0ce5ece7d42ec782c8aacd435ed9f95145f845c6b62a6a1",
+        "beforeEnter": {
+          "active": null,
+          "focused": true,
+          "scrollTop": 67633,
+          "selected": null,
+          "visible": [
+            "project/file-1987.txt",
+            "project/file-1988.txt",
+            "project/file-1989.txt",
+            "project/file-1990.txt",
+            "project/file-1991.txt",
+            "project/file-1992.txt",
+            "project/file-1993.txt",
+            "project/file-1994.txt",
+            "project/file-1995.txt",
+            "project/file-1996.txt",
+            "project/file-1997.txt",
+            "project/file-1998.txt",
+            "project/file-1999.txt"
+          ]
+        },
+        "opened": "change-1.txt",
+        "openedVisible": false
+      },
+      "after": {
+        "logSha256": "64668c9f6f65f756a83d9abe1e025d606f8e3d4a44aafea436ffd4fe562bc45a",
+        "beforeEnter": {
+          "active": "file-finder-list-option-1990",
+          "focused": true,
+          "scrollTop": 67633,
+          "selected": "project/file-1988.txt",
+          "visible": [
+            "project/file-1987.txt",
+            "project/file-1988.txt",
+            "project/file-1989.txt",
+            "project/file-1990.txt",
+            "project/file-1991.txt",
+            "project/file-1992.txt",
+            "project/file-1993.txt",
+            "project/file-1994.txt",
+            "project/file-1995.txt",
+            "project/file-1996.txt",
+            "project/file-1997.txt",
+            "project/file-1998.txt",
+            "project/file-1999.txt"
+          ]
+        },
+        "opened": "project/file-1988.txt",
+        "openedVisible": true
+      }
+    }
+  },
+  "rebasePreview": {
+    "native": "On C2 choose Interactive Rebase... and read the toolbar. Both baseline trials displayed Rebasing main onto release. Both final trials displayed Rebasing main onto 655ba48, the parent of C2.",
+    "headless": {
+      "test": "tests/app/rebase-preview.test.ts",
+      "recipe": "In the committed final checkout run mise exec -- just app-test after installing dependencies.",
+      "assertion": "Each case computes the expected base's short SHA from the graph with app.repo.shaOf(base). The exact toolbar label is Rebasing main onto followed by that SHA. From choosing the context menu entry through reading the toolbar, filter the calls to get_rebase_todo, list_refs and resolve_ref. The asserted sequence is [get_rebase_todo].",
+      "previewReadsPerCase": {
+        "get_rebase_todo": 1,
+        "list_refs": 0,
+        "resolve_ref": 0
+      },
+      "scope": "Headless application harness with the Svelte UI and real Rust host. Both cases end at the preview toolbar.",
+      "cases": {
+        "C3": "The base is C2. Tag decoy points to C2 and branch decoy points to C3.",
+        "C2": "The base is C1, which has no ref pointing to it."
+      }
+    }
+  },
+  "reproduction": {
+    "prerequisites": "macOS, Git with SHA-1 as the default object format, Python 3.11+, mise and the two drive builds.",
+    "run": "From the checkout containing the record, run FILES=8000 python3 -B \"$E20_REPLAY_DIR/runner.py\" <absolute-drive-binary> <new-output-directory> once per sample. Use baseline, final, final, baseline in serial order and retain samples whose process-admission.json admits both endpoints.",
+    "runnerPy": "import os\nimport shutil\nimport subprocess\nimport sys\nimport tempfile\nfrom contextlib import contextmanager\nfrom pathlib import Path\n\nROOT = Path.cwd()\nCLI = [\"mise\", \"exec\", \"--\", \"bun\", \"scripts/drive/drive.ts\"]\nROWS = '[data-testid=\"commit-row-summary\"]'\nimport json\nQ = json.dumps\nsys.path.insert(0, str(ROOT / \"scripts/diff-scroll\"))\nfrom process_admission import measurement_window\n\n\n@contextmanager\ndef drive(repo, binary):\n    path = Path(subprocess.check_output([*CLI, \"launch\", binary, str(repo)], cwd=ROOT, text=True).strip())\n    env = {**os.environ, \"TRUNK_DRIVE_DIR\": str(path)}\n\n    def call(*args):\n        return subprocess.check_output([*CLI, *args], cwd=ROOT, env=env, text=True, timeout=65).strip()\n\n    try:\n        call(\"until\", f\"document.querySelector({Q(ROWS)})?.innerText\")\n        yield call\n    finally:\n        call(\"quit\")\n        if path.name.startswith(\"trunk-drive-\") and set(os.listdir(path)) <= {\"app.log\", \"data\", \"listening\", \"drive.sock\"}:\n            shutil.rmtree(path)\n\n\ndef fixture(repo,n):\n    env={**os.environ,'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':os.devnull,'GIT_OPTIONAL_LOCKS':'0'}\n    def git(*args,data=None):\n        return subprocess.run(['git','-C',str(repo),*args],env=env,input=data,stdout=subprocess.PIPE,check=True).stdout\n    git('init','-qb','main')\n    raw='blob\\nmark :1\\ndata 2\\nx\\n\\n'\n    for index in range(3):\n        raw+=f'commit refs/heads/main\\nmark :{index+2}\\ncommitter Fixture <fixture@invalid> {1700000000+index} +0000\\ndata 2\\nC{index+1}\\n'\n        if index:raw+=f'from :{index+1}\\nM 100644 :1 change-{index}.txt\\n'\n        else:raw+=''.join(f'M 100644 :1 project/file-{i:04}.txt\\n' for i in range(n))\n        raw+='\\n'\n    git('fast-import','--quiet',data=raw.encode());git('reset','--hard','-q','HEAD')\n    git('update-ref','refs/heads/release','HEAD~1');git('update-ref','refs/tags/release','HEAD~2')\n    git('update-ref','--stdin',data=''.join(f'create refs/heads/topic-{i:03} HEAD\\n' for i in range(60)).encode())\n    return git('rev-parse','--short=7','HEAD~2').decode().strip()\n\n\ndef run(binary,repo):\n    base=fixture(repo,int(os.environ.get(\"FILES\",\"2000\")))\n    with drive(repo,binary) as d:\n        d('eval',\"\"\"[...document.querySelectorAll('[data-testid=\"commit-row-summary\"]')].find(x=>x.textContent==='C2').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}))\"\"\")\n        d('choose','Interactive Rebase...')\n        print('rebase',d('until',\"document.querySelector('.rebase-editor .rebase-toolbar-left')?.innerText\"),'expected base',base,flush=True)\n    with drive(repo,binary) as d:\n        d('click','button','Review')\n        d('until',\"\"\"[...document.querySelectorAll('button')].some(e=>e.innerText.includes('Comment on a file'))\"\"\")\n        print('finder',d('eval',\"\"\"(async()=>{const open=[...document.querySelectorAll('button')].find(e=>e.textContent.includes('Comment on a file'));const start=performance.now();let inputAt=null,firstRowAt=null;return new Promise(resolve=>{const watch=new MutationObserver(()=>{const input=document.querySelector('input[role=combobox]');if(!input)return;inputAt??=performance.now()-start;const options=[...document.querySelectorAll('[aria-label=\"Tracked files\"] [role=option]')];if(!options.length)return;const list=document.querySelector('[aria-label=\"Tracked files\"]');const height=options[0].getBoundingClientRect().height;firstRowAt??=performance.now()-start;if(options.length<Math.ceil(list.clientHeight/height))return;watch.disconnect();resolve({inputMs:inputAt,firstRowMs:firstRowAt,rowsMs:performance.now()-start,rows:options.length,first:options[0].textContent.trim(),last:options.at(-1).textContent.trim(),focus:input===document.activeElement,height,viewport:document.querySelector('[aria-label=\"Tracked files\"]').clientHeight});});watch.observe(document.body,{childList:true,subtree:true,attributes:true});open.click()})})()\"\"\"),flush=True)\n        print('narrow',d('eval',\"\"\"(async()=>{const input=document.querySelector('input[role=combobox]');input.value='file-1999';const start=performance.now();input.dispatchEvent(new Event('input',{bubbles:true}));await Promise.resolve();const opts=[...document.querySelectorAll('[aria-label=\"Tracked files\"] [role=option]')];return {rows:opts.length,first:opts[0]?.textContent.trim(),ms:performance.now()-start}})()\"\"\"),flush=True)\n\nif __name__ == \"__main__\":\n    binary = str(Path(sys.argv[1]).resolve())\n    output = Path(sys.argv[2])\n    output.mkdir()\n    with tempfile.TemporaryDirectory(prefix=\"trunk440-sixth-\", dir=\"/tmp\") as temp, measurement_window(output):\n        run(binary, Path(temp))\n",
+    "extractReplayFiles": "python3 -c 'import json,pathlib,sys; d=json.load(open(sys.argv[1]))[\"reproduction\"]; p=pathlib.Path(sys.argv[2]); p.mkdir(parents=True,exist_ok=True); (p/\"runner.py\").write_text(d[\"runnerPy\"]); [(p/n).write_text(s) for n,s in d[\"extraSources\"].items()]' docs/performance-data/file-finder-rebase-2026-11-21.json \"$E20_REPLAY_DIR\"",
+    "picker": "Run python3 -B \"$E20_REPLAY_DIR/picker.py\" baseline <absolute-baseline-binary> and then repeat with final <absolute-final-binary>. The runner writes a fresh phase-named JSON receipt next to the extracted script.",
+    "finderFunctional": "From the same checkout, run python3 -B \"$E20_REPLAY_DIR/finder-functional.py\" <absolute-drive-binary>.",
+    "extraSources": {
+      "picker.py": "import hashlib\nimport json\nimport os\nimport runpy\nimport subprocess\nimport sys\nimport tempfile\nfrom pathlib import Path\n\nsys.dont_write_bytecode = True\nHERE = Path(__file__).resolve().parent\nROOT = Path.cwd()\ndrive_repository = runpy.run_path(str(HERE / \"runner.py\"))[\"drive\"]\nDIALOG = 'dialog[aria-label=\"Open a recent repository\"]'\nSEARCH = f'{DIALOG} input[aria-label=\"Search recent repositories\"]'\nROWS = '[data-testid=\"commit-row-summary\"]'\nQ = json.dumps\n\n\ndef git(*args, data=None):\n    return subprocess.check_output([\"git\", *args], input=data, text=True, cwd=ROOT).strip()\n\n\ndef fixture(parent, letter):\n    path = parent / f\"Picker-{letter}\"\n    path.mkdir()\n    git(\"-C\", str(path), \"init\", \"-qb\", \"main\")\n    summary = f\"native-picker-{letter}-oracle\"\n    commands = (\n        \"blob\\nmark :1\\ndata 2\\nx\\n\\n\"\n        \"commit refs/heads/main\\n\"\n        \"committer Fixture <fixture@invalid> 1700000000 +0000\\n\"\n        f\"data {len(summary)}\\n{summary}\\n\"\n        \"M 100644 :1 tracked.txt\\n\\n\"\n    )\n    git(\"-C\", str(path), \"fast-import\", \"--quiet\", data=commands)\n    git(\"-C\", str(path), \"reset\", \"--hard\", \"-q\", \"HEAD\")\n    return {\n        \"path\": str(path), \"name\": path.name, \"summary\": summary,\n        \"head\": git(\"-C\", str(path), \"rev-parse\", \"HEAD\"),\n    }\n\n\ndef evaluate(drive, expression):\n    return json.loads(drive(\"eval\", f\"(async () => JSON.stringify(await ({expression})))()\"))\n\n\ndef invoke(drive, command, args):\n    return json.loads(drive(\"invoke\", command, Q(args)))\n\n\ndef snapshot(drive, repos):\n    ui = evaluate(drive, f\"\"\"({{\n        tabs: [...document.querySelectorAll('[role=tablist] [role=tab]')]\n            .filter(e => e.closest('[role=tablist]')?.getAttribute('aria-label') === 'Repository tabs')\n            .map(e => ({{\n            text: e.innerText.trim(), selected: e.getAttribute('aria-selected') === 'true'\n        }})),\n        graph: [...document.querySelectorAll({Q(ROWS)})]\n            .filter(e => !e.closest('[inert]')).map(e => e.innerText),\n        pickerOpen: Boolean(document.querySelector({Q(DIALOG + '[open]')})),\n        pickerStatus: document.querySelector({Q(DIALOG + ' [role=status]')})?.innerText.trim() ?? '',\n        searchFocused: document.activeElement === document.querySelector({Q(SEARCH)}),\n        alerts: [...document.querySelectorAll('[role=alert]')].map(e => e.innerText)\n    }})\"\"\")\n    ui[\"recent\"] = invoke(drive, \"prefs_get\", {\"key\": \"recent_repos\"})\n    ui[\"open_tabs\"] = invoke(drive, \"prefs_get\", {\"key\": \"open_tabs\"})\n    ui[\"native_head\"] = {}\n    for letter, repo in repos.items():\n        path = Q(repo[\"path\"])\n        ui[\"native_head\"][letter] = evaluate(\n            drive,\n            f'window.__TAURI_INTERNALS__.invoke(\"head_oid\", {{path: {path}}})'\n            '.then(value => ({value}), error => ({error: JSON.parse(error).code}))',\n        )\n    return ui\n\n\ndef wait_graph(drive, repo):\n    summary = Q(repo[\"summary\"])\n    drive(\"until\", f\"\"\"[...document.querySelectorAll({Q(ROWS)})].some(\n        e => !e.closest('[inert]') && e.innerText === {summary})\"\"\")\n\n\ndef show_picker(drive):\n    drive(\"key\", \"Ctrl+r\")\n    drive(\"until\", f\"document.activeElement === document.querySelector({Q(SEARCH)})\")\n    drive(\"until\", f\"document.querySelectorAll({Q(DIALOG + ' [role=option]')}).length === 3\")\n\n\ndef select(drive, repo):\n    options = json.loads(drive(\"list\", \"option\"))\n    [name] = [item for item in options if item.startswith(repo[\"name\"])]\n    drive(\"click\", \"option\", name)\n\n\ndef await_event(drive, phase, command, repo):\n    drive(\"eval\", f\"window.pickerNative.waitFor(event => event.phase === {Q(phase)}\"\n          f\" && event.command === {Q(command)} && event.path === {Q(repo['path'])}\"\n          \" && event.outcome === 'ok')\")\n\n\ndef replay(drive, repos, escape, expect_fixed, record):\n    a, b, c = (repos[key] for key in \"ABC\")\n    seeded = [{key: repos[letter][key] for key in (\"path\", \"name\")} for letter in \"BCA\"]\n    invoke(drive, \"prefs_set\", {\"key\": \"recent_repos\", \"value\": seeded})\n    drive(\"eval\", (HERE / \"gate.js\").read_text())\n    wait_graph(drive, a)\n    show_picker(drive)\n    drive(\"eval\", f\"window.pickerNative.arm({Q(b['path'])})\")\n    highlighted = DIALOG + ' [role=option][aria-selected=true]'\n    assert evaluate(drive, f\"document.querySelector({Q(highlighted)})?.innerText\"), highlighted\n    assert evaluate(drive, f\"document.querySelector({Q(highlighted)}).innerText\").startswith(b[\"name\"])\n    drive(\"key\", \"Enter\")\n    await_event(drive, \"native-reply\", \"open_repo\", b)\n    held = evaluate(drive, \"window.pickerNative.held\")\n    assert held[\"outcome\"] == \"ok\", held\n    record[\"B_native_response_held\"] = held\n    record[\"while_B_held\"] = snapshot(drive, repos)\n    assert record[\"while_B_held\"][\"graph\"] == [a[\"summary\"]], record\n    assert record[\"while_B_held\"][\"native_head\"][\"B\"] == {\"value\": b[\"head\"]}, record\n\n    if escape:\n        assert record[\"while_B_held\"][\"searchFocused\"]\n        drive(\"key\", \"Escape\")\n        drive(\"until\", f\"!document.querySelector({Q(DIALOG + '[open]')})\")\n    else:\n        select(drive, c)\n        wait_graph(drive, c)\n        await_event(drive, \"delivered\", \"close_repo\", a)\n    if not escape:\n        drive(\"eval\", \"\"\"window.pickerNative.waitFor(event => event.phase === 'delivered'\n            && event.command === 'prefs_set' && event.key === 'recent_repos'\n            && event.outcome === 'ok' && event.value[0]?.name === 'Picker-C')\"\"\")\n    record[\"before_B_delivery\"] = snapshot(drive, repos)\n    assert evaluate(drive, \"window.pickerNative.held\") == held\n    drive(\"eval\", \"window.pickerNative.release()\")\n\n    if expect_fixed:\n        await_event(drive, \"delivered\", \"close_repo\", b)\n        wait_graph(drive, a if escape else c)\n    else:\n        wait_graph(drive, b)\n        if not escape:\n            await_event(drive, \"delivered\", \"close_repo\", c)\n    after = record[\"after_B_delivery\"] = snapshot(drive, repos)\n    expected_tab = a if escape else c\n    expected_recents = [\"Picker-B\", \"Picker-C\", \"Picker-A\"] if escape else [\"Picker-C\", \"Picker-B\", \"Picker-A\"]\n    record[\"oracle\"] = {\n        \"only_latest_history\": after[\"graph\"] == [expected_tab[\"summary\"]],\n        \"only_latest_selected_tab\": after[\"tabs\"] == [{\"text\": expected_tab[\"name\"], \"selected\": True}],\n        \"winning_tab_saved\": [tab[\"repoName\"] for tab in after[\"open_tabs\"]] == [expected_tab[\"name\"]],\n        \"recents_order\": [repo[\"name\"] for repo in after[\"recent\"]] == expected_recents,\n        \"unused_B_closed\": after[\"native_head\"][\"B\"] == {\"error\": \"not_open\"},\n        \"winning_repo_open\": after[\"native_head\"][\"A\" if escape else \"C\"] == {\"value\": expected_tab[\"head\"]},\n        \"picker_closed\": not after[\"pickerOpen\"],\n        \"no_alert\": not after[\"alerts\"],\n    }\n\n\ndef binary_digest(path):\n    with path.open(\"rb\") as binary_file:\n        return hashlib.file_digest(binary_file, \"sha256\").hexdigest()\n\n\ndef main():\n    phase = sys.argv[1]\n    assert phase in (\"baseline\", \"candidate\", \"integration\", \"final\")\n    expect_fixed = phase != \"baseline\"\n    binary = Path(sys.argv[2]).resolve()\n    expected_digest = sys.argv[3] if len(sys.argv) > 3 else binary_digest(binary)\n    source_tree = sys.argv[4] if len(sys.argv) > 4 else None\n    base = Path(\"/tmp\").resolve()\n    with tempfile.TemporaryDirectory(prefix=f\"trunk-picker-{phase}-\", dir=base) as name:\n        parent = Path(name)\n        isolated = parent / \"xdg\"\n        isolated.mkdir()\n        for key in [key for key in os.environ if key.startswith(\"GIT_\")]:\n            del os.environ[key]\n        os.environ.update(GIT_CONFIG_NOSYSTEM=\"1\", GIT_CONFIG_GLOBAL=os.devnull,\n                          GIT_OPTIONAL_LOCKS=\"0\", XDG_CONFIG_HOME=str(isolated))\n        repos = {letter: fixture(parent, letter) for letter in \"ABC\"}\n        results = {\n            \"binary\": str(binary), \"expected_binary_sha256\": expected_digest,\n            \"checkout_HEAD\": git(\"rev-parse\", \"HEAD\"), \"build_source_tree\": source_tree,\n            \"fixtures\": repos, \"cases\": {},\n        }\n        failed = False\n        for case in (\"last-gesture\", \"escape\"):\n            record = results[\"cases\"][case] = {\"binary_sha256_at_launch\": binary_digest(binary)}\n            assert record[\"binary_sha256_at_launch\"] == expected_digest, record\n            with drive_repository(Path(repos[\"A\"][\"path\"]), str(binary)) as drive:\n                try:\n                    replay(drive, repos, case == \"escape\", expect_fixed, record)\n                except Exception as error:\n                    record[\"probe_error\"] = str(error)\n                    failed = True\n                finally:\n                    record[\"ipc\"] = evaluate(drive, \"window.pickerNative?.events ?? []\")\n            print(f\"{phase} {case}: {record.get('oracle', record.get('probe_error'))}\", flush=True)\n    results[\"fixture_root_removed\"] = not parent.exists()\n    results[\"binary_sha256_at_end\"] = binary_digest(binary)\n    with (HERE / f\"{phase}.json\").open(\"x\") as result_file:\n        result_file.write(json.dumps(results, indent=2) + \"\\n\")\n    return int(failed or results[\"binary_sha256_at_end\"] != expected_digest or (expect_fixed and not all(\n        all(case.get(\"oracle\", {}).values()) for case in results[\"cases\"].values()\n    )))\n\n\nif __name__ == \"__main__\":\n    sys.exit(main())\n",
+      "gate.js": "(() => {\n    const ipc = window.__TAURI_INTERNALS__;\n    const callbacks = ipc.callbacks;\n    const fetchNative = window.fetch;\n    const events = [];\n    let armedPath;\n    let held;\n    function record(event) {\n        events.push(event);\n        document.dispatchEvent(new Event(\"picker-native-observation\"));\n    }\n    function observe(transport, command, args, successId, errorId) {\n        const allowed = [\"open_repo\", \"close_repo\", \"get_commit_graph\", \"prefs_set\"];\n        if (!allowed.includes(command)) return;\n        if (command === \"prefs_set\" && ![\"recent_repos\", \"open_tabs\"].includes(args.key)) return;\n        const target = command === \"prefs_set\" ? { key: args.key, value: args.value } : { path: args.path };\n        const gateThisReply = command === \"open_repo\" && args.path === armedPath;\n        if (gateThisReply) armedPath = undefined;\n        record({ phase: \"request\", transport, command, ...target });\n        for (const [id, outcome] of [[successId, \"ok\"], [errorId, \"error\"]]) {\n            const nativeContinuation = callbacks.get(id);\n            if (typeof nativeContinuation !== \"function\") throw new Error(\"No Tauri callback for \" + command);\n            callbacks.set(id, response => {\n                record({ phase: \"native-reply\", command, outcome, ...target });\n                const deliver = () => {\n                    record({ phase: \"delivered\", command, outcome, ...target });\n                    nativeContinuation(response);\n                };\n                if (gateThisReply) held = { outcome, response, deliver };\n                else deliver();\n            });\n        }\n    }\n    window.fetch = function (resource, init) {\n        const url = typeof resource === \"string\" ? resource : \"\";\n        const match = /^(?:ipc:\\/\\/localhost\\/|https?:\\/\\/ipc\\.localhost\\/)([^/?]+)/.exec(url);\n        if (match && typeof init?.body === \"string\") {\n            const command = decodeURIComponent(match[1]);\n            const headers = new Headers(init.headers);\n            observe(\"custom-protocol\", command, JSON.parse(init.body),\n                Number(headers.get(\"Tauri-Callback\")), Number(headers.get(\"Tauri-Error\")));\n        }\n        return fetchNative.call(this, resource, init);\n    };\n    if (typeof window.ipc?.postMessage === \"function\") {\n        const bridge = window.ipc;\n        const postNative = bridge.postMessage;\n        const postObserved = function (data) {\n            const { cmd, payload, callback, error } = JSON.parse(data);\n            observe(\"postMessage\", cmd, payload, callback, error);\n            return postNative.call(this, data);\n        };\n        try { bridge.postMessage = postObserved; } catch {}\n    }\n    window.pickerNative = {\n        arm(path) { armedPath = path; },\n        get held() { return held && { outcome: held.outcome, response: held.response }; },\n        release() {\n            if (!held) throw new Error(\"No native reply to release\");\n            const { deliver } = held;\n            held = undefined;\n            deliver();\n        },\n        waitFor(predicate) {\n            if (events.some(predicate)) return true;\n            return new Promise(resolve => {\n                function check() {\n                    if (!events.some(predicate)) return;\n                    document.removeEventListener(\"picker-native-observation\", check);\n                    resolve(true);\n                }\n                document.addEventListener(\"picker-native-observation\", check);\n            });\n        },\n        events,\n    };\n    return true;\n})()\n",
+      "finder-functional.py": "\"\"\"Exercise the real file finder in a disposable drive WebView.\"\"\"\nimport json\nfrom pathlib import Path\nimport sys\nimport tempfile\nfrom runpy import run_path\n\nhelpers = run_path(str(Path(__file__).with_name(\"runner.py\")))\nfixture = helpers[\"fixture\"]\ndrive = helpers[\"drive\"]\n\nbinary = str(Path(sys.argv[1]).resolve())\nwith tempfile.TemporaryDirectory(prefix='trunk440-finder-functional-',dir='/tmp') as path:\n    repo = Path(path)\n    fixture(repo,2000)\n    with drive(repo,binary) as d:\n        d('click','button','Review')\n        def open_finder():\n            d('click','button','Comment on a file…')\n            d('until',\"document.querySelector('#file-finder-list [role=option][aria-posinset=\\\"2\\\"]')\")\n        open_finder()\n        geometry=\"\"\"(()=>{const list=document.querySelector('#file-finder-list');const input=document.querySelector('[role=combobox]');const rows=Array.from(list.querySelectorAll('[role=option]'));return {rows:rows.length,total:+rows[0].getAttribute('aria-setsize'),height:rows[0].getBoundingClientRect().height,listHeight:list.clientHeight,first:+rows[0].getAttribute('aria-posinset'),last:+rows.at(-1).getAttribute('aria-posinset'),sequential:rows.filter(e=>e.tabIndex>=0).length,focused:document.activeElement===input}})()\"\"\"\n        def reading():\n            result=json.loads(d('eval',geometry))\n            assert result['focused'] and result['total']==2002 and result['sequential']==0 and 2<=result['rows']<100, result\n            return result\n        print('initial',reading(),flush=True)\n        before=int(d('eval','window.innerWidth'))\n        d('key','Meta+=')\n        d('eval','new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))')\n        after=int(d('eval','window.innerWidth'))\n        print('zoom',before,after,reading(),flush=True)\n        assert after<before,(before,after)\n        d('key','PageDown')\n        pos=int(d('eval',\"\"\"Number(document.querySelector('[role=option][aria-selected=true]').getAttribute('aria-posinset'))\"\"\"))\n        assert pos>2,pos\n        d('eval',\"\"\"document.querySelector('#file-finder-list').scrollTop=document.querySelector('#file-finder-list').scrollHeight\"\"\")\n        d('until',\"\"\"document.querySelector('[role=option][aria-posinset=\"2002\"]')?.innerText\"\"\")\n        print('tail',reading(),'pageDownPosition',pos,flush=True)\n        d('eval',\"\"\"document.querySelector('[role=option][aria-posinset=\"2002\"]').click()\"\"\")\n        assert d('until',\"\"\"document.querySelector('[data-testid=diff-path]')?.innerText==='project/file-1999.txt'\"\"\")=='true'\n        print('pointerOpened','project/file-1999.txt',flush=True)\n        d('key','Escape')\n        open_finder()\n        d('type','combobox','Find a tracked file to comment on','file-0123')\n        d('until',\"\"\"document.querySelector('[role=option][aria-posinset=\"1\"]')?.innerText==='project/file-0123.txt'\"\"\")\n        d('key','Enter')\n        assert d('until',\"\"\"document.querySelector('[data-testid=diff-path]')?.innerText==='project/file-0123.txt'\"\"\")=='true'\n        print('keyboardOpened','project/file-0123.txt',flush=True)\n",
+      "rebase-switch.py": "\"\"\"Open a preview in a disposable repo, change HEAD to a same-tip branch, then press Start.\"\"\"\nimport os, sys, tempfile, json, subprocess\nfrom pathlib import Path\nfrom runpy import run_path\n\nhelpers = run_path(str(Path(__file__).with_name(\"runner.py\")))\nfixture = helpers[\"fixture\"]\ndrive = helpers[\"drive\"]\n\nwith tempfile.TemporaryDirectory(dir='/tmp',prefix='trunk440-rebase-head-') as temp:\n    repo=Path(temp)\n    for key in [key for key in os.environ if key.startswith(\"GIT_\")]:\n        del os.environ[key]\n    os.environ.update(GIT_CONFIG_NOSYSTEM=\"1\", GIT_CONFIG_GLOBAL=os.devnull)\n    fixture(repo,3)\n    def git(*args):\n        return subprocess.check_output(['git','-C',str(repo),*args],text=True).strip()\n    git('config','--local','user.email','fixture@invalid')\n    git('config','--local','user.name','Fixture')\n    git('config','--local','commit.gpgsign','false')\n    tip=git('rev-parse','HEAD')\n    with drive(repo, str(Path(sys.argv[1]).resolve())) as d:\n        d('eval',\"\"\"[...document.querySelectorAll('[data-testid=\"commit-row-summary\"]')].find(x=>x.textContent==='C2').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}))\"\"\")\n        d('choose','Interactive Rebase...')\n        label=d('until',\"document.querySelector('.rebase-editor .rebase-toolbar-left')?.innerText\")\n        assert 'main' in label,label\n        d('eval',\"\"\"(()=>{const s=document.querySelector('.rebase-editor select[aria-label$=\"for C2\"]');s.value='drop';s.dispatchEvent(new Event('change',{bubbles:true}));return s.value})()\"\"\")\n        git('checkout','-q','topic-000')\n        assert tip==git('rev-parse','HEAD')\n        d('click','button','Start Rebase')\n        outcome=d('until',\"\"\"document.querySelector('.pointer-events-auto[role=status]')?.innerText || (!document.querySelector('.rebase-editor') && 'editor closed')\"\"\")\n        print(json.dumps({'initialLabel':label,'outcome':outcome,'initialTip':tip,'finalMain':git('rev-parse','main'),'finalTopic':git('rev-parse','topic-000'),'on':git('symbolic-ref','--short','HEAD'),'history':git('log','-3','--format=%s').splitlines()},indent=2))\n",
+      "mixed-input.py": "\"\"\"Scroll the ranked finder results, then use the keyboard without touching the mouse.\"\"\"\nfrom pathlib import Path\nimport json, sys,tempfile\nfrom runpy import run_path\n\nhelpers = run_path(str(Path(__file__).with_name(\"runner.py\")))\nfixture = helpers[\"fixture\"]\ndrive = helpers[\"drive\"]\n\nwith tempfile.TemporaryDirectory(prefix='trunk440-mixed-',dir='/tmp') as temp:\n    repo=Path(temp)\n    fixture(repo,2000)\n    with drive(repo, str(Path(sys.argv[1]).resolve())) as d:\n        d('click','button','Review')\n        d('click','button','Comment on a file…')\n        d('until',\"!!document.querySelector('[role=option][aria-posinset=\\\"2\\\"]')\")\n        d('eval',\"document.querySelector('#file-finder-list').scrollTop=document.querySelector('#file-finder-list').scrollHeight\")\n        d('until',\"!!document.querySelector('[role=option][aria-posinset=\\\"2002\\\"]')\")\n        state=json.loads(d('eval',\"\"\"(()=>{const input=document.querySelector('[role=combobox]');const list=document.querySelector('#file-finder-list');const box=list.getBoundingClientRect();const visible=[...list.querySelectorAll('[role=option]')].filter(row=>{const r=row.getBoundingClientRect();return r.top<box.bottom && r.bottom>box.top}).map(row=>row.innerText);const selected=list.querySelector('[aria-selected=true]');return {focused:document.activeElement===input,visible,selected:selected?.innerText??null,active:input.getAttribute('aria-activedescendant'),scrollTop:list.scrollTop}})()\"\"\"))\n        d('key','Enter')\n        opened=d('until',\"document.querySelector('[data-testid=diff-path]')?.innerText\")\n        print(json.dumps({'beforeEnter':state,'opened':opened,'openedVisible':opened in state['visible']},indent=2))\n"
+    },
+    "outputDirectory": "Set E20_REPLAY_DIR to an empty absolute directory.",
+    "rebaseStart": "Run python3 -B \"$E20_REPLAY_DIR/rebase-switch.py\" <absolute-drive-binary> once with each committed build. Compare main and topic-000 with initialTip. A rewritten commit OID can vary with Git commit metadata.",
+    "finderScrollThenEnter": "Run python3 -B \"$E20_REPLAY_DIR/mixed-input.py\" <absolute-drive-binary>. Compare the opened path with the visible options captured before Enter."
+  },
+  "excludedPilots": [
+    {
+      "trial": "baseline1",
+      "build": "historical.before",
+      "fixtureTrackedPaths": 2002,
+      "logSha256": "3cb5306786eb7638b9a7f031057c24a8cf1e2c1f4892f9d85d2c1b02d35f87d3",
+      "admissionSha256": "d956aff2b0ae6e5aae1976b97a3dd20766b8b234c20e3aa67ee24589f144efaa",
+      "admission": {
+        "entry": {
+          "verdict": "rejected",
+          "competingWork": [
+            "interpreter workload: bun test"
+          ]
+        }
+      },
+      "exclusion": "Entry admission rejected a concurrent bun test before any gesture."
+    },
+    {
+      "trial": "after8k1",
+      "build": "historical.candidate",
+      "fixtureTrackedPaths": 8002,
+      "logSha256": "ccb105aee9363713c3b043870f38b574aa6ebc1489b68fbbd2481ba6e02fa64a",
+      "admissionSha256": "3cced887c00d273084bdf6ebcdef17488ba3f149d3a264cbf619c5db8df069ca",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competingWork": []
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competingWork": []
+        }
+      },
+      "firstObservationMountedOptions": 1,
+      "exclusion": "The original observer stopped at one mounted option, short of the 13 needed to fill a 435 px viewport with 34 px rows."
+    },
+    {
+      "trial": "after8k2",
+      "build": "historical.candidate",
+      "fixtureTrackedPaths": 8002,
+      "logSha256": "b55486df5b25bac9c9aa4a283644d3dd8ef0129e98a5ba461cfed9894c783940",
+      "admissionSha256": "7b86d547b6563a103dcddc2504ef7ba3dc2473273a44ce44bed7cfbce2c8bfdd",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competingWork": []
+        },
+        "exit": {
+          "verdict": "rejected",
+          "competingWork": [
+            "interpreter workload: bun check",
+            "interpreter workload: node script svelte-check",
+            "build or test executable"
+          ]
+        }
+      },
+      "firstObservationMountedOptions": 1,
+      "exclusion": "The original observer stopped at one mounted option, short of the 13 needed to fill a 435 px viewport with 34 px rows. Exit admission also rejected concurrent bun check, Node svelte-check and tsc."
+    }
+  ],
+  "pickerNative": {
+    "flow": "I01",
+    "fixtures": {
+      "A": {
+        "name": "Picker-A",
+        "summary": "native-picker-A-oracle",
+        "head": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c"
+      },
+      "B": {
+        "name": "Picker-B",
+        "summary": "native-picker-B-oracle",
+        "head": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f"
+      },
+      "C": {
+        "name": "Picker-C",
+        "summary": "native-picker-C-oracle",
+        "head": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+      }
+    },
+    "fixtureSetup": "Three disposable SHA-1 repositories, each with one tracked.txt and one deterministic initial commit. Each drive launch starts on A with fresh preferences and seeds Recents in B, C, A order.",
+    "gate": "Intercept Tauri callback delivery in the page. The hook forwarded the real custom-protocol request and held the successful open_repo callback for B after Rust had opened it. While the callback was held, the page still showed A and a separate head_oid call returned B's exact fixture OID. Use Ctrl+r and Enter to choose B. Then choose C and observe its graph, A's close and the Recent write before releasing B, or press Escape and observe the dialog closing before release.",
+    "receipts": {
+      "baseline": {
+        "binarySha256": "d23bb3c83c368bcac9bd8a430c17af820e12063587e48c65d5fc014347efd029",
+        "controllerCheckout": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "rawSha256": "94fb894f7843beb01afae6ce1c561f357d31c2d84086a20e40b6671452627db7",
+        "fixtureRootRemoved": true,
+        "cases": {
+          "last-gesture": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": true,
+              "pickerStatus": "",
+              "searchFocused": true,
+              "alerts": []
+            },
+            "beforeBDelivery": {
+              "selectedTab": "Picker-C",
+              "savedTabs": [
+                "Picker-C"
+              ],
+              "graphSummaries": [
+                "native-picker-C-oracle"
+              ],
+              "recentOrder": [
+                "Picker-C",
+                "Picker-B",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-B",
+              "savedTabs": [
+                "Picker-B"
+              ],
+              "graphSummaries": [
+                "native-picker-B-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-C",
+              "close_repo Picker-A",
+              "open_repo Picker-B",
+              "close_repo Picker-C"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 2,
+              "open_tabs": 2
+            },
+            "oracle": {
+              "only_latest_history": false,
+              "only_latest_selected_tab": false,
+              "winning_tab_saved": false,
+              "recents_order": false,
+              "unused_B_closed": false,
+              "winning_repo_open": false,
+              "picker_closed": true,
+              "no_alert": true
+            }
+          },
+          "escape": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": true,
+              "pickerStatus": "",
+              "searchFocused": true,
+              "alerts": []
+            },
+            "beforeBDelivery": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-B",
+              "savedTabs": [
+                "Picker-B"
+              ],
+              "graphSummaries": [
+                "native-picker-B-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-B",
+              "close_repo Picker-A"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 1,
+              "open_tabs": 1
+            },
+            "oracle": {
+              "only_latest_history": false,
+              "only_latest_selected_tab": false,
+              "winning_tab_saved": false,
+              "recents_order": true,
+              "unused_B_closed": false,
+              "winning_repo_open": false,
+              "picker_closed": true,
+              "no_alert": true
+            }
+          }
+        },
+        "build": "committedBaseline"
+      },
+      "final": {
+        "build": "committedFinal",
+        "binarySha256": "54a2f8f49b7e2df6b9bb89303dc3feccfbec1e041f3618c2e9fb23116ec036ea",
+        "controllerCheckout": "c6a5dd638618bfeeb6083e02cd4bb94597472e56",
+        "buildSourceTree": "cb8a726698e3db3a38ba682228957ff0b494ddac",
+        "binarySha256AtEnd": "54a2f8f49b7e2df6b9bb89303dc3feccfbec1e041f3618c2e9fb23116ec036ea",
+        "rawSha256": "e40252645d3bcc9c9d2cb167a941749445af145cfa943b0d4816787134882b2a",
+        "fixtureRootRemoved": true,
+        "cases": {
+          "last-gesture": {
+            "binarySha256AtLaunch": "54a2f8f49b7e2df6b9bb89303dc3feccfbec1e041f3618c2e9fb23116ec036ea",
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": true,
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "alerts": []
+            },
+            "beforeBDelivery": {
+              "selectedTab": "Picker-C",
+              "savedTabs": [
+                "Picker-C"
+              ],
+              "graphSummaries": [
+                "native-picker-C-oracle"
+              ],
+              "recentOrder": [
+                "Picker-C",
+                "Picker-B",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-C",
+              "savedTabs": [
+                "Picker-C"
+              ],
+              "graphSummaries": [
+                "native-picker-C-oracle"
+              ],
+              "recentOrder": [
+                "Picker-C",
+                "Picker-B",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "not_open",
+                "C": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-C",
+              "close_repo Picker-A",
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 1,
+              "open_tabs": 1
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            }
+          },
+          "escape": {
+            "binarySha256AtLaunch": "54a2f8f49b7e2df6b9bb89303dc3feccfbec1e041f3618c2e9fb23116ec036ea",
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": true,
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "alerts": []
+            },
+            "beforeBDelivery": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "not_open",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 0,
+              "open_tabs": 0
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            }
+          }
+        }
+      }
+    },
+    "rawRetention": "Raw final picker JSON and IPC events are retained locally under .boris/trunk440-sixth/picker-committed/. The earlier receipts are under .boris/trunk440-sixth/picker-native/. This record carries their digests, fixture OIDs, snapshots and the gate/controller source.",
+    "historicalReceipts": {
+      "candidate": {
+        "binarySha256": "f547586cbdab16aa4dd00b27d34fcd13595aba64929dbede4236b90b5e682651",
+        "controllerCheckout": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "rawSha256": "a1f061eb0094501a213ee0ed53851ff659cc15d26ebfc6e9de50f878d4f74f72",
+        "fixtureRootRemoved": true,
+        "cases": {
+          "last-gesture": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-C",
+              "savedTabs": [
+                "Picker-C"
+              ],
+              "graphSummaries": [
+                "native-picker-C-oracle"
+              ],
+              "recentOrder": [
+                "Picker-C",
+                "Picker-B",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "not_open",
+                "C": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-C",
+              "close_repo Picker-A",
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 1,
+              "open_tabs": 1
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "BHead": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f"
+            },
+            "selectedBeforeBDelivery": "Picker-C"
+          },
+          "escape": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "not_open",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 0,
+              "open_tabs": 0
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            },
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "BHead": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f"
+            },
+            "selectedBeforeBDelivery": "Picker-A"
+          }
+        },
+        "build": "historical.candidate"
+      },
+      "integration": {
+        "binarySha256": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+        "controllerCheckout": "345af69e73195d6eb6556cc0ae6296a24c8cb90d",
+        "rawSha256": "813145ac3244adb0cae0f5c809f5c341978c1af35cefb0cb808d2ff6747f757f",
+        "fixtureRootRemoved": true,
+        "cases": {
+          "last-gesture": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-C",
+              "savedTabs": [
+                "Picker-C"
+              ],
+              "graphSummaries": [
+                "native-picker-C-oracle"
+              ],
+              "recentOrder": [
+                "Picker-C",
+                "Picker-B",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "not_open",
+                "B": "not_open",
+                "C": "c4c9c410faf971dc99069db1c35c639df5829a5a"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-C",
+              "close_repo Picker-A",
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 1,
+              "open_tabs": 1
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            },
+            "binarySha256AtLaunch": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "BHead": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f"
+            },
+            "selectedBeforeBDelivery": "Picker-C"
+          },
+          "escape": {
+            "BReplyHeld": {
+              "outcome": "ok",
+              "response": null
+            },
+            "afterBDelivery": {
+              "selectedTab": "Picker-A",
+              "savedTabs": [
+                "Picker-A"
+              ],
+              "graphSummaries": [
+                "native-picker-A-oracle"
+              ],
+              "recentOrder": [
+                "Picker-B",
+                "Picker-C",
+                "Picker-A"
+              ],
+              "nativeHead": {
+                "A": "e2e239d454d91dd1c2ead1a6e45f04e46896dc4c",
+                "B": "not_open",
+                "C": "not_open"
+              },
+              "pickerOpen": false,
+              "pickerStatus": "",
+              "searchFocused": false,
+              "alerts": []
+            },
+            "openCloseDelivered": [
+              "open_repo Picker-B",
+              "close_repo Picker-B"
+            ],
+            "deliveredPreferenceWrites": {
+              "recent_repos": 0,
+              "open_tabs": 0
+            },
+            "oracle": {
+              "only_latest_history": true,
+              "only_latest_selected_tab": true,
+              "winning_tab_saved": true,
+              "recents_order": true,
+              "unused_B_closed": true,
+              "winning_repo_open": true,
+              "picker_closed": true,
+              "no_alert": true
+            },
+            "binarySha256AtLaunch": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+            "whileBHeld": {
+              "selectedTab": "Picker-A",
+              "pickerStatus": "Opening Picker-B…",
+              "searchFocused": true,
+              "BHead": "92f69e087826465e90fe5e5ebe5ec088f1eb4e3f"
+            },
+            "selectedBeforeBDelivery": "Picker-A"
+          }
+        },
+        "buildSourceTree": "684cc1de1d1fd2a48ca446d0d485e16f5e1a9afd",
+        "binarySha256AtEnd": "4de11c1585c04c81657b48bafa8dca002eebc547992a7c5c00c5ffc98f713665",
+        "build": "historical.pinnedIntegration"
+      }
+    }
+  },
+  "rebaseStart": {
+    "fixture": "Generate the same three-commit fixture with three initial project files. Open Interactive Rebase on C2 while on main, set C2 to drop, and switch in Git to topic-000 at the same tip before pressing Start Rebase.",
+    "scope": "Native functional observation. The start path checks HEAD's ref and tip before invoking Git. An external Git process can still change HEAD between Trunk's final check and Git reading it.",
+    "headlessRegression": {
+      "test": "tests/app/rebase-preview.test.ts",
+      "name": "refuses to start on another branch at the previewed tip",
+      "assertion": "The test changes from main to same-tip sibling before Start, then checks both refs still resolve to the original full SHA, the branch-changed toast appears, and the editor closes."
+    },
+    "rawRetention": "Raw committed and historical Start result logs and build fingerprints are retained locally under .boris/trunk440-sixth/.",
+    "historical": {
+      "before": {
+        "build": "historical.pinnedIntegration",
+        "logSha256": "97a15e08ce012b04fe887041856087096fa03ff2226c7802f2d4cecdd91c19cd",
+        "initialLabel": "Interactive Rebase\nRebasing\nmain\nonto\n10b6e4e",
+        "outcome": "editor closed",
+        "initialTip": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+        "finalMain": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+        "finalTopic": "6465d783cc0d60dac2a7adcaaa7b7e3ea5b5767f",
+        "on": "topic-000",
+        "history": [
+          "C3",
+          "C1"
+        ]
+      },
+      "after": {
+        "build": "historical.startSafetyCandidate",
+        "logSha256": "270c18960f99fc167fde1a8dfbb0e8159e08f3d395da5f5935c06d5cd7ca1ad6",
+        "initialLabel": "Interactive Rebase\nRebasing\nmain\nonto\n10b6e4e",
+        "outcome": "The branch changed after the rebase editor opened. Open it again to see the current commits.",
+        "initialTip": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+        "finalMain": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+        "finalTopic": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+        "on": "topic-000",
+        "history": [
+          "C3",
+          "C2",
+          "C1"
+        ]
+      }
+    },
+    "before": {
+      "build": "committedBaseline",
+      "logSha256": "3528c891c793b8c5dc1ad90ebfeae0f4654e19a4dd205970b937f2bbf970e0ec",
+      "initialLabel": "Interactive Rebase\nRebasing\nmain\nonto\nrelease",
+      "outcome": "editor closed",
+      "initialTip": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+      "finalMain": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+      "finalTopic": "ece4005c547d42d0738efee2169363619e9c2ccd",
+      "on": "topic-000",
+      "history": [
+        "C3",
+        "C1"
+      ]
+    },
+    "after": {
+      "build": "committedFinal",
+      "logSha256": "270c18960f99fc167fde1a8dfbb0e8159e08f3d395da5f5935c06d5cd7ca1ad6",
+      "initialLabel": "Interactive Rebase\nRebasing\nmain\nonto\n10b6e4e",
+      "outcome": "The branch changed after the rebase editor opened. Open it again to see the current commits.",
+      "initialTip": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+      "finalMain": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+      "finalTopic": "3f5b54d78dff6a568846d761530fdfce0caeefaf",
+      "on": "topic-000",
+      "history": [
+        "C3",
+        "C2",
+        "C1"
+      ]
+    }
+  },
+  "historicalFinderSamples": [
+    {
+      "build": "historical.before",
+      "logSha256": "813cef0a6cc0155b0e742be0de8cf412db2c490186ded949c7b9b665cf635715",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875587563373416,
+            875587637557375
+          ],
+          "executableInventorySha256": "1a53c67a072e5a7eaf38ea622726a7f9a1a51adf002a4a457f907f6e54ff802f"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875590067486083,
+            875590158988458
+          ],
+          "executableInventorySha256": "41ae703180db197465e50d8120893824604bb2b18ad315e4bea193a66d304328"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 201,
+        "focus": true,
+        "height": 34,
+        "inputMs": 115,
+        "last": "project/file-7999.txt",
+        "rows": 8002,
+        "rowsMs": 202,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 35,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "release"
+    },
+    {
+      "build": "historical.candidate",
+      "logSha256": "b8afda9491c98f6880b4816366e8e64c0118a80d2d8b21e2c388224135106ada",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875590467763916,
+            875590543301458
+          ],
+          "executableInventorySha256": "416615b83b1d079a7dfa72a8e89ec6c4bb51d30871dbbeb3f3961571f285b192"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875592717502208,
+            875592802268375
+          ],
+          "executableInventorySha256": "9eab783b3b04eb2e2cbc31c9560733f5403187001a3828ce5f2792fd42aa7337"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 48,
+        "focus": true,
+        "height": 34,
+        "inputMs": 3,
+        "last": "project/file-0023.txt",
+        "rows": 26,
+        "rowsMs": 51,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 2,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "655ba48"
+    },
+    {
+      "build": "historical.before",
+      "logSha256": "997f2341f8a5027b3b019f0d1e0a0ab944af9f0a233dc778ad6c966cdce73f8a",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875593067429833,
+            875593140668625
+          ],
+          "executableInventorySha256": "71f44418528655f6967009fc2a1681d4cfa70466d7c65e101f9a79212486990e"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875595506068833,
+            875595596610375
+          ],
+          "executableInventorySha256": "b89ff1e8647678f24d78d6011236f75fc0cd9ed437edf801ce6629a209236346"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 207,
+        "focus": true,
+        "height": 34,
+        "inputMs": 116,
+        "last": "project/file-7999.txt",
+        "rows": 8002,
+        "rowsMs": 208,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 36,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "release"
+    },
+    {
+      "build": "historical.candidate",
+      "logSha256": "c05caf15bca06dac4566398f1cf88a8dc3449cc7ea2648c8de26e4a5ceaebc08",
+      "admission": {
+        "entry": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875595900881166,
+            875595977848041
+          ],
+          "executableInventorySha256": "edd45c8a4701269d76c63177e1ad1d5b381bc61ff5c15356bfbd73ae52523afa"
+        },
+        "exit": {
+          "verdict": "admitted",
+          "competing": [],
+          "monotonicNs": [
+            875598232905708,
+            875598316965583
+          ],
+          "executableInventorySha256": "d8ec30180dfa1b79b63f573076bdc8aba14408855170bab323c6763cdd1254aa"
+        }
+      },
+      "finder": {
+        "first": "change-1.txt",
+        "firstRowMs": 42,
+        "focus": true,
+        "height": 34,
+        "inputMs": 3,
+        "last": "project/file-0023.txt",
+        "rows": 26,
+        "rowsMs": 46,
+        "viewport": 435
+      },
+      "narrow": {
+        "first": "project/file-1999.txt",
+        "ms": 2,
+        "rows": 1
+      },
+      "rebaseBaseLabel": "655ba48"
+    }
+  ]
+}
