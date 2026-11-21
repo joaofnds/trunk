@@ -51,36 +51,36 @@ import {
 	DEFAULT_LEFT_PANE_WIDTH,
 	DEFAULT_RIGHT_PANE_WIDTH,
 	flushPreferencesForUpdate,
-	getActiveTabId,
 	getDiffContentMode,
 	getFetchIntervalMs,
 	getLeftPaneCollapsed,
 	getLeftPaneWidth,
 	getOpenRepo,
-	getOpenTabs,
 	getReviewLeftPaneCollapsed,
 	getReviewThreadsHidden,
 	getRightPaneCollapsed,
 	getRightPaneWidth,
 	getZoomLevel,
+	openTabSession,
 	preferenceGeneration,
 	type RecentRepo,
 	refVisibilityWritesSettled,
-	setActiveTabId,
 	setDiffContentMode,
 	setLeftPaneCollapsed,
 	setOpenRepo,
-	setOpenTabs,
 	setReviewLeftPaneCollapsed,
 	setReviewThreadsHidden,
 	setRightPaneCollapsed,
 	setZoomLevel,
 	subscribeFetchInterval,
+	type TabSession,
+	type TabSnapshot,
 } from "./lib/store.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
+import Button from "./lib/ui/Button.svelte";
 import { releaseUrl, type UpdateStatus, updates } from "./lib/updates.js";
 import { provideUpdatePreparation } from "./lib/updates-context.js";
 import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
@@ -626,12 +626,21 @@ function getTabState(tabId: string): TabState {
 let activeTab = $derived(tabs.find((t) => t.id === activeTabId));
 
 // Tab CRUD functions
+function activateTab(id: string) {
+	if (updateFrozen) return;
+	activeTabId = id;
+	persistTabs();
+}
+
 function addNewTab() {
 	if (updateFrozen) return;
+	if (!tabsRestored) {
+		newTabRequested = true;
+		return;
+	}
 	const existing = tabs.find((t) => t.repoPath === null);
 	if (existing) {
-		activeTabId = existing.id;
-		persistTabs();
+		activateTab(existing.id);
 		return;
 	}
 	const tab: TabInfo = {
@@ -642,8 +651,7 @@ function addNewTab() {
 	};
 	createTabState(tab.id);
 	tabs = [...tabs, tab];
-	activeTabId = tab.id;
-	persistTabs();
+	activateTab(tab.id);
 }
 
 function closeOtherTabs(keepTabId: string) {
@@ -913,32 +921,49 @@ function forceCloseTab(tabId: string) {
 	persistTabs();
 }
 
-// Tab persistence — both saves fire immediately so they survive Cmd+Q
-function persistTabs() {
-	setActiveTabId(activeTabId);
-	setOpenTabs(
-		tabs.map((t) => ({
-			id: t.id,
-			repoPath: t.repoPath,
-			repoName: t.repoName,
+let tabSession: TabSession | undefined;
+let tabRestoreError = $state<string | null>(null);
+let newTabRequested = false;
+
+function tabSnapshot(): TabSnapshot {
+	return {
+		tabs: tabs.map(({ id, repoPath, repoName }) => ({
+			id,
+			repoPath,
+			repoName,
 		})),
+		activeTabId,
+	};
+}
+
+// Dispatch immediately so a later choice is already in native IPC at quit.
+function persistTabs() {
+	void tabSession?.save(tabSnapshot()).catch((error) => {
+		if (!repositoryTabsDisposed) reportTabSaveFailure(error);
+	});
+}
+
+function reportTabSaveFailure(error: unknown) {
+	showToast(
+		`Could not save tabs: ${errorMessage(error, "unknown error")}`,
+		"error",
 	);
 }
 
 preparation.register({
 	capture: () => {
-		const savedTabs = tabs.map(({ id, repoPath, repoName }) => ({
-			id,
-			repoPath,
-			repoName,
-		}));
-		const active = activeTabId;
+		const snapshot = tabSnapshot();
+		const session = tabSession;
 		return {
-			generation: JSON.stringify([savedTabs, active, preferenceGeneration()]),
-			blocker: tabsRestored
-				? null
-				: "Wait for your tabs to finish opening before restarting.",
-			flush: (permit) => flushPreferencesForUpdate(permit, savedTabs, active),
+			generation: JSON.stringify([snapshot, preferenceGeneration()]),
+			blocker:
+				session && tabsRestored
+					? null
+					: "Wait for your tabs to finish opening before restarting.",
+			flush: async (permit) => {
+				await flushPreferencesForUpdate(permit);
+				await session?.save(snapshot, permit);
+			},
 		};
 	},
 });
@@ -946,13 +971,22 @@ preparation.register({
 // Restore on mount
 $effect(() => {
 	void copyLegacyUserWidthsOnce();
-	let disposed = false;
+	void restoreTabs();
+});
 
-	(async () => {
-		let [restored, savedActive] = await Promise.all([
-			getOpenTabs(),
-			getActiveTabId(),
-		]);
+onDestroy(() => {
+	repositoryTabsDisposed = true;
+	for (const request of pendingOpens.values()) request.cancel();
+	repositories.dispose();
+});
+
+async function restoreTabs() {
+	tabRestoreError = null;
+	try {
+		const session = await openTabSession();
+		if (repositoryTabsDisposed) return;
+		tabSession = session;
+		let { tabs: restored, activeTabId: savedActive } = session;
 
 		// Legacy migration: if no tabs but old open_repo exists
 		if (restored.length === 0) {
@@ -960,17 +994,18 @@ $effect(() => {
 			if (legacy) {
 				const id = createTabId();
 				restored = [{ id, repoPath: legacy.path, repoName: legacy.name }];
-				await setOpenTabs(restored);
-				await setOpenRepo(null); // clear legacy key
+				savedActive = id;
+				if (repositoryTabsDisposed) return;
+				try {
+					await session.save({ tabs: restored, activeTabId: id });
+					await setOpenRepo(null);
+				} catch (error) {
+					if (!repositoryTabsDisposed) reportTabSaveFailure(error);
+				}
 			}
 		}
 
-		if (disposed) return;
-		if (restored.length === 0) {
-			addNewTab();
-			tabsRestored = true;
-			return;
-		}
+		if (repositoryTabsDisposed) return;
 
 		// A backend path has one tab, including when older saved tabs contain duplicates.
 		const activePath = repositoryPathKey(
@@ -997,17 +1032,17 @@ $effect(() => {
 		repositories.restore(restoredTabs);
 		tabs = restoredTabs;
 		initialActiveId =
-			restoredTabs.find((t) => t.id === savedActive)?.id ?? restoredTabs[0].id;
-		activeTabId = initialActiveId;
+			restoredTabs.find((t) => t.id === savedActive)?.id ??
+			restoredTabs[0]?.id ??
+			null;
+		activeTabId = initialActiveId ?? "";
 		tabsRestored = true;
-	})();
-	return () => {
-		disposed = true;
-		repositoryTabsDisposed = true;
-		for (const request of pendingOpens.values()) request.cancel();
-		repositories.dispose();
-	};
-});
+		if (newTabRequested || tabs.length === 0) addNewTab();
+	} catch (error) {
+		if (!repositoryTabsDisposed)
+			tabRestoreError = errorMessage(error, "Unknown error");
+	}
+}
 
 // Zoom persistence
 $effect(() => {
@@ -1131,12 +1166,13 @@ const TAB_SLOT_CHORD = /^Meta\+([1-9])$/;
 function activateTabSlot(slot: number) {
 	const idx =
 		slot === 9 ? tabs.length - 1 : Math.min(slot - 1, tabs.length - 1);
-	if (idx >= 0 && idx < tabs.length) activeTabId = tabs[idx].id;
+	if (idx >= 0) activateTab(tabs[idx].id);
 }
 
 function activateNeighbourTab(step: 1 | -1) {
+	if (tabs.length === 0) return;
 	const cur = tabs.findIndex((t) => t.id === activeTabId);
-	activeTabId = tabs[(cur + step + tabs.length) % tabs.length].id;
+	activateTab(tabs[(cur + step + tabs.length) % tabs.length].id);
 }
 
 function changeLeftPaneCollapsed(collapsed: boolean) {
@@ -1402,10 +1438,7 @@ $effect(() => {
 		<TabBar
 			{tabs}
 			{activeTabId}
-			onactivate={(id) => {
-				activeTabId = id;
-				persistTabs();
-			}}
+			onactivate={activateTab}
 			onclose={(id, force) => {
 				if (force) forceCloseTab(id);
 				else closeTab(id);
@@ -1516,6 +1549,14 @@ $effect(() => {
 	</header>
 
 	<div class="flex-1 overflow-hidden relative">
+		{#if tabRestoreError !== null}
+			<div
+				class="h-full flex flex-col items-center justify-center gap-3 p-4 text-body"
+			>
+				<p role="alert">Could not restore tabs. {tabRestoreError}</p>
+				<Button onclick={() => void restoreTabs()}>Retry opening tabs</Button>
+			</div>
+		{/if}
 		{#each tabs as tab (tab.id)}
 			<div
 				class="absolute inset-0 flex flex-col"

@@ -138,6 +138,10 @@ export class AppDriver {
 		await this.host.invoke("prefs_set", { key, value });
 	}
 
+	readPref<T>(key: string): Promise<T | null> {
+		return this.host.invoke("prefs_get", { key });
+	}
+
 	/** Freezes every read of the named pref before it reaches the host, so a test
 	 *  can inspect a render from between two mount effects that race to resolve.
 	 *  Returns the release. */
@@ -146,7 +150,9 @@ export class AppDriver {
 	}
 
 	/** Freezes a frontend command before it reaches the application host. */
-	holdCommand(command: string): () => void {
+	holdCommand(
+		command: string | ((record: InvokeRecord) => boolean),
+	): () => void {
 		return this.internals.holdCommand(command);
 	}
 

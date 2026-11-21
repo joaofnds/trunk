@@ -35,6 +35,7 @@ interface Running {
 	internals: TauriInternals;
 	root: HTMLElement;
 	app: Record<string, unknown>;
+	scheduler: FakeScheduler;
 	untrackScroll: () => void;
 }
 
@@ -92,7 +93,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 			context: new Map([[SCHEDULER, scheduler]]),
 		});
 
-		running = { host, internals, root, app, untrackScroll };
+		running = { host, internals, root, app, scheduler, untrackScroll };
 		return new AppDriver(host, internals, fakes, scheduler, repoPath);
 	} catch (error) {
 		// Setup owns the host and every installed global even before mount succeeds.
@@ -105,6 +106,16 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		await host.shutdown();
 		throw error;
 	}
+}
+
+/** Reloads the frontend, keeping the same native process and preference file. */
+export async function remount(): Promise<void> {
+	if (!running) throw new Error("the application is not running");
+	await unmount(running.app);
+	running.app = mount(App, {
+		target: running.root,
+		context: new Map([[SCHEDULER, running.scheduler]]),
+	});
 }
 
 /** What `afterEach` hands its hook, as far as teardown reads it. */

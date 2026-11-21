@@ -225,7 +225,7 @@ describe("update draft persistence", () => {
 		expect(preferences.values.get("zoom_level")).toBe(1);
 
 		setUpdateFrozen(true);
-		await flushPreferencesForUpdate("permit", [], "tab");
+		await flushPreferencesForUpdate("permit");
 
 		expect(preferences.values.get("zoom_level")).toBe(2);
 	});

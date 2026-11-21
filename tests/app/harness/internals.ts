@@ -83,7 +83,7 @@ export class TauriInternals {
 	 *  until `release()` runs, rather than reaching the host. */
 	private heldPrefsKey: string | null = null;
 	private readonly heldReads: HeldRead[] = [];
-	private heldCommand: string | null = null;
+	private holdsCommand: ((record: InvokeRecord) => boolean) | null = null;
 	private readonly heldCommands: Array<() => void> = [];
 	private heldReply?: HeldCommandReply;
 	private inFlight = 0;
@@ -110,10 +110,13 @@ export class TauriInternals {
 	/** Freezes every invocation of `command` at the frontend transport seam.
 	 * The returned release lets a scenario observe state while the real host
 	 * response is still pending. */
-	holdCommand(command: string): () => void {
-		this.heldCommand = command;
+	holdCommand(
+		command: string | ((record: InvokeRecord) => boolean),
+	): () => void {
+		this.holdsCommand =
+			typeof command === "string" ? ({ cmd }) => cmd === command : command;
 		return () => {
-			this.heldCommand = null;
+			this.holdsCommand = null;
 			const held = this.heldCommands.splice(0);
 			for (const release of held) release();
 		};
@@ -204,8 +207,9 @@ export class TauriInternals {
 		args: Record<string, unknown>,
 	): Promise<unknown> {
 		if (this.closed) return null;
-		this.records.push({ cmd, args });
-		if (cmd === this.heldCommand) {
+		const record = { cmd, args };
+		this.records.push(record);
+		if (this.holdsCommand?.(record)) {
 			await new Promise<void>((release) => {
 				this.heldCommands.push(release);
 			});

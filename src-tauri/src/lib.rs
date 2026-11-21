@@ -155,13 +155,17 @@ fn run_gui() {
     // that prohibits activation, set before the launch, keeps the user's focus.
     #[cfg(feature = "drive")]
     app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
-    app.run(|app, event| {
-        if let tauri::RunEvent::ExitRequested { code, api, .. } = event
-            && code != Some(tauri::RESTART_EXIT_CODE)
-            && !updates::allow_exit(app)
+    app.run(|app, event| match event {
+        tauri::RunEvent::ExitRequested { code, api, .. }
+            if code != Some(tauri::RESTART_EXIT_CODE) && !updates::allow_exit(app) =>
         {
             api.prevent_exit();
         }
+        // The native macOS menu can end the loop without ExitRequested.
+        tauri::RunEvent::Exit => app
+            .state::<activity::ActivityState>()
+            .finish_tab_saves_at_exit(),
+        _ => {}
     });
 }
 
@@ -292,7 +296,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         .manage(updates::UpdateState::default())
         .manage(releases)
         .manage(worker);
-    builder.invoke_handler(tauri::generate_handler![
+    let commands: fn(tauri::ipc::Invoke<R>) -> bool = tauri::generate_handler![
         commands::updates::updates_status,
         commands::updates::updates_enable,
         commands::updates::updates_check,
@@ -309,6 +313,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::perf::perf_reset,
         commands::prefs::prefs_get,
         commands::prefs::prefs_set,
+        commands::prefs::prefs_open_tabs,
         commands::repo::enclosing_repository,
         commands::repo::open_repo,
         commands::repo::close_repo,
@@ -447,7 +452,13 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::merge_editor::conflict_marker_files,
         commands::interactive_rebase::get_rebase_todo,
         commands::interactive_rebase::start_interactive_rebase,
-    ])
+    ];
+    builder.invoke_handler(move |invoke| {
+        if invoke.message.command() == "prefs_set_tabs" {
+            return commands::prefs::prefs_set_tabs(invoke);
+        }
+        commands(invoke)
+    })
 }
 
 /// Serve a `trunk-asset://` request from the repository the URL names. The

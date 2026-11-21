@@ -7,6 +7,7 @@ const pendingWork = new Set<Promise<unknown>>();
 const UPDATE_FLUSH_COMMANDS = new Set([
 	"prefs_get",
 	"prefs_set",
+	"prefs_set_tabs",
 	"save_draft",
 	"get_draft",
 	"delete_draft",

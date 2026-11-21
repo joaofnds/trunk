@@ -142,6 +142,21 @@ describe("App", () => {
 				prefs[key] = value;
 				return Promise.resolve(undefined);
 			}
+			case "prefs_open_tabs":
+				return Promise.resolve({
+					writer: 1,
+					tabs: prefs.open_tabs ?? null,
+					activeTabId: prefs.active_tab_id ?? null,
+				});
+			case "prefs_set_tabs": {
+				const { tabs, activeTabId } = args as {
+					tabs: unknown;
+					activeTabId: unknown;
+				};
+				prefs.open_tabs = tabs;
+				prefs.active_tab_id = activeTabId;
+				return Promise.resolve(undefined);
+			}
 			case "get_commit_graph":
 				return Promise.resolve({
 					commits: [

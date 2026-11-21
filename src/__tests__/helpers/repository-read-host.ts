@@ -211,6 +211,16 @@ export class RepositoryReadHost implements HostChannel {
 			case "prefs_set":
 				this.preferences.set(String(args.key), args.value);
 				return null;
+			case "prefs_open_tabs":
+				return {
+					writer: 1,
+					tabs: this.preferences.get("open_tabs") ?? null,
+					activeTabId: this.preferences.get("active_tab_id") ?? null,
+				};
+			case "prefs_set_tabs":
+				this.preferences.set("open_tabs", args.tabs);
+				this.preferences.set("active_tab_id", args.activeTabId);
+				return null;
 			case "canonical_repo_path":
 				return args.path;
 			case "get_commit_graph":

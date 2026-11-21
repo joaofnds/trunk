@@ -57,11 +57,7 @@ export function preferenceGeneration(): number {
 	return preferenceRevision;
 }
 
-export async function flushPreferencesForUpdate(
-	permit: string,
-	tabs: PersistedTab[],
-	activeTabId: string,
-): Promise<void> {
+export async function flushPreferencesForUpdate(permit: string): Promise<void> {
 	await columnLayoutQueue;
 	await refVisibilityQueue;
 	await Promise.all([
@@ -71,8 +67,6 @@ export async function flushPreferencesForUpdate(
 	await Promise.allSettled([...pendingPreferences]);
 	const values = new Map(requestedPreferences);
 	values.delete(COMMIT_DRAFTS_KEY);
-	values.set(TABS_KEY, tabs);
-	values.set(ACTIVE_TAB_KEY, activeTabId);
 	for (const [key, value] of values) {
 		await safeInvoke("prefs_set", { key, value, __updatePermit: permit });
 	}
@@ -162,7 +156,19 @@ export async function setRightPaneCollapsed(collapsed: boolean): Promise<void> {
 const OPEN_REPO_KEY = "open_repo";
 
 export async function getOpenRepo(): Promise<RecentRepo | null> {
-	return (await getPref<RecentRepo>(OPEN_REPO_KEY)) ?? null;
+	const repo = await getPref<unknown>(OPEN_REPO_KEY);
+	if (
+		repo === null ||
+		typeof repo !== "object" ||
+		!("path" in repo) ||
+		typeof repo.path !== "string" ||
+		repo.path === "" ||
+		!("name" in repo) ||
+		typeof repo.name !== "string"
+	)
+		return null;
+
+	return { path: repo.path, name: repo.name };
 }
 
 export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
@@ -400,23 +406,71 @@ export async function setRebaseColumnVisibility(
 	await setPref(REBASE_COLUMN_VISIBILITY_KEY, visibility);
 }
 
-// Tab persistence
-const ACTIVE_TAB_KEY = "active_tab_id";
-
-export async function getOpenTabs(): Promise<PersistedTab[]> {
-	return (await getPref<PersistedTab[]>(TABS_KEY)) ?? [];
+export interface TabSnapshot {
+	readonly tabs: PersistedTab[];
+	readonly activeTabId: string;
 }
 
-export async function setOpenTabs(tabs: PersistedTab[]): Promise<void> {
-	await setPref(TABS_KEY, tabs);
+export interface TabSession {
+	readonly tabs: PersistedTab[];
+	readonly activeTabId: string | null;
+	save(snapshot: TabSnapshot, permit?: string): Promise<void>;
 }
 
-export async function getActiveTabId(): Promise<string | null> {
-	return (await getPref<string>(ACTIVE_TAB_KEY)) ?? null;
+const pendingTabSaves = new Set<Promise<void>>();
+
+function isSavedTab(tab: unknown): tab is PersistedTab {
+	return (
+		tab !== null &&
+		typeof tab === "object" &&
+		"id" in tab &&
+		typeof tab.id === "string" &&
+		tab.id !== "" &&
+		"repoPath" in tab &&
+		(tab.repoPath === null || typeof tab.repoPath === "string") &&
+		"repoName" in tab &&
+		typeof tab.repoName === "string"
+	);
 }
 
-export async function setActiveTabId(id: string): Promise<void> {
-	await setPref(ACTIVE_TAB_KEY, id);
+function readSavedTabs(value: unknown): PersistedTab[] {
+	if (!Array.isArray(value)) return [];
+	const ids = new Set<string>();
+	return value.filter((tab: unknown): tab is PersistedTab => {
+		if (!isSavedTab(tab) || ids.has(tab.id)) return false;
+		ids.add(tab.id);
+		return true;
+	});
+}
+
+export async function openTabSession(): Promise<TabSession> {
+	// A remount can start while the previous App still has a save crossing IPC.
+	if (pendingTabSaves.size > 0) await Promise.allSettled(pendingTabSaves);
+	const { writer, tabs, activeTabId } = await safeInvoke<{
+		writer: number;
+		tabs: unknown;
+		activeTabId: unknown;
+	}>("prefs_open_tabs");
+	let revision = 0;
+	return {
+		tabs: readSavedTabs(tabs),
+		activeTabId: typeof activeTabId === "string" ? activeTabId : null,
+		async save({ tabs, activeTabId }, permit) {
+			const write = safeInvoke<void>("prefs_set_tabs", {
+				writer,
+				revision: ++revision,
+				tabs,
+				activeTabId,
+				...(permit === undefined ? {} : { __updatePermit: permit }),
+			});
+			pendingTabSaves.add(write);
+			try {
+				await write;
+			} finally {
+				pendingTabSaves.delete(write);
+			}
+		},
+	};
 }
 
 // Tree view preference

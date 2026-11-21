@@ -3,8 +3,9 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Manager, Runtime,
-    ipc::{CommandArg, CommandItem, InvokeBody, InvokeError},
+    ipc::{CommandArg, CommandItem, InvokeBody, InvokeError, InvokeMessage},
 };
+use tokio::sync::Notify;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActivityError {
@@ -42,6 +43,7 @@ enum Phase {
 struct Admission {
     phase: Phase,
     active: usize,
+    active_tab_saves: usize,
     generation: u64,
     #[cfg(any(test, feature = "test-util"))]
     parked: usize,
@@ -67,6 +69,7 @@ impl Admission {
 struct Gate {
     admission: Mutex<Admission>,
     changed: Condvar,
+    tab_saves_finished: Notify,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -94,7 +97,12 @@ impl ActivityState {
                 permit == Some(token.as_str())
                     && matches!(
                         command,
-                        "prefs_get" | "prefs_set" | "save_draft" | "get_draft" | "delete_draft"
+                        "prefs_get"
+                            | "prefs_set"
+                            | "prefs_set_tabs"
+                            | "save_draft"
+                            | "get_draft"
+                            | "delete_draft"
                     )
             }
             Phase::Draining(_) | Phase::Installing(_) | Phase::Exiting => false,
@@ -102,10 +110,17 @@ impl ActivityState {
         if !allowed {
             return Err(ActivityError::busy());
         }
+        let tab_save = command == "prefs_set_tabs";
         state.active += 1;
+        if tab_save {
+            state.active_tab_saves += 1;
+        }
         drop(state);
 
-        Ok(Activity(Arc::new(Lease(self.clone()))))
+        Ok(Activity(Arc::new(Lease {
+            state: self.clone(),
+            tab_save,
+        })))
     }
 
     /// Accept a native exit and prevent update preparation from racing shutdown.
@@ -122,6 +137,30 @@ impl ActivityState {
         self.0.changed.notify_all();
 
         true
+    }
+
+    /// Finish accepted tab saves before the desktop runtime exits.
+    pub(crate) fn finish_tab_saves_at_exit(&self) {
+        self.0.admission.lock().unwrap().phase = Phase::Exiting;
+        self.0.changed.notify_all();
+        drop(Self::unparked(
+            self.0
+                .changed
+                .wait_while(self.parked_lock(), |state| state.active_tab_saves != 0)
+                .unwrap(),
+        ));
+    }
+
+    /// Wait before taking a blocking worker to read the tab preferences.
+    pub(crate) async fn wait_for_tab_saves(&self) {
+        loop {
+            // notify_waiters also reaches futures created before their first poll.
+            let finished = self.0.tab_saves_finished.notified();
+            if self.0.admission.lock().unwrap().active_tab_saves == 0 {
+                return;
+            }
+            finished.await;
+        }
     }
 
     /// Close ordinary admission only when all previously admitted work has settled.
@@ -286,15 +325,27 @@ impl ActivityState {
 }
 
 #[derive(Debug)]
-struct Lease(ActivityState);
+struct Lease {
+    state: ActivityState,
+    tab_save: bool,
+}
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        let mut state = self.0.0.admission.lock().unwrap();
+        let mut state = self.state.0.admission.lock().unwrap();
         state.active -= 1;
+        if self.tab_save {
+            state.active_tab_saves -= 1;
+        }
         state.settle_drain();
-        if state.active == 0 {
-            self.0.0.changed.notify_all();
+        let activity_finished = state.active == 0;
+        let tab_saves_finished = self.tab_save && state.active_tab_saves == 0;
+        drop(state);
+        if activity_finished || tab_saves_finished {
+            self.state.0.changed.notify_all();
+        }
+        if tab_saves_finished {
+            self.state.0.tab_saves_finished.notify_waiters();
         }
     }
 }
@@ -303,6 +354,23 @@ impl Drop for Lease {
 pub struct Activity(Arc<Lease>);
 
 impl Activity {
+    pub(crate) fn for_invoke<R: Runtime>(
+        message: &InvokeMessage<R>,
+        command: &str,
+    ) -> Result<Self, InvokeError> {
+        let permit = match message.payload() {
+            InvokeBody::Json(payload) => payload
+                .get("__updatePermit")
+                .and_then(serde_json::Value::as_str),
+            InvokeBody::Raw(_) => None,
+        };
+        message
+            .webview_ref()
+            .state::<ActivityState>()
+            .acquire_command(command, permit)
+            .map_err(InvokeError::from)
+    }
+
     /// Admit an independently scheduled worker.
     /// # Errors
     /// Returns busy while an update owns admission.
@@ -328,17 +396,7 @@ impl Activity {
 
 impl<'de, R: Runtime> CommandArg<'de, R> for Activity {
     fn from_command(item: CommandItem<'de, R>) -> Result<Self, InvokeError> {
-        let permit = match item.message.payload() {
-            InvokeBody::Json(payload) => payload
-                .get("__updatePermit")
-                .and_then(serde_json::Value::as_str),
-            InvokeBody::Raw(_) => None,
-        };
-        item.message
-            .webview_ref()
-            .state::<ActivityState>()
-            .acquire_command(item.name, permit)
-            .map_err(InvokeError::from)
+        Self::for_invoke(item.message, item.name)
     }
 }
 
@@ -375,8 +433,64 @@ mod tests {
         assert!(state.acquire_command("prefs_set", Some("stale")).is_err());
         assert!(state.acquire_command("prefs_set", None).is_err());
         assert!(state.acquire_command("prefs_set", Some(&token)).is_ok());
+        assert!(
+            state
+                .acquire_command("prefs_open_tabs", Some(&token))
+                .is_err()
+        );
+        assert!(
+            state
+                .acquire_command("prefs_set_tabs", Some("stale"))
+                .is_err()
+        );
+        assert!(state.acquire_command("prefs_set_tabs", None).is_err());
+        assert!(
+            state
+                .acquire_command("prefs_set_tabs", Some(&token))
+                .is_ok()
+        );
         assert!(state.acquire_command("delete_draft", Some(&token)).is_ok());
         assert!(state.acquire_command("clear_draft", Some(&token)).is_err());
+    }
+
+    #[test]
+    fn exit_drains_an_accepted_tab_save_without_waiting_for_unrelated_work() {
+        let state = ActivityState::default();
+        let save = state.acquire_command("prefs_set_tabs", None).unwrap();
+        let _unrelated = state.acquire().unwrap();
+
+        let exiting = std::thread::spawn({
+            let state = state.clone();
+            move || state.finish_tab_saves_at_exit()
+        });
+        state.wait_until_parked();
+
+        assert!(!exiting.is_finished());
+        assert!(state.acquire_command("prefs_set_tabs", None).is_err());
+        drop(save);
+        exiting.join().unwrap();
+    }
+
+    #[test]
+    fn restores_can_wait_asynchronously_for_all_accepted_tab_saves() {
+        use std::pin::pin;
+        use std::task::{Context, Poll, Waker};
+
+        let state = ActivityState::default();
+        let first_save = state.acquire_command("prefs_set_tabs", None).unwrap();
+        let second_save = state.acquire_command("prefs_set_tabs", None).unwrap();
+        let _unrelated = state.acquire().unwrap();
+        let mut first_restore = pin!(state.wait_for_tab_saves());
+        let mut second_restore = pin!(state.wait_for_tab_saves());
+        let mut context = Context::from_waker(Waker::noop());
+
+        assert_eq!(first_restore.as_mut().poll(&mut context), Poll::Pending);
+        drop(first_save);
+        assert_eq!(second_restore.as_mut().poll(&mut context), Poll::Pending);
+        drop(second_save);
+
+        assert_eq!(first_restore.as_mut().poll(&mut context), Poll::Ready(()));
+        assert_eq!(second_restore.as_mut().poll(&mut context), Poll::Ready(()));
     }
 
     #[test]

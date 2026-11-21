@@ -324,6 +324,69 @@ describe("App update controls", () => {
 		expect(app.host.count("updates_install")).toBe(1);
 		expect(screen.queryByRole("alert")).toBeNull();
 	});
+	it("retries saving the latest tabs with the new restart permit", async () => {
+		const active = { id: "active", repoPath: "/active", repoName: "active" };
+		const closed = { id: "closed", repoPath: null, repoName: "close me" };
+		app = new StartupHarness([active, closed], active.id);
+		const ready: UpdateStatus = {
+			...manual,
+			phase: "ready",
+			version: "2.0.0",
+			eligible: true,
+			adopted: true,
+		};
+		app.host.seedResponse("updates_status", ready);
+		app.host.seedResponse("updates_abort", ready);
+		app.host.seedResponse("updates_prepare", "first-permit");
+		app.start();
+		await screen.findByText("restored history");
+		await app.settle();
+		const ordinary = app.host.holdNextReply("prefs_set_tabs");
+		await app.close(closed.repoName);
+		await ordinary.entered;
+		ordinary.reject({ code: "io", message: "Disk full" });
+		await screen.findByText("Could not save tabs: Disk full");
+
+		const confirmRestart = async () => {
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart to update to 2.0.0" }),
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Restart and install 2.0.0" }),
+			);
+			await app.untilRestartBegins();
+		};
+		const failed = app.host.holdNextReply("prefs_set_tabs");
+		await confirmRestart();
+		expect(await failed.entered).toMatchObject({
+			tabs: [active],
+			activeTabId: active.id,
+			__updatePermit: "first-permit",
+		});
+		failed.reject({ code: "io", message: "Disk full" });
+		await screen.findByText("Disk full");
+		expect(app.host.count("updates_install")).toBe(0);
+
+		app.host.seedResponse("updates_prepare", "retry-permit");
+		const install = app.host.holdNextReply("updates_install");
+		await confirmRestart();
+		expect(await install.entered).toEqual({
+			version: "2.0.0",
+			token: "retry-permit",
+		});
+		install.release(undefined);
+
+		expect(
+			app.host.requests.filter(({ cmd }) => cmd === "prefs_set_tabs").at(-1)
+				?.args,
+		).toMatchObject({
+			__updatePermit: "retry-permit",
+			tabs: [active],
+			activeTabId: active.id,
+		});
+		expect(app.host.preferences.get("open_tabs")).toEqual([active]);
+		expect(app.host.preferences.get("active_tab_id")).toBe(active.id);
+	});
 	describe("when work is running at the click", () => {
 		function seedReady() {
 			const ready: UpdateStatus = {

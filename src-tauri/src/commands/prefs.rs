@@ -1,8 +1,8 @@
 //! Persistent user preferences (`trunk-prefs.json`) — in-house replacement for
 //! tauri-plugin-store, whose `save()` was a non-atomic whole-file `fs::write`.
 //!
-//! Two thin **async** `#[tauri::command]`s over testable `_inner(data_dir, ...)`
-//! functions, mirroring review.rs. Both wrappers hand the disk work to
+//! Thin **async** `#[tauri::command]`s over testable `_inner(data_dir, ...)`
+//! functions, mirroring review.rs. Each wrapper hands the disk work to
 //! `spawn_blocking`, so neither the first-access load nor the `sync_all` write
 //! pins a tokio worker while another call waits on the same lock. The whole map
 //! is loaded from disk on first access and held in `PrefsState`; every set
@@ -24,20 +24,39 @@
 //! sidecar — never deleted — and the store proceeds empty (D-15 posture).
 
 use super::resolve_data_dir;
+use crate::activity::{Activity, ActivityState};
 use crate::storage::{atomic_write_json, quarantine_corrupt};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tauri::ipc::{Invoke, InvokeBody, InvokeError};
 use tauri::{AppHandle, Manager, Runtime};
 use trunk_git::error::TrunkError;
 
 const PREFS_FILE: &str = "trunk-prefs.json";
+const OPEN_TABS: &str = "open_tabs";
+const ACTIVE_TAB_ID: &str = "active_tab_id";
 
-/// The whole prefs map; `None` until the first get/set loads the file.
 #[derive(Default)]
-pub struct PrefsState(pub Mutex<Option<HashMap<String, Value>>>);
+pub struct PrefsState(Mutex<Preferences>);
+
+#[derive(Default)]
+struct Preferences {
+    values: Option<HashMap<String, Value>>,
+    issued_tab_writer: u64,
+    last_tab_save: (u64, u64),
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabSession {
+    writer: u64,
+    tabs: Option<Value>,
+    active_tab_id: Option<Value>,
+}
 
 fn prefs_path(data_dir: &Path) -> PathBuf {
     data_dir.join(PREFS_FILE)
@@ -86,7 +105,9 @@ pub fn prefs_get_inner(
     key: &str,
 ) -> Result<Option<Value>, TrunkError> {
     let mut cache = state.0.lock().unwrap();
-    let value = ensure_loaded(data_dir, &mut cache)?.get(key).cloned();
+    let value = ensure_loaded(data_dir, &mut cache.values)?
+        .get(key)
+        .cloned();
     drop(cache);
 
     Ok(value)
@@ -111,19 +132,84 @@ pub fn prefs_set_inner(
     // The lock is held across the write so the rollback below restores the
     // value this call replaced, not one a concurrent write left behind.
     let mut cache = state.0.lock().unwrap();
-    let map = ensure_loaded(data_dir, &mut cache)?;
-    let previous = map.insert(key.clone(), value);
+    let map = ensure_loaded(data_dir, &mut cache.values)?;
+    let written = write_preferences(data_dir, map, [(key, value)]);
+    drop(cache);
+
+    written
+}
+
+fn prefs_open_tabs_inner(data_dir: &Path, state: &PrefsState) -> Result<TabSession, TrunkError> {
+    let mut cache = state.0.lock().unwrap();
+    let map = ensure_loaded(data_dir, &mut cache.values)?;
+    let tabs = map.get(OPEN_TABS).cloned();
+    let active_tab_id = map.get(ACTIVE_TAB_ID).cloned();
+    cache.issued_tab_writer += 1;
+    let writer = cache.issued_tab_writer;
+    drop(cache);
+    Ok(TabSession {
+        writer,
+        tabs,
+        active_tab_id,
+    })
+}
+
+fn prefs_set_tabs_inner(
+    data_dir: &Path,
+    state: &PrefsState,
+    writer: u64,
+    revision: u64,
+    tabs: Value,
+    active_tab_id: String,
+) -> Result<(), TrunkError> {
+    let mut cache = state.0.lock().unwrap();
+    // Reads can finish from a disposed mount. Only a newer writer's first
+    // save makes an older writer stale.
+    if writer == 0 || writer > cache.issued_tab_writer || writer < cache.last_tab_save.0 {
+        return Err(TrunkError::new(
+            "tab_session_replaced",
+            "The tab session has changed",
+        ));
+    }
+    if (writer, revision) <= cache.last_tab_save {
+        return Ok(());
+    }
+    // Remember the latest intent even if its disk write fails. A late command
+    // from an earlier choice must not replace the last successful snapshot.
+    cache.last_tab_save = (writer, revision);
+    let map = ensure_loaded(data_dir, &mut cache.values)?;
+    let written = write_preferences(
+        data_dir,
+        map,
+        [
+            (OPEN_TABS.to_owned(), tabs),
+            (ACTIVE_TAB_ID.to_owned(), Value::String(active_tab_id)),
+        ],
+    );
+    drop(cache);
+    written
+}
+
+fn write_preferences<const N: usize>(
+    data_dir: &Path,
+    map: &mut HashMap<String, Value>,
+    changes: [(String, Value); N],
+) -> Result<(), TrunkError> {
+    let previous = changes.map(|(key, value)| {
+        let previous = map.insert(key.clone(), value);
+        (key, previous)
+    });
     let written = serde_json::to_string_pretty(&*map)
         .map_err(|e| TrunkError::new("serialize", e.to_string()))
         .and_then(|json| atomic_write_json(&prefs_path(data_dir), &json));
     if written.is_err() {
-        match previous {
-            Some(v) => map.insert(key, v),
-            None => map.remove(&key),
-        };
+        for (key, value) in previous {
+            match value {
+                Some(value) => map.insert(key, value),
+                None => map.remove(&key),
+            };
+        }
     }
-    drop(cache);
-
     written
 }
 
@@ -169,6 +255,73 @@ pub async fn prefs_set<R: Runtime>(
         })
         .await
         .map_err(join_error)?
+}
+
+/// Restore both tab preferences and give the mounting frontend a new writer ID.
+///
+/// # Errors
+/// Returns the preferences read error as JSON, or `join` on task failure.
+#[tauri::command]
+pub async fn prefs_open_tabs<R: Runtime>(
+    activity: crate::activity::Activity,
+    app: AppHandle<R>,
+) -> Result<TabSession, String> {
+    let data_dir = resolve_data_dir(&app)?;
+    app.state::<ActivityState>().wait_for_tab_saves().await;
+    activity
+        .spawn_blocking(move || {
+            prefs_open_tabs_inner(&data_dir, &app.state::<PrefsState>()).map_err(|e| e.to_json())
+        })
+        .await
+        .map_err(join_error)?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TabSave {
+    writer: u64,
+    revision: u64,
+    tabs: Value,
+    active_tab_id: String,
+}
+
+/// Accept at IPC dispatch so restore and exit see the lease even if the worker
+/// has yet to start. The usual async command wrapper first admits in its task.
+pub(crate) fn prefs_set_tabs<R: Runtime>(invoke: Invoke<R>) -> bool {
+    let request = Activity::for_invoke(&invoke.message, "prefs_set_tabs").and_then(|activity| {
+        let InvokeBody::Json(payload) = invoke.message.payload() else {
+            return Err(
+                TrunkError::new("invalid_args", "Expected a JSON tab snapshot")
+                    .to_json()
+                    .into(),
+            );
+        };
+        let request = TabSave::deserialize(payload)
+            .map_err(|error| TrunkError::new("invalid_args", error.to_string()).to_json())?;
+        Ok((activity, request))
+    });
+    match request {
+        Err(error) => invoke.resolver.respond::<()>(Err(error)),
+        Ok((activity, request)) => {
+            let app = invoke.message.webview_ref().app_handle().clone();
+            let worker = activity.spawn_blocking(move || {
+                let data_dir = resolve_data_dir(&app)?;
+                prefs_set_tabs_inner(
+                    &data_dir,
+                    &app.state::<PrefsState>(),
+                    request.writer,
+                    request.revision,
+                    request.tabs,
+                    request.active_tab_id,
+                )
+                .map_err(|error| error.to_json())
+            });
+            invoke.resolver.respond_async(async move {
+                worker.await.map_err(join_error)?.map_err(InvokeError::from)
+            });
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -306,6 +459,74 @@ mod tests {
         assert!(result.is_err());
         let got = prefs_get_inner(dir.path(), &state, "zoom_level").unwrap();
         assert_eq!(got, Some(json!(1.0)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_tab_save_leaves_the_last_good_snapshot_and_allows_a_retry() {
+        let dir = TempDir::new().unwrap();
+        let state = PrefsState::default();
+        let writer = prefs_open_tabs_inner(dir.path(), &state).unwrap().writer;
+        let saved = json!([{ "id": "stay", "repoPath": null, "repoName": "Stay" }]);
+        let closed = json!([{ "id": "new", "repoPath": null, "repoName": "New Tab" }]);
+        prefs_set_tabs_inner(dir.path(), &state, writer, 1, saved.clone(), "stay".into()).unwrap();
+        set_dir_mode(dir.path(), 0o555);
+
+        let failed =
+            prefs_set_tabs_inner(dir.path(), &state, writer, 3, closed.clone(), "new".into());
+        set_dir_mode(dir.path(), 0o755);
+        prefs_set_tabs_inner(dir.path(), &state, writer, 2, json!([]), "earlier".into()).unwrap();
+
+        assert!(failed.is_err());
+        assert_eq!(
+            prefs_get_inner(dir.path(), &state, OPEN_TABS).unwrap(),
+            Some(saved.clone())
+        );
+        assert_eq!(
+            prefs_get_inner(dir.path(), &state, ACTIVE_TAB_ID).unwrap(),
+            Some(json!("stay"))
+        );
+        let on_disk = load_from_disk(dir.path()).unwrap();
+        assert_eq!(on_disk.get(OPEN_TABS), Some(&saved));
+        assert_eq!(on_disk.get(ACTIVE_TAB_ID), Some(&json!("stay")));
+
+        prefs_set_tabs_inner(dir.path(), &state, writer, 4, closed.clone(), "new".into()).unwrap();
+
+        let restarted = prefs_open_tabs_inner(dir.path(), &PrefsState::default()).unwrap();
+        assert_eq!(restarted.tabs, Some(closed));
+        assert_eq!(restarted.active_tab_id, Some(json!("new")));
+    }
+
+    #[test]
+    fn a_remount_can_save_its_first_choice_and_rejects_the_previous_writer() {
+        let dir = TempDir::new().unwrap();
+        let state = PrefsState::default();
+        let before = prefs_open_tabs_inner(dir.path(), &state).unwrap().writer;
+        let tabs = json!([
+            { "id": "first", "repoPath": "/repo", "repoName": "First" },
+            { "id": "second", "repoPath": null, "repoName": "Second" },
+        ]);
+        prefs_set_tabs_inner(dir.path(), &state, before, 5, tabs.clone(), "first".into()).unwrap();
+        let after = prefs_open_tabs_inner(dir.path(), &state).unwrap();
+
+        prefs_set_tabs_inner(
+            dir.path(),
+            &state,
+            after.writer,
+            1,
+            tabs.clone(),
+            "second".into(),
+        )
+        .unwrap();
+        let old = prefs_set_tabs_inner(dir.path(), &state, before, 6, tabs.clone(), "first".into());
+
+        assert_eq!(after.tabs, Some(tabs));
+        assert_eq!(after.active_tab_id, Some(json!("first")));
+        assert_eq!(old.unwrap_err().code, "tab_session_replaced");
+        assert_eq!(
+            load_from_disk(dir.path()).unwrap().get(ACTIVE_TAB_ID),
+            Some(&json!("second"))
+        );
     }
 
     #[test]

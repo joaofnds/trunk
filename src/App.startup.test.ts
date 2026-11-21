@@ -17,6 +17,91 @@ afterEach(() => {
 });
 
 describe("App startup", () => {
+	it("keeps a requested new tab selected when saved tabs finish restoring", async () => {
+		app = new StartupHarness(savedTabs, "active");
+		const restore = app.host.holdNextReply("prefs_open_tabs");
+		app.start();
+		await restore.entered;
+
+		await fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+		restore.release({ writer: 1, tabs: savedTabs, activeTabId: "active" });
+		await app.settle();
+
+		const selected = screen.getByRole("tab", {
+			name: "New Tab",
+			selected: true,
+		});
+		expect(app.host.preferences.get("open_tabs")).toEqual([
+			...savedTabs,
+			expect.objectContaining({ repoPath: null, repoName: "New Tab" }),
+		]);
+		expect(selected.closest("[data-tab-id]")?.getAttribute("data-tab-id")).toBe(
+			app.host.preferences.get("active_tab_id"),
+		);
+	});
+
+	it("retries a failed tab read and restores the valid choices from a malformed list", async () => {
+		app = new StartupHarness(savedTabs, "active");
+		app.host.preferences.set("open_tabs", [null, ...savedTabs, { id: "bad" }]);
+		app.host.seedResponse("updates_status", { phase: "manual" });
+		const read = app.host.holdNextReply("prefs_open_tabs");
+		app.start();
+		await read.entered;
+		read.reject({ code: "io", message: "Temporarily unavailable" });
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Retry opening tabs" }),
+		);
+		await screen.findByText("restored history");
+		await app.settle();
+
+		const restored = within(
+			screen.getByRole("tablist", { name: "Repository tabs" }),
+		);
+		expect(
+			restored.getAllByRole("tab").map((tab) => tab.textContent?.trim()),
+		).toEqual(["first", "active", "last"]);
+		expect(
+			restored.getByRole("tab", { selected: true }).textContent?.trim(),
+		).toBe("active");
+		expect(app.host.count("updates_ready")).toBe(1);
+	});
+
+	it("keeps the legacy repository preference when its replacement cannot be saved", async () => {
+		const legacy = { path: "/legacy", name: "legacy" };
+		app = new StartupHarness([], "missing");
+		app.host.preferences.set("open_repo", legacy);
+		const migration = app.host.holdNextReply("prefs_set_tabs");
+		app.start();
+		await migration.entered;
+
+		migration.reject({ code: "io", message: "Disk full" });
+		await screen.findByText("restored history");
+
+		expect(
+			screen.getByRole("tab", { name: "legacy", selected: true }),
+		).toBeInTheDocument();
+		expect(app.host.preferences.get("open_repo")).toEqual(legacy);
+		expect(app.host.preferences.get("open_tabs")).toEqual([]);
+	});
+
+	it("keeps a malformed legacy repository and opens a blank tab", async () => {
+		const malformed = { path: 42, name: "legacy" };
+		app = new StartupHarness([], "missing");
+		app.host.preferences.set("open_repo", malformed);
+
+		app.start();
+		await app.settle();
+
+		expect(app.host.preferences.get("open_repo")).toEqual(malformed);
+		expect(app.host.preferences.get("open_tabs")).toEqual([
+			expect.objectContaining({ repoPath: null, repoName: "New Tab" }),
+		]);
+		expect(
+			screen.getByRole("tab", { name: "New Tab", selected: true }),
+		).toBeInTheDocument();
+	});
+
 	it("reads initial refs and dirty counts once for the visible repository", async () => {
 		app = new StartupHarness(savedTabs, "active");
 
