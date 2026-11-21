@@ -121,6 +121,25 @@ describe("toast store", () => {
 		]);
 	});
 
+	it("shows a message with the characters that would change its layout replaced", () => {
+		showToast(
+			"Branch 'x\u202Eniam\u202C\u2028main\u2029\u001B' is already gone",
+			"error",
+		);
+
+		expect(toasts.items.map((t) => t.message)).toEqual([
+			"Branch 'x\uFFFDniam\uFFFD\uFFFDmain\uFFFD\uFFFD' is already gone",
+		]);
+	});
+
+	it("keeps the line breaks and tabs a message carries", () => {
+		const message = "would be overwritten by checkout:\n\tsrc/a.ts\r\nAborting";
+
+		showToast(message, "error");
+
+		expect(toasts.items.map((t) => t.message)).toEqual([message]);
+	});
+
 	// Test E: showToast with kind='error' adds item with kind='error'
 	it("showToast('err', 'error') adds an item with kind='error'", () => {
 		showToast("err", "error");

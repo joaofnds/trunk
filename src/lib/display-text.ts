@@ -3,6 +3,7 @@
 // dialog lays out as hard breaks. Left in, a name adds its own lines to the question
 // and can answer it.
 const RENDER_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+const RENDER_UNSAFE_WITHIN_LINES = /[\p{Cf}\p{Zl}\p{Zp}]|[^\P{Cc}\t\n\r]/gu;
 
 const MAX_REFNAME_CHARS = 60;
 export const MAX_PATH_CHARS = 200;
@@ -10,6 +11,11 @@ export const MAX_MESSAGE_CHARS = 4000;
 
 export function flattened(text: string): string {
 	return text.replace(RENDER_UNSAFE, "�");
+}
+
+/** As `flattened`, keeping the tabs and line breaks a multi-line message carries. */
+export function flattenedKeepingLineBreaks(text: string): string {
+	return text.replace(RENDER_UNSAFE_WITHIN_LINES, "�");
 }
 
 export function forDisplay(text: string, maxChars = MAX_REFNAME_CHARS): string {

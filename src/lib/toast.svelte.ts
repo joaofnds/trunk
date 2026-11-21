@@ -1,3 +1,5 @@
+import { flattenedKeepingLineBreaks } from "./display-text.js";
+
 export type ToastKind = "success" | "error";
 
 export interface Toast {
@@ -35,10 +37,11 @@ export function showToast(
 	kind: ToastKind = "success",
 	ms = 3000,
 ): void {
+	const shown = flattenedKeepingLineBreaks(message);
 	if (kind === "success") {
-		showSuccess(message, ms);
+		showSuccess(shown, ms);
 	} else {
-		showError(message);
+		showError(shown);
 	}
 }
 
