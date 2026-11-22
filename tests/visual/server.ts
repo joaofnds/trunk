@@ -36,7 +36,8 @@ export async function serve(): Promise<ViteDevServer> {
 		configFile: false,
 		root: ROOT,
 		cacheDir: join(ROOT, "node_modules/.vite-visual"),
-		optimizeDeps: { entries: [PAGE.slice(1), CATALOG_PAGE.slice(1)] },
+		// Keep optimized module URLs stable while tests open lazy views.
+		optimizeDeps: { noDiscovery: true },
 		logLevel: "error",
 		server: {
 			host: "127.0.0.1",
