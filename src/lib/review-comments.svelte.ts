@@ -9,7 +9,7 @@ import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
 export type ReviewReadState = "ready" | "pending" | "failed";
 
 type SelectedRead =
-	| { reviewId: string; readState: "failed" }
+	| { reviewId: string; readState: "pending" | "failed" }
 	| {
 			reviewId: string;
 			readState: "ready";
@@ -113,12 +113,12 @@ export function createReviewComments(
 		commits: [] as SessionCommit[],
 		selectedReviewId: null as string | null,
 		selected: null as SelectedRead | null,
+		selectedError: null as string | null,
 		activeReadState: "pending" as ReviewReadState,
-		reviewListRead: false,
 		revision: 0,
 		revisionScope: "full" as "full" | "refs",
 		threadsAuthoritative: false,
-		lastError: null as string | null,
+		refreshError: null as string | null,
 	});
 
 	const hasThreads = $derived(state.threads.length > 0);
@@ -133,6 +133,12 @@ export function createReviewComments(
 		state.reviews.find((review) => review.id === shownReviewId) ?? null,
 	);
 	const shown = $derived.by((): ShownRead => {
+		const selected = state.selected;
+		if (
+			selected?.reviewId === shownReviewId &&
+			selected.readState === "pending"
+		)
+			return { readState: "pending", threads: [], commits: [] };
 		if (shownReviewId === state.activeReviewId) {
 			if (state.activeReadState !== "ready")
 				return { readState: state.activeReadState, threads: [], commits: [] };
@@ -143,11 +149,10 @@ export function createReviewComments(
 			};
 		}
 
-		const selected = state.selected;
 		if (selected === null || selected.reviewId !== shownReviewId)
 			return { readState: "pending", threads: [], commits: [] };
-		if (selected.readState === "failed")
-			return { readState: "failed", threads: [], commits: [] };
+		if (selected.readState !== "ready")
+			return { readState: selected.readState, threads: [], commits: [] };
 		return {
 			readState: "ready",
 			threads: selected.threads,
@@ -174,52 +179,66 @@ export function createReviewComments(
 	let canonicalPath: string | null = null;
 	let cancelled = false;
 
-	// Generation guard protects this batch from an independent state replacement.
-	let loadSeq = 0;
+	// An earlier selection can finish after a newer click, including a return to the same review.
+	let choiceRevision = 0;
+	let selectedRead: { reviewId: string } | null = null;
+	let activeSelectedReads = 0;
+	let waitingForSlot: ((admitted: boolean) => void) | null = null;
+	let picking: { reviewId: string; done: Promise<void> } | null = null;
 	let fullRefreshPending = true;
 	let runningScope: "full" | "refs" | null = null;
 
 	async function readReviewState(): Promise<void> {
-		const seq = ++loadSeq;
 		const scope = fullRefreshPending ? "full" : "refs";
 		fullRefreshPending = false;
 		runningScope = scope;
-		const pickAtStart = state.selectedReviewId;
-		if (state.selected?.readState === "failed") state.selected = null;
+		const choiceAtStart = choiceRevision;
+		const selectedAtStart = selectedRead;
+		if (state.selected?.readState === "failed")
+			state.selected = {
+				reviewId: state.selected.reviewId,
+				readState: "pending",
+			};
 		if (state.activeReadState === "failed") state.activeReadState = "pending";
 		await learnCanonicalPath();
-		if (cancelled || seq !== loadSeq) return;
+		if (cancelled) return;
 
 		// allSettled, not all: a read can reject while the repo is closing, and
 		// with Promise.all one rejection aborts the whole update, leaving stale
 		// threads on screen. Settling each lets a rejection collapse to empty
 		// and mark the read failed instead.
-		const [reviewsR, activeR, snapshotsR, threadsR, commitsR] =
-			await Promise.allSettled([
-				safeInvoke<Review[]>("list_reviews", { path: repoPath }),
-				safeInvoke<string | null>("get_active_review", { path: repoPath }),
-				safeInvoke<ReviewSnapshots>("get_review_snapshots", { path: repoPath }),
-				safeInvoke<Thread[]>("list_threads", { path: repoPath }),
-				safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
+		const [[reviewsR, activeR, snapshotsR], [threadsR, commitsR]] =
+			await Promise.all([
+				Promise.allSettled([
+					safeInvoke<Review[]>("list_reviews", { path: repoPath }),
+					safeInvoke<string | null>("get_active_review", { path: repoPath }),
+					safeInvoke<ReviewSnapshots>("get_review_snapshots", {
+						path: repoPath,
+					}),
+				]),
+				readDetails(),
 			]);
+		const activeId =
+			activeR.status === "fulfilled" ? (activeR.value ?? null) : null;
 
-		if (cancelled || seq !== loadSeq) return;
+		if (cancelled) return;
 
 		const reviewList =
 			reviewsR.status === "fulfilled" && Array.isArray(reviewsR.value)
 				? reviewsR.value
 				: null;
-		state.reviewListRead = reviewList !== null;
-		state.reviews = reviewList ?? [];
+		if (reviewList !== null) state.reviews = reviewList;
+		const pick = state.selectedReviewId;
+		const sameChoice = choiceAtStart === choiceRevision;
 		const pickWasDeleted =
-			state.reviewListRead &&
-			pickAtStart !== null &&
-			state.selectedReviewId === pickAtStart &&
-			!state.reviews.some((review) => review.id === pickAtStart);
+			reviewList !== null &&
+			pick !== null &&
+			sameChoice &&
+			!reviewList.some((review) => review.id === pick);
 		if (pickWasDeleted) state.selectedReviewId = null;
 
-		state.activeReviewId =
-			activeR.status === "fulfilled" ? (activeR.value ?? null) : null;
+		const previousActiveId = state.activeReviewId;
+		state.activeReviewId = activeId;
 
 		const threadBatch =
 			threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
@@ -228,10 +247,10 @@ export function createReviewComments(
 		const activeReviewReadSucceeded = activeR.status === "fulfilled";
 		const activeReviewHasNoThreads =
 			state.activeReviewId !== null &&
-			state.reviews.some(
+			reviewList?.some(
 				(review) =>
 					review.id === state.activeReviewId && review.thread_count === 0,
-			);
+			) === true;
 		const threadBatchMatchesActiveReview =
 			activeReviewReadSucceeded &&
 			threadBatch !== null &&
@@ -263,67 +282,119 @@ export function createReviewComments(
 			? "failed"
 			: "ready";
 
-		const selectedR = await readSelectedReview(seq, pickAtStart);
-		if (cancelled || seq !== loadSeq) return;
-
-		state.lastError = firstRealFailure([
+		state.refreshError = firstRealFailure([
 			reviewsR,
 			activeR,
 			snapshotsR,
 			threadsR,
 			commitsR,
-			...selectedR,
 		]);
-
+		if (pickWasDeleted || pick === null || pick === state.activeReviewId) {
+			if (
+				pick === activeId &&
+				selectedRead?.reviewId === pick &&
+				selectedRead !== selectedAtStart
+			) {
+				// Selection and the active pointer converged. Only a successful newer
+				// named read can supersede the implicit detail snapshot.
+				useSelectedDetailsForActiveReview();
+			} else {
+				clearSelectedRead();
+			}
+		} else if (sameChoice && reviewList === null) {
+			// A failed listing cannot prove that the selected review was deleted.
+			selectedRead = null;
+			state.selected = { reviewId: pick, readState: "failed" };
+			state.selectedError = state.refreshError;
+		} else if (!state.reviews.some((review) => review.id === pick)) {
+			// This list predates the click. Only a subsequent read can retire that pick.
+			fullRefreshPending = true;
+			reviewRefresh.invalidate();
+		} else if (sameChoice || pick === previousActiveId) {
+			// A known pick made during this refresh already started its own read,
+			// except when it could use the review that was active at the time.
+			await readSelectedReview(pick);
+			if (cancelled) return;
+		}
 		state.revisionScope = scope;
 		state.revision += 1;
 		runningScope = null;
 	}
 
-	// The active review's reads above feed every surface but the review panel
-	// and the diff in review mode. Those read the review the user picked, which
-	// is read here beside them, only while it is not the active one.
-	async function readSelectedReview(
-		seq: number,
-		pickAtStart: string | null,
-	): Promise<PromiseSettledResult<unknown>[]> {
-		const reviewId = state.selectedReviewId;
-		const listed = state.reviews.some((review) => review.id === reviewId);
-		if (reviewId === null || reviewId === state.activeReviewId) {
-			state.selected = null;
-			return [];
-		}
-		if (!listed) {
-			state.selected =
-				!state.reviewListRead && reviewId === pickAtStart
-					? { reviewId, readState: "failed" }
-					: null;
-			return [];
-		}
-
-		const results = await Promise.allSettled([
-			safeInvoke<Thread[]>("list_threads", { path: repoPath, reviewId }),
-			safeInvoke<SessionCommit[]>("list_session_commits", {
-				path: repoPath,
-				reviewId,
-			}),
+	function readDetails(reviewId?: string) {
+		const args =
+			reviewId === undefined
+				? { path: repoPath }
+				: { path: repoPath, reviewId };
+		return Promise.allSettled([
+			safeInvoke<Thread[]>("list_threads", args),
+			safeInvoke<SessionCommit[]>("list_session_commits", args),
 		]);
-		if (cancelled || seq !== loadSeq) return results;
+	}
 
-		const [threadsR, commitsR] = results;
-		if (threadsR.status === "rejected" || commitsR.status === "rejected") {
-			state.selected = { reviewId, readState: "failed" };
-			return results;
+	function useSelectedDetailsForActiveReview(): void {
+		const selected = state.selected;
+		if (
+			selected?.readState !== "ready" ||
+			selected.reviewId !== state.activeReviewId
+		)
+			return;
+		state.threads = selected.threads;
+		state.threadsAuthoritative = true;
+		state.commits = selected.commits;
+		state.activeReadState = "ready";
+	}
+
+	function clearSelectedRead(): void {
+		state.selected = null;
+		state.selectedError = null;
+		selectedRead = null;
+		waitingForSlot?.(false);
+		waitingForSlot = null;
+	}
+
+	async function readSelectedReview(reviewId: string): Promise<void> {
+		const request = { reviewId };
+		selectedRead = request;
+		if (state.selected?.readState !== "ready")
+			state.selected = { reviewId, readState: "pending" };
+		// Two slots let a new pick overtake a slow one. Once both are busy,
+		// replace the waiting pick, since only the last choice will be shown.
+		if (activeSelectedReads === 2) {
+			waitingForSlot?.(false);
+			const admitted = await new Promise<boolean>((resolve) => {
+				waitingForSlot = resolve;
+			});
+			if (!admitted) return;
+		} else {
+			activeSelectedReads += 1;
 		}
-
-		state.selected = {
-			reviewId,
-			readState: "ready",
-			threads: Array.isArray(threadsR.value) ? threadsR.value : [],
-			commits: Array.isArray(commitsR.value) ? commitsR.value : [],
-		};
-
-		return results;
+		try {
+			if (cancelled || request !== selectedRead) return;
+			const results = await readDetails(reviewId);
+			if (cancelled || request !== selectedRead) return;
+			const [threadsR, commitsR] = results;
+			state.selectedError = firstRealFailure(results);
+			if (threadsR.status === "rejected" || commitsR.status === "rejected") {
+				state.selected = { reviewId, readState: "failed" };
+				return;
+			}
+			state.selected = {
+				reviewId,
+				readState: "ready",
+				threads: Array.isArray(threadsR.value) ? threadsR.value : [],
+				commits: Array.isArray(commitsR.value) ? commitsR.value : [],
+			};
+			useSelectedDetailsForActiveReview();
+		} finally {
+			if (waitingForSlot) {
+				// Transfer this slot directly to the latest waiting read.
+				waitingForSlot(true);
+				waitingForSlot = null;
+			} else {
+				activeSelectedReads -= 1;
+			}
+		}
 	}
 
 	const reviewRefresh = createCoalescedTask(scheduler, readReviewState);
@@ -364,9 +435,33 @@ export function createReviewComments(
 		return reviewRefresh.run();
 	}
 
-	function select(reviewId: string): Promise<void> {
+	function chooseReview(reviewId: string): Promise<void> {
+		const reselected = reviewId === shownReviewId;
+		choiceRevision += 1;
+		if (state.selectedReviewId !== reviewId) clearSelectedRead();
 		state.selectedReviewId = reviewId;
-		return refresh();
+		if (
+			reselected ||
+			state.refreshError !== null ||
+			canonicalPath === null ||
+			!state.reviews.some((review) => review.id === reviewId)
+		)
+			return refresh();
+		if (reviewId === state.activeReviewId) {
+			return state.activeReadState === "ready" && state.threadsAuthoritative
+				? Promise.resolve()
+				: refresh();
+		}
+		return readSelectedReview(reviewId);
+	}
+
+	function select(reviewId: string): Promise<void> {
+		if (picking?.reviewId === reviewId) return picking.done;
+		const choice = { reviewId, done: chooseReview(reviewId) };
+		picking = choice;
+		return choice.done.finally(() => {
+			if (picking === choice) picking = null;
+		});
 	}
 
 	// Live coordination: refresh when a reviews-changed event arrives for this
@@ -482,7 +577,7 @@ export function createReviewComments(
 			return state.threadsAuthoritative;
 		},
 		get lastError() {
-			return state.lastError;
+			return state.refreshError ?? state.selectedError;
 		},
 		get totalCount() {
 			return totalCount;
@@ -492,7 +587,7 @@ export function createReviewComments(
 		setActive,
 		destroy() {
 			cancelled = true;
-			loadSeq += 1;
+			clearSelectedRead();
 			reviewRefresh.dispose();
 			stalenessRefresh.dispose();
 			refStalenessRefresh.dispose();

@@ -655,6 +655,330 @@ describe("createReviewComments — the shown review", () => {
 		manager.destroy();
 	});
 
+	it("loads only the chosen review when switching from the active review", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		mockInvoke.mockClear();
+
+		await manager.select(other.id);
+
+		expect(manager.shownThreads.map((item) => item.id)).toEqual(["c2"]);
+		expect(manager.shownCommits).toEqual(otherCommits);
+		const args = { path: "/repo", reviewId: other.id };
+		expect(mockInvoke).toHaveBeenCalledTimes(2);
+		expect(mockInvoke).toHaveBeenCalledWith("list_threads", args);
+		expect(mockInvoke).toHaveBeenCalledWith("list_session_commits", args);
+		manager.destroy();
+	});
+
+	it("repairs an ambiguous active thread batch when returning from an archive", async () => {
+		twoReviews();
+		overrideReads((cmd, id) =>
+			cmd === "list_threads" && id === undefined
+				? Promise.resolve([])
+				: undefined,
+		);
+		const manager = await aStoreShowing(other.id);
+		expect(manager.threadsAuthoritative).toBe(false);
+		twoReviews();
+
+		await manager.select(review.id);
+
+		expect(manager.shownThreads).toEqual([thread]);
+		expect(manager.threadsAuthoritative).toBe(true);
+		manager.destroy();
+	});
+
+	it("bounds a burst of archive reads and spends the next free slot on the latest choice", async () => {
+		const archives = Array.from({ length: 8 }, (_, i) => ({
+			...other,
+			id: `archive-${i}`,
+		}));
+		aPopulatedStore({ list_reviews: [review, ...archives] });
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const held = new Map<string, PromiseWithResolvers<Thread[]>>();
+		overrideReads((cmd, id) => {
+			if (cmd !== "list_threads" || typeof id !== "string") return;
+			const reply = Promise.withResolvers<Thread[]>();
+			held.set(id, reply);
+			return reply.promise;
+		});
+
+		const picks = archives.map((archive) => manager.select(archive.id));
+		const latest = archives[archives.length - 1].id;
+		const repeated = manager.select(latest);
+		try {
+			expect(manager.shownReviewId).toBe(latest);
+			expect(Array.from(held.keys())).toEqual(["archive-0", "archive-1"]);
+			held.get("archive-1")?.resolve([]);
+			await flush();
+			expect(Array.from(held.keys())).toEqual([
+				"archive-0",
+				"archive-1",
+				latest,
+			]);
+			held.get(latest)?.resolve([aThread({ id: "latest", review_id: latest })]);
+			await Promise.all([picks[picks.length - 1], repeated]);
+			expect(manager.shownThreads.map((t) => t.id)).toEqual(["latest"]);
+		} finally {
+			manager.destroy();
+			for (const reply of held.values()) reply.resolve([]);
+			await Promise.all(picks);
+		}
+	});
+
+	it("retains valid active contents when a superseded archive read fails", async () => {
+		const third = { ...other, id: "third" };
+		twoReviews();
+		overrideReads((cmd) =>
+			cmd === "list_reviews"
+				? Promise.resolve([review, other, third])
+				: undefined,
+		);
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const list = Promise.withResolvers<Review[]>();
+		const chosen = Promise.withResolvers<Thread[]>();
+		overrideReads((cmd, id) => {
+			if (cmd === "list_reviews") return list.promise;
+			if (cmd === "get_active_review") return Promise.resolve(other.id);
+			if (cmd === "list_threads" && id === other.id) return chosen.promise;
+			if (cmd === "list_threads" && id === undefined)
+				return Promise.resolve([otherThread]);
+			if (cmd === "list_threads" && id === third.id)
+				return Promise.resolve([aThread({ id: "c3", review_id: third.id })]);
+		});
+		const refresh = manager.refresh();
+		await flush();
+		const obsolete = manager.select(other.id);
+		list.resolve([review, other, third]);
+		await flush();
+		await manager.select(third.id);
+		chosen.reject(new Error("obsolete read failed"));
+		await Promise.all([obsolete, refresh]);
+
+		expect(manager.threads).toEqual([otherThread]);
+		expect(manager.shownThreads.map((t) => t.id)).toEqual(["c3"]);
+		expect(manager.lastError).toBeNull();
+		manager.destroy();
+	});
+
+	it.each(["before", "after"])(
+		"shows the newer explicit pick when an older listing fails %s its details arrive",
+		async (order) => {
+			twoReviews();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			const listing = Promise.withResolvers<Review[]>();
+			const chosen = Promise.withResolvers<Thread[]>();
+			overrideReads((cmd, id) => {
+				if (cmd === "get_active_review") return Promise.resolve(other.id);
+				if (cmd === "list_reviews") return listing.promise;
+				if (cmd === "list_threads" && id === other.id) return chosen.promise;
+			});
+			const refresh = manager.refresh();
+			await flush();
+			const selection = manager.select(other.id);
+			if (order === "before") {
+				listing.reject(new Error("list unavailable"));
+				await flush();
+			}
+			chosen.resolve([otherThread]);
+			await selection;
+			listing.reject(new Error("list unavailable"));
+			await refresh;
+
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.shownThreads).toEqual([otherThread]);
+			expect(manager.shownReview?.id).toBe(other.id);
+			manager.destroy();
+		},
+	);
+	it("opens a listed review while an unrelated active thread read is outstanding", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const activeThreads = Promise.withResolvers<Thread[]>();
+		const entered = Promise.withResolvers<void>();
+		overrideReads((cmd, id) => {
+			if (cmd === "list_threads" && id === undefined) {
+				entered.resolve();
+				return activeThreads.promise;
+			}
+		});
+		const refreshing = manager.refresh();
+		await entered.promise;
+
+		const picked = manager.select(other.id);
+		await flush();
+		try {
+			expect(manager.shownReadState).toBe("ready");
+			expect(manager.shownThreads.map((item) => item.id)).toEqual(["c2"]);
+		} finally {
+			activeThreads.resolve([thread]);
+			await Promise.all([refreshing, picked]);
+			manager.destroy();
+		}
+	});
+
+	it.each(["before", "after"])(
+		"keeps the fresh archive read when an older refresh makes it active %s the picked reply",
+		async (order) => {
+			twoReviews();
+			const manager = createReviewComments("/repo", scheduler);
+			await flush();
+			const list = Promise.withResolvers<Review[]>();
+			const chosenThreads = Promise.withResolvers<Thread[]>();
+			overrideReads((cmd, id) => {
+				if (cmd === "list_reviews") return list.promise;
+				if (cmd === "get_active_review") return Promise.resolve(other.id);
+				if (cmd === "list_threads")
+					return id === other.id
+						? chosenThreads.promise
+						: Promise.resolve([{ ...otherThread, text: "old" }]);
+				if (cmd === "list_session_commits" && !id)
+					return Promise.resolve(commits);
+			});
+			const refresh = manager.refresh();
+			await flush();
+			const selection = manager.select(other.id);
+			if (order === "before") {
+				list.resolve([review, other]);
+				await flush();
+			}
+			chosenThreads.resolve([{ ...otherThread, text: "fresh" }]);
+			await selection;
+			list.resolve([review, other]);
+			await refresh;
+
+			expect(manager.shownThreads.map((t) => t.text)).toEqual(["fresh"]);
+			expect(manager.threads.map((t) => t.text)).toEqual(["fresh"]);
+			expect(manager.activeReviewId).toBe(other.id);
+			expect(manager.commits).toEqual(otherCommits);
+			manager.destroy();
+		},
+	);
+
+	it("keeps the last review list when a listing begun before selection fails", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const list = Promise.withResolvers<Review[]>();
+		overrideReads((cmd) => (cmd === "list_reviews" ? list.promise : undefined));
+		const refresh = manager.refresh();
+		await flush();
+		await manager.select(other.id);
+		list.reject(new Error("busy"));
+		await refresh;
+
+		expect(manager.shownReview?.title).toBe(other.title);
+		expect(manager.shownThreads).toEqual([otherThread]);
+		expect(manager.shownReadState).toBe("ready");
+		manager.destroy();
+	});
+
+	it("revalidates the last known review list before opening a pick after a failed listing", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		overrideReads((cmd) =>
+			cmd === "list_reviews" ? Promise.reject(new Error("busy")) : undefined,
+		);
+		await manager.refresh();
+		aPopulatedStore();
+
+		await manager.select(other.id);
+
+		expect(manager.shownReviewId).toBe(review.id);
+		expect(manager.shownReadState).toBe("ready");
+		expect(manager.reviews).toEqual([review]);
+		manager.destroy();
+	});
+
+	it("recovers the active pointer and its store subscription on a pick after canonical lookup failed", async () => {
+		twoReviews();
+		overrideReads((cmd) =>
+			cmd === "canonical_repo_path"
+				? Promise.reject(new Error("busy"))
+				: undefined,
+		);
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		fireReviewsChanged("/repo");
+		overrideReads((cmd) => {
+			if (cmd === "canonical_repo_path") return Promise.resolve("/repo");
+			if (cmd === "get_active_review") return Promise.resolve(other.id);
+			if (cmd === "list_threads") return Promise.resolve([otherThread]);
+		});
+
+		await manager.select(other.id);
+		expect(manager.activeReviewId).toBe(other.id);
+		expect(manager.shownThreads).toEqual([otherThread]);
+		const prior = manager.revision;
+		fireReviewsChanged("/repo");
+		await flush();
+		expect(manager.revision).toBeGreaterThan(prior);
+		manager.destroy();
+	});
+
+	it("revalidates the panel when the displayed archive is chosen again", async () => {
+		twoReviews();
+		const manager = await aStoreShowing(other.id);
+		const prior = manager.revision;
+
+		await manager.select(other.id);
+
+		expect(manager.revision).toBeGreaterThan(prior);
+		expect(manager.revisionScope).toBe("full");
+		manager.destroy();
+	});
+
+	it("keeps the review picked while a refresh moves the active pointer elsewhere", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const nextActive = Promise.withResolvers<string>();
+		overrideReads((cmd) =>
+			cmd === "get_active_review" ? nextActive.promise : undefined,
+		);
+		const refreshing = manager.refresh();
+		await flush();
+
+		const picked = manager.select(review.id);
+		nextActive.resolve(other.id);
+		await Promise.all([refreshing, picked]);
+
+		expect(manager.shownReviewId).toBe(review.id);
+		expect(manager.shownReadState).toBe("ready");
+		expect(manager.shownThreads.map((item) => item.id)).toEqual(["c1"]);
+		manager.destroy();
+	});
+
+	it("ignores a superseded archive failure after leaving and returning to the same review", async () => {
+		twoReviews();
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		const oldThreads = Promise.withResolvers<Thread[]>();
+		let first = true;
+		overrideReads((cmd, id) => {
+			if (first && cmd === "list_threads" && id === other.id) {
+				first = false;
+				return oldThreads.promise;
+			}
+		});
+		const firstPick = manager.select(other.id);
+		await manager.select(review.id);
+		await manager.select(other.id);
+		oldThreads.reject(new Error("obsolete read"));
+		await firstPick;
+
+		expect(manager.shownThreads.map((item) => item.id)).toEqual(["c2"]);
+		expect(manager.lastError).toBeNull();
+		manager.destroy();
+	});
+
 	/**
 	 * Holds every later read of REVIEW02's threads. Each settle answers the
 	 * oldest read still held, so the test flushes until the store has asked.
@@ -836,6 +1160,7 @@ describe("createReviewComments — the shown review", () => {
 				reread(manager);
 				await flush();
 
+				expect(manager.lastError).toBe("database is locked");
 				expect(manager.shownReadState).toBe("pending");
 				manager.destroy();
 			});
