@@ -8,7 +8,7 @@ import FileText from "@lucide/svelte/icons/file-text";
 import GitCommitHorizontal from "@lucide/svelte/icons/git-commit-horizontal";
 import Pencil from "@lucide/svelte/icons/pencil";
 import Trash2 from "@lucide/svelte/icons/trash-2";
-import { tick } from "svelte";
+import { flushSync, tick } from "svelte";
 import { ask } from "../lib/dialog.js";
 import { externalLinks } from "../lib/external-links.js";
 import { gapLength } from "../lib/full-file-anchor.js";
@@ -67,7 +67,8 @@ interface Props {
 	// Under its file's header in the panel, the card names only the lines it
 	// covers, since the header already names the file.
 	scoped?: boolean;
-	// The thread the panel's keys act on, and how a click makes it that thread.
+	// The thread the panel keys act on. A pointer press or focus on one of its
+	// controls makes this card the current thread.
 	focused?: boolean;
 	// Whether the focused card draws the cursor, which only the keys need.
 	cursorShown?: boolean;
@@ -126,6 +127,14 @@ const replyDraft = $derived(editor.reply);
 const rootEditSaving = $derived(editor.rootEditSaving);
 const replySaving = $derived(editor.replySaving);
 let rootEditor: ReturnType<typeof CommentEditor> | undefined = $state();
+
+let replyEditor: ReturnType<typeof CommentEditor> | undefined = $state();
+
+export function focusReply() {
+	// Mount the card's editors before focusing the one this gesture requested.
+	if (collapsed) flushSync(() => folds.open(thread));
+	replyEditor?.focusForWriting();
+}
 
 // Where the comment points, whichever shape it holds. A current-file thread
 // carries no anchor, so without this it rendered a card with no location at all
@@ -514,6 +523,9 @@ async function requestDeleteReply(replyId: string) {
 	aria-current={focused ? "true" : undefined}
 	class:comment-card-cursor={focused && cursorShown}
 	onpointerdown={onfocusrequest}
+	onfocusin={(event) => {
+		if (event.target !== event.currentTarget) onfocusrequest?.();
+	}}
 	class:comment-card-resolved={isSettled(thread.state)}
 	class:comment-card-dismissed={thread.state === "dismissed"}
 	class:comment-card-open={!collapsed}
@@ -649,6 +661,7 @@ async function requestDeleteReply(replyId: string) {
 					data-thread-composer
 				>
 					<CommentEditor
+						bind:this={replyEditor}
 						bind:text={replyDraft.text}
 						label="Reply"
 						placeholder="Reply…"

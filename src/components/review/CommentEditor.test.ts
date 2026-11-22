@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../../lib/invoke.js";
 import CommentEditor from "./CommentEditor.svelte";
@@ -255,6 +256,32 @@ describe("CommentEditor", () => {
 			]);
 		});
 
+		it("keeps the current preview when an earlier render arrives late", async () => {
+			let finishFirst!: (html: string) => void;
+			const first = new Promise<string>((resolve) => {
+				finishFirst = resolve;
+			});
+			vi.mocked(safeInvoke)
+				.mockReturnValueOnce(first)
+				.mockResolvedValueOnce("<p>Second version</p>");
+			const { field } = renderEditor({ text: "First version" });
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+			await fireEvent.click(screen.getByRole("button", { name: "Write" }));
+			await type(field, "Second version");
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+			expect(
+				await screen.findByText("Second version", { selector: "p" }),
+			).toBeVisible();
+
+			finishFirst("<p>First version</p>");
+			await first;
+			await tick();
+
+			expect(
+				screen.getByText("Second version", { selector: "p" }),
+			).toBeVisible();
+		});
+
 		it("opens on Cmd+Shift+P", async () => {
 			vi.mocked(safeInvoke).mockResolvedValueOnce("<p>looks good</p>");
 			const { field } = renderEditor({ text: "looks good" });
@@ -279,6 +306,20 @@ describe("CommentEditor", () => {
 
 			expect(field).toBeVisible();
 			expect(field).toHaveFocus();
+		});
+
+		it("leaves an empty reply ready to write when its preview is cancelled", async () => {
+			const { field, calls } = renderEditor({ collapsible: true });
+			field.focus();
+			await tick();
+			await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+			expect(screen.getByText("Nothing to preview")).toBeVisible();
+
+			await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+			expect(calls).toEqual(["cancel"]);
+			expect(field).toBeVisible();
+			expect(screen.queryByText("Nothing to preview")).toBeNull();
 		});
 
 		it("says an empty comment has nothing to preview", async () => {

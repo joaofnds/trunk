@@ -8,7 +8,10 @@ import {
 	aThread,
 } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
-import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
+import {
+	createReviewEditorStore,
+	createThreadEditorSession,
+} from "../lib/review-editors.svelte.js";
 import type { Anchor, Thread, ThreadState } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
@@ -39,6 +42,13 @@ function calledCommands(): string[] {
 function callArgs(cmd: string): Record<string, unknown> | undefined {
 	const call = vi.mocked(safeInvoke).mock.calls.find((c) => c[0] === cmd);
 	return call?.[1] as Record<string, unknown> | undefined;
+}
+
+function sentReplies() {
+	return vi
+		.mocked(safeInvoke)
+		.mock.calls.filter(([cmd]) => cmd === "add_reply")
+		.map(([, args]) => args);
 }
 
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
@@ -1202,6 +1212,39 @@ describe("ThreadCard", () => {
 		expect(textarea.value).toBe("original");
 	});
 
+	it("can send two successive replies after returning to the same thread", async () => {
+		const editors = createReviewEditorStore();
+		const editorSessionForThread = (thread: Thread) =>
+			editors.thread(thread.review_id, "review-panel", thread.id);
+		const first = renderCard({ editorSessionForThread });
+		await fireEvent.focusIn(screen.getByLabelText("Reply"));
+		expect(screen.getByRole("button", { name: "Reply" })).toBeDisabled();
+		first.unmount();
+		renderCard({ editorSessionForThread });
+
+		const field = screen.getByLabelText("Reply");
+		for (const text of ["Returning reply", "One more thought"]) {
+			await fireEvent.input(field, { target: { value: text } });
+			await fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+			expect(field).toHaveValue("");
+		}
+
+		expect(sentReplies()).toEqual([
+			{
+				path: "/repo",
+				threadId: "c1",
+				text: "Returning reply",
+				delivery: "send",
+			},
+			{
+				path: "/repo",
+				threadId: "c1",
+				text: "One more thought",
+				delivery: "send",
+			},
+		]);
+	});
+
 	it("keeps root and reply drafts when the card remounts", async () => {
 		const editorSession = createThreadEditorSession();
 		const first = renderCard({ editorSession });
@@ -1310,6 +1353,29 @@ describe("ThreadCard", () => {
 		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
 			"keep this edit",
 		);
+	});
+
+	it("accepts another reply after sending from preview", async () => {
+		vi.mocked(safeInvoke).mockResolvedValueOnce("<p>first draft</p>");
+		renderCard();
+		const field = screen.getByLabelText("Reply");
+		await fireEvent.input(field, { target: { value: "first draft" } });
+		await fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+		expect(
+			await screen.findByText("first draft", { selector: "p" }),
+		).toBeVisible();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+		await waitFor(() => expect(field).toHaveValue(""));
+		expect(field).toBeVisible();
+		await fireEvent.input(field, { target: { value: "second draft" } });
+		await fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+		expect(sentReplies()).toEqual([
+			{ path: "/repo", threadId: "c1", text: "first draft", delivery: "send" },
+			{ path: "/repo", threadId: "c1", text: "second draft", delivery: "send" },
+		]);
 	});
 
 	it("sends the typed reply on Cmd+Enter", async () => {

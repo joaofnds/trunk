@@ -21,7 +21,7 @@ import {
 	aReview,
 	FIXTURE_REVIEW_ID,
 } from "../__tests__/helpers/review-fixture.js";
-import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { ReviewReadState } from "../lib/review-comments.svelte.js";
@@ -3121,6 +3121,48 @@ describe("ReviewPanel keyboard", () => {
 		expect(screen.getByRole("button", { name: "Line 4" })).toBeEnabled();
 	});
 
+	it("marks the thread containing the focused control done when D is pressed", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await press("j");
+		const line = screen
+			.getByText("on the lines")
+			.closest("article") as HTMLElement;
+		const control = within(line).getByRole("button", { name: "Mark done" });
+		control.focus();
+
+		await fireEvent.keyDown(control, { key: "d" });
+		await flush();
+
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "line",
+			next: "done",
+		});
+	});
+
+	it("opens the new thread with Enter after moving away from a focused action", async () => {
+		await aCommitWithANoteAndALineThread();
+		const onJump = vi.fn();
+		renderPanel(onJump);
+		await flush();
+		await press("j");
+		const done = within(
+			screen.getByRole("article", { current: true }),
+		).getByRole("button", { name: "Mark done" });
+		done.focus();
+
+		await fireEvent.keyDown(done, { key: "j" });
+		await flush();
+		await press("Enter");
+
+		expect(document.activeElement).toBe(focusedThread());
+		expect(onJump).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "line" }),
+		);
+	});
+
 	it("leaves Enter to a button that has focus", async () => {
 		await aCommitWithANoteAndALineThread();
 		const onJump = vi.fn();
@@ -3162,6 +3204,135 @@ describe("ReviewPanel keyboard", () => {
 		expect(document.activeElement).toBe(
 			focused && within(focused).getByRole("textbox", { name: "Reply" }),
 		);
+	});
+
+	it.each(["", "A draft to finish"])(
+		"resumes writing a previewed reply with R (%j)",
+		async (text) => {
+			await aCommitWithANoteAndALineThread();
+			renderPanel();
+			await flush();
+			await press("j");
+			await press("r");
+			const card = screen.getByRole("article", { current: true });
+			const field = within(card).getByRole("textbox", { name: "Reply" });
+			await fireEvent.input(field, { target: { value: text } });
+			await fireEvent.click(
+				within(card).getByRole("button", { name: "Preview" }),
+			);
+			card.focus();
+			await flush();
+			expect(within(card).getByRole("button", { name: "Write" })).toBeVisible();
+
+			await press("r");
+
+			expect(field).toBeVisible();
+			expect(field).toHaveFocus();
+			expect(field).toHaveValue(text);
+		},
+	);
+
+	it("returns focus to writing when R closes a preview containing the focused link", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await press("j");
+		await press("r");
+		const card = screen.getByRole("article", { current: true });
+		const field = within(card).getByRole("textbox", { name: "Reply" });
+		await fireEvent.input(field, {
+			target: { value: "[docs](https://example.org)" },
+		});
+		vi.mocked(safeInvoke).mockResolvedValueOnce(
+			'<p><a href="https://example.org">docs</a></p>',
+		);
+		await fireEvent.click(
+			within(card).getByRole("button", { name: "Preview" }),
+		);
+		const link = within(card).getByRole("link", { name: "docs" });
+		link.focus();
+
+		await fireEvent.keyDown(link, { key: "r" });
+		await flush();
+
+		expect(field).toHaveFocus();
+		expect(field).toHaveValue("[docs](https://example.org)");
+	});
+
+	it.each(["Edit comment", "Edit reply"])(
+		"gives R focus when unfolding a thread with %s open",
+		async (editor) => {
+			installReads({
+				commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+				comments: [
+					{
+						...commitLevelComment("note", COMMIT_A, "on the commit"),
+						replies: [aReply({ text: "prior reply" })],
+					},
+				],
+			});
+			renderPanel();
+			await flush();
+			await press("j");
+			const card = screen.getByRole("article", { current: true });
+			await fireEvent.click(within(card).getByRole("button", { name: editor }));
+			await fireEvent.input(
+				within(card).getByRole("textbox", { name: editor }),
+				{ target: { value: "unfinished edit" } },
+			);
+			await fireEvent.click(
+				within(card).getByRole("button", { name: "Collapse thread" }),
+			);
+			card.focus();
+
+			await press("r");
+
+			expect(
+				within(card).getByRole("textbox", { name: "Reply" }),
+			).toHaveFocus();
+			expect(within(card).getByRole("textbox", { name: editor })).toHaveValue(
+				"unfinished edit",
+			);
+		},
+	);
+
+	it("opens the folded thread and focuses its reply with R", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await press("j");
+		const note = screen.getByRole("article", { current: true });
+		await fireEvent.click(
+			within(note).getByRole("button", { name: "Collapse thread" }),
+		);
+		expect(within(note).queryByRole("textbox", { name: "Reply" })).toBeNull();
+
+		await press("r");
+
+		expect(within(note).getByRole("textbox", { name: "Reply" })).toHaveFocus();
+	});
+
+	it("leaves focus on the next control the user chooses after requesting a reply", async () => {
+		await aCommitWithANoteAndALineThread();
+		renderPanel();
+		await flush();
+		await press("j");
+		const card = screen.getByRole("article", { current: true });
+		await fireEvent.click(
+			within(card).getByRole("button", { name: "Collapse thread" }),
+		);
+		card.focus();
+		const other = screen
+			.getByText("on the lines")
+			.closest("article") as HTMLElement;
+
+		card.dispatchEvent(
+			new KeyboardEvent("keydown", { bubbles: true, key: "r" }),
+		);
+		other.focus();
+		await flush();
+
+		expect(other).toHaveFocus();
 	});
 
 	it("names the keys under the threads", async () => {

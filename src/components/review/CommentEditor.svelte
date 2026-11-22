@@ -1,5 +1,5 @@
 <script lang="ts">
-import { type Snippet, tick } from "svelte";
+import { flushSync, type Snippet } from "svelte";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { safeInvoke } from "../../lib/invoke.js";
@@ -64,12 +64,31 @@ let {
 
 let field = $state<HTMLTextAreaElement | null>(null);
 let focused = $state(false);
-const open = $derived(!collapsible || focused || text !== "");
-let previewing = $state(false);
-let previewHtml = $state<string | null>(null);
+let preview = $state.raw<{ text: string; html: string | null } | null>(null);
+const open = $derived(
+	!collapsible || focused || text !== "" || preview !== null,
+);
+
+$effect(() => {
+	// Submitting or cancelling a reply clears the draft while leaving this editor mounted.
+	if (preview && preview.text !== text) preview = null;
+});
 
 export function focus() {
 	field?.focus({ preventScroll: !focusOnMount });
+}
+
+export function focusForWriting() {
+	if (preview)
+		flushSync(() => {
+			preview = null;
+		});
+	focus();
+}
+
+function cancel() {
+	preview = null;
+	oncancel();
 }
 
 $effect(() => {
@@ -102,22 +121,23 @@ function apply(node: HTMLTextAreaElement, edit: TextEdit) {
 // The preview is the backend's render of the text, the same one a submitted
 // comment's card shows, so the two cannot disagree.
 async function togglePreview() {
-	if (previewing) {
-		previewing = false;
-		previewHtml = null;
-		await tick();
-		focus();
+	if (preview) {
+		focusForWriting();
 		return;
 	}
 
-	previewing = true;
-	if (text.trim() === "") return;
+	const request = { text, html: null };
+	preview = request;
+	if (request.text.trim() === "") return;
 	try {
-		const html = await safeInvoke<string>("render_comment_preview", { text });
-		if (previewing) previewHtml = html;
+		const html = await safeInvoke<string>("render_comment_preview", {
+			text: request.text,
+		});
+		if (preview === request) preview = { text: request.text, html };
 	} catch (error) {
+		if (preview !== request) return;
 		reportErrorToast(error, "Preview failed");
-		previewing = false;
+		preview = null;
 	}
 }
 
@@ -214,21 +234,21 @@ function onpaste(event: ClipboardEvent) {
 	onfocusin={() => (focused = true)}
 	{onfocusout}
 >
-	{#if previewing}
+	{#if preview}
 		<div
 			class="comment-editor-preview markdown-body select-text"
 			use:externalLinks
 		>
 			{#if text.trim() === ""}
 				<p class="text-text-subtle">Nothing to preview</p>
-			{:else if previewHtml !== null}
+			{:else if preview.html !== null}
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
 				     (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-				{@html previewHtml}
+				{@html preview.html}
 			{/if}
 		</div>
 	{/if}
-	<div class="comment-editor-grow" data-value={text} hidden={previewing}>
+	<div class="comment-editor-grow" data-value={text} hidden={preview !== null}>
 		<textarea
 			bind:this={field}
 			bind:value={text}
@@ -251,9 +271,9 @@ function onpaste(event: ClipboardEvent) {
 			>
 			<span class="ml-auto flex items-center gap-2">
 				<Button size="sm" variant="ghost" onclick={() => void togglePreview()}
-					>{previewing ? "Write" : "Preview"}</Button
+					>{preview ? "Write" : "Preview"}</Button
 				>
-				<Button size="sm" variant="ghost" disabled={busy} onclick={oncancel}
+				<Button size="sm" variant="ghost" disabled={busy} onclick={cancel}
 					>Cancel</Button
 				>
 				{#if onhold}

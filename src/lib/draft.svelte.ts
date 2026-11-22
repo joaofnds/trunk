@@ -24,7 +24,6 @@ export interface Draft {
 
 export function createDraft(): Draft {
 	const state = $state({ editing: false, text: "", revision: 0 });
-	const valid = $derived(state.text.trim().length > 0);
 
 	return {
 		get editing() {
@@ -41,7 +40,7 @@ export function createDraft(): Draft {
 			state.revision += 1;
 		},
 		get valid() {
-			return valid;
+			return state.text.trim().length > 0;
 		},
 		open(seed = "") {
 			state.text = seed;

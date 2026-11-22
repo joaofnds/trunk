@@ -393,6 +393,7 @@ function isJumpable(c: Thread): boolean {
 	return (c.anchor !== null || c.content_pin != null) && !isOrphan(c);
 }
 
+const threadCards = new Map<string, ReturnType<typeof ThreadCard>>();
 // Only the keys draw it: a pointer press already shows where it landed.
 let cursorFromKeys = $state(false);
 const shownThreads = $derived(
@@ -535,6 +536,7 @@ function focusThreadAt(index: number) {
 
 	placeCursor(thread);
 	cursorFromKeys = true;
+	cardOf(thread.id)?.focus({ preventScroll: true });
 	void tick().then(() => {
 		if (panelVisible && focusedId === thread.id)
 			cardOf(thread.id)?.scrollIntoView({ block: "nearest" });
@@ -653,9 +655,7 @@ function threadKeys(event: KeyboardEvent) {
 	}
 	if (chord === "r") {
 		event.preventDefault();
-		cardOf(thread.id)
-			?.querySelector<HTMLElement>("[aria-label='Reply']")
-			?.focus();
+		threadCards.get(thread.id)?.focusReply();
 	}
 }
 
@@ -1491,6 +1491,13 @@ registerUpdateBlocker(() =>
 		ondelete={(id) => deleteComment(id)}
 		confirmDelete={true}
 		variant="panel"
+		bind:this={
+			() => threadCards.get(comment.id),
+			(card) => {
+				if (card) threadCards.set(comment.id, card);
+				else threadCards.delete(comment.id);
+			}
+		}
 		scoped
 		focused={focusedId === comment.id}
 		cursorShown={cursorFromKeys}
