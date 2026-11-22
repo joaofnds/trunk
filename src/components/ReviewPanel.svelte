@@ -57,6 +57,7 @@ import {
 	reviewSections,
 } from "../lib/review-sections.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
+import { REVIEW_KEYS } from "../lib/review-shortcuts.js";
 import { reviewTitle } from "../lib/review-title.js";
 import {
 	provideReviewVisibility,
@@ -509,16 +510,16 @@ $effect(() => {
 const KEY_LEGEND: [string[], string][] = [
 	[["J", "K"], "move"],
 	[["↵"], "open code"],
-	[["R"], "reply"],
-	[["D"], "done"],
-	[["X"], "dismiss"],
-	[["O"], "reopen"],
+	[[REVIEW_KEYS.reply.toUpperCase()], "reply"],
+	[[REVIEW_KEYS.done.toUpperCase()], "done"],
+	[[REVIEW_KEYS.dismissed.toUpperCase()], "dismiss"],
+	[[REVIEW_KEYS.open.toUpperCase()], "reopen"],
 ];
 
 const STEP_KEYS: Partial<Record<string, ThreadState>> = {
-	d: "done",
-	x: "dismissed",
-	o: "open",
+	[REVIEW_KEYS.done]: "done",
+	[REVIEW_KEYS.dismissed]: "dismissed",
+	[REVIEW_KEYS.open]: "open",
 };
 
 function cardOf(id: string): HTMLElement | null {
@@ -653,7 +654,7 @@ function threadKeys(event: KeyboardEvent) {
 		if (isJumpable(thread)) jump(thread);
 		return;
 	}
-	if (chord === "r") {
+	if (chord === REVIEW_KEYS.reply) {
 		event.preventDefault();
 		threadCards.get(thread.id)?.focusReply();
 	}

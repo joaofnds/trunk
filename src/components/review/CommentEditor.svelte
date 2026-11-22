@@ -1,5 +1,6 @@
 <script lang="ts">
 import { flushSync, type Snippet } from "svelte";
+import type { HTMLTextareaAttributes } from "svelte/elements";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { safeInvoke } from "../../lib/invoke.js";
@@ -20,6 +21,7 @@ interface Props {
 	text: string;
 	/** The field's accessible name. */
 	label: string;
+	fieldHint?: Pick<HTMLTextareaAttributes, "title" | "aria-keyshortcuts">;
 	placeholder: string;
 	submitLabel: string;
 	submitDisabled: boolean;
@@ -47,6 +49,7 @@ interface Props {
 let {
 	text = $bindable(),
 	label,
+	fieldHint,
 	placeholder,
 	submitLabel,
 	submitDisabled,
@@ -253,6 +256,7 @@ function onpaste(event: ClipboardEvent) {
 			bind:this={field}
 			bind:value={text}
 			aria-label={label}
+			{...fieldHint}
 			{placeholder}
 			disabled={busy}
 			rows="1"

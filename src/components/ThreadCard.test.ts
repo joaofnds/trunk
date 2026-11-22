@@ -1016,6 +1016,53 @@ describe("ThreadCard", () => {
 		);
 	});
 
+	it.each([
+		["button", "Mark done", "Mark done (D)", "D", comment],
+		["button", "Dismiss", "Dismiss (X)", "X", comment],
+		["textbox", "Reply", "Write a reply (R)", "R", comment],
+		[
+			"button",
+			"Reopen",
+			"Reopen (O)",
+			"O",
+			aThread({ state: "done", allowed_transitions: ["open"] }),
+		],
+	] as const)(
+		"names the shortcut on the %s for %s",
+		(role, name, title, key, thread) => {
+			renderCard({ thread, focused: true });
+
+			const control = screen.getByRole(role, { name });
+			expect(control).toHaveAttribute("title", title);
+			expect(control).toHaveAttribute("aria-keyshortcuts", key);
+		},
+	);
+
+	it.each([
+		["button", "Mark done"],
+		["textbox", "Reply"],
+	] as const)(
+		"omits the review shortcut from the inline %s for %s",
+		(role, name) => {
+			renderCard({ variant: "inline" });
+
+			const control = screen.getByRole(role, { name });
+			expect(control).not.toHaveAttribute("title");
+			expect(control).not.toHaveAttribute("aria-keyshortcuts");
+		},
+	);
+
+	it("explains that a hovered thread must be selected before using its shortcut", () => {
+		renderCard({ focused: false });
+
+		const dismiss = screen.getByRole("button", { name: "Dismiss" });
+		expect(dismiss).toHaveAttribute(
+			"title",
+			"Dismiss (select this thread to use X)",
+		);
+		expect(dismiss).not.toHaveAttribute("aria-keyshortcuts");
+	});
+
 	it("puts the thread's state actions in its header", () => {
 		renderCard();
 

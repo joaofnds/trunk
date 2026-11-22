@@ -25,6 +25,7 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import { isSettled } from "../lib/review-filter.js";
+import { REVIEW_KEYS } from "../lib/review-shortcuts.js";
 import { reviewVisibility } from "../lib/review-visibility.svelte.js";
 import { singleClick } from "../lib/single-click.js";
 import { ThreadFolds } from "../lib/thread-folds.svelte.js";
@@ -467,6 +468,17 @@ const TRANSITION_ORDER: ThreadState[] = [
 // rejecting the agent's claim is left to the panel's O key.
 const unsettled = $derived(!isSettled(thread.state));
 
+function shortcutHint(label: string, shortcut: string | undefined) {
+	if (variant !== "panel" || shortcut === undefined) return undefined;
+	const key = shortcut.toUpperCase();
+	return {
+		title: focused
+			? `${label} (${key})`
+			: `${label} (select this thread to use ${key})`,
+		"aria-keyshortcuts": focused ? key : undefined,
+	};
+}
+
 const stateActions = $derived(
 	TRANSITION_ORDER.filter(
 		(next) =>
@@ -475,6 +487,10 @@ const stateActions = $derived(
 	).map((next) => ({
 		label: TRANSITION_LABELS[next],
 		variant: TRANSITION_VARIANTS[next],
+		hint: shortcutHint(
+			TRANSITION_LABELS[next],
+			next === "addressed" ? undefined : REVIEW_KEYS[next],
+		),
 		next,
 	})),
 );
@@ -648,6 +664,7 @@ async function requestDeleteReply(replyId: string) {
 						bind:this={replyEditor}
 						bind:text={replyDraft.text}
 						label="Reply"
+						fieldHint={shortcutHint("Write a reply", REVIEW_KEYS.reply)}
 						placeholder="Reply…"
 						submitLabel={thread.batch_held ? "Add to batch" : "Reply"}
 						submitDisabled={!replyDraft.valid || replySaving}
@@ -788,6 +805,7 @@ async function requestDeleteReply(replyId: string) {
 			<Button
 				size="sm"
 				variant={action.variant}
+				{...action.hint}
 				onclick={(e) =>
 					singleClick(e, () =>
 						setThreadState(repoPath, thread.id, action.next),
