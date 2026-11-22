@@ -22,13 +22,13 @@ let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 	<span class="directory"><bdi>{value}</bdi></span>
 {/snippet}
 
-<span class="file-label" {title}>
-	<span class="names">
+<span class="file-label text-small" {title}>
+	<span class="names font-mono text-callout">
 		{#if previous && renamed}
 			<span class="leaf former"><bdi>{previous.name}</bdi></span>
 			<span class="arrow">→</span>
 		{/if}
-		<span class="leaf"><bdi>{current.name}</bdi></span>
+		<span class="leaf font-semibold"><bdi>{current.name}</bdi></span>
 	</span>
 	{#if previous && moved}
 		<span class="context">
@@ -54,11 +54,16 @@ let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 	align-items: baseline;
 	min-width: 0;
 	overflow: hidden;
+}
+
+.names,
+.context {
 	gap: var(--space-1);
 }
 
 .file-label {
 	flex: 1;
+	gap: var(--space-2);
 }
 
 .context {
