@@ -84,6 +84,16 @@ describe.concurrent("commit graph", () => {
 		expect(harness.graphRepositories()).toEqual(GRAPH_REPOSITORIES);
 	});
 
+	test("the full diff cell receives pointer input around a small change bar", async (context) => {
+		expect(
+			await harness.inspectDiffCell("graph-lanes/01-behind-only", context),
+		).toEqual({
+			cornersHit: true,
+			label: "+1 −0, 1 file changed",
+			selected: true,
+		});
+	});
+
 	test.for(GRAPH_REPOSITORIES)(
 		"draws %s as its baseline shows",
 		async (repository, context) => {

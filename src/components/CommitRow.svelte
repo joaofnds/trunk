@@ -288,7 +288,7 @@ const rowShadow = $derived(
 		<div
 			data-testid="diff-stat"
 			data-column="diff"
-			class="flex-shrink-0 flex items-center overflow-hidden"
+			class="flex-shrink-0 self-stretch flex items-center overflow-hidden"
 			style:padding="0 {COLUMN_PADDING_X}px"
 			use:tooltip={diffTitle}
 		>
@@ -343,6 +343,9 @@ const rowShadow = $derived(
 					class="flex-1 text-center text-small text-text-muted opacity-50"
 					>—</span
 				>
+			{/if}
+			{#if diffTitle}
+				<span class="sr-only">{diffTitle}</span>
 			{/if}
 		</div>
 	{/if}

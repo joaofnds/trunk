@@ -350,9 +350,10 @@ describe("CommitRow", () => {
 			for (const seg of segments) {
 				expect(seg).toHaveClass("min-w-px");
 			}
-			// Numbers are tooltip-only now — nothing visible in the column.
+			// The row exposes counts to screen readers without painting a second label.
 			expect(screen.queryByTestId("diff-stat-count")).toBeNull();
-			expect(col.textContent?.replace(/\s/g, "")).toBe("");
+			const accessibleCounts = col.querySelector(".sr-only")?.textContent;
+			expect(col.textContent?.trim()).toBe(accessibleCounts);
 		});
 
 		it("rounds the bar's outer ends on the end segments and uses no background track", () => {
@@ -453,6 +454,9 @@ describe("CommitRow", () => {
 					},
 				});
 				const col = screen.getByTestId("diff-stat");
+				expect(screen.getByRole("option")).toHaveAccessibleName(
+					/4 files changed/,
+				);
 				// The shared `tooltip` action (same as the toolbar git buttons),
 				// not a native title.
 				expect(col.getAttribute("title")).toBeNull();

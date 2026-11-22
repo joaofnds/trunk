@@ -53,6 +53,77 @@ describe("tooltip", () => {
 		expect(popup()?.textContent).toBe("Stash");
 	});
 
+	it("opens above a trigger at the bottom of the window", () => {
+		const top = window.innerHeight - 28;
+		vi.spyOn(node, "getBoundingClientRect").mockReturnValue(
+			new DOMRect(100, top, 80, 28),
+		);
+		const height = vi
+			.spyOn(HTMLElement.prototype, "offsetHeight", "get")
+			.mockReturnValue(24);
+		try {
+			node.dispatchEvent(new MouseEvent("mouseenter"));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+
+			const bubble = document.querySelector<HTMLElement>(".tooltip-pop");
+			expect(
+				Number.parseFloat(bubble?.style.top ?? "") + 24,
+			).toBeLessThanOrEqual(top);
+			vi.spyOn(node, "getBoundingClientRect").mockReturnValue(
+				new DOMRect(100, 10, 80, 28),
+			);
+			window.dispatchEvent(new Event("resize"));
+			expect(Number.parseFloat(bubble?.style.top ?? "")).toBeGreaterThanOrEqual(
+				38,
+			);
+		} finally {
+			height.mockRestore();
+		}
+	});
+
+	it("shows late statistics while the pointer remains in an initially empty cell", () => {
+		handle.update("");
+		node.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
+		expect(popup()).toBeNull();
+		handle.update("+1 −0, 1 file changed");
+		expect(popup()?.textContent).toBe("+1 −0, 1 file changed");
+		node.dispatchEvent(new MouseEvent("mouseleave"));
+		handle.update("+2 −0, 2 files changed");
+		expect(popup()).toBeNull();
+	});
+
+	it("keeps an oversized report open while the reader moves into it to scroll", () => {
+		vi.spyOn(node, "getBoundingClientRect").mockReturnValue(
+			new DOMRect(20, 20, 80, 28),
+		);
+		const height = vi
+			.spyOn(HTMLElement.prototype, "offsetHeight", "get")
+			.mockReturnValue(window.innerHeight + 500);
+		try {
+			node.dispatchEvent(new MouseEvent("mouseenter"));
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+			const report = document.querySelector<HTMLElement>(
+				".tooltip-pop-scrollable",
+			);
+			if (!report) throw new Error("scrollable tooltip missing");
+			expect(
+				Number.parseFloat(report.style.top) +
+					Number.parseFloat(report.style.maxHeight),
+			).toBeLessThanOrEqual(window.innerHeight);
+			node.dispatchEvent(
+				new MouseEvent("mouseleave", { relatedTarget: report }),
+			);
+			expect(popup()).toBe(report);
+			report.dispatchEvent(
+				new MouseEvent("mouseleave", { relatedTarget: document.body }),
+			);
+			expect(popup()).toBeNull();
+		} finally {
+			height.mockRestore();
+		}
+	});
+
 	it("does not show the tooltip before the delay elapses", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
 		vi.advanceTimersByTime(SHOW_DELAY_MS - 1);
@@ -176,6 +247,18 @@ describe("cutTooltip", () => {
 		expect(document.querySelector(".tooltip-pop")?.textContent).toBe(
 			"feat: a summary too long for its column",
 		);
+	});
+
+	it("follows changes in the width available to a hovered label", () => {
+		layOutText(node, 300, 120);
+		hover();
+		expect(document.querySelector(".tooltip-pop")).not.toBeNull();
+		layOutText(node, 300, 360);
+		window.dispatchEvent(new Event("resize"));
+		expect(document.querySelector(".tooltip-pop")).toBeNull();
+		layOutText(node, 300, 120);
+		window.dispatchEvent(new Event("resize"));
+		expect(document.querySelector(".tooltip-pop")).not.toBeNull();
 	});
 
 	describe("when the text fits its box", () => {

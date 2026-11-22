@@ -74,7 +74,9 @@ textarea::placeholder {
 	font-size: var(--text-small);
 	font-weight: var(--weight-medium);
 	line-height: var(--text-small--line-height);
-	white-space: nowrap;
+	width: max-content;
+	max-width: calc(100% - 4 * var(--space-2));
+	overflow-wrap: anywhere;
 	pointer-events: none;
 	opacity: 0;
 	transition: opacity 80ms ease;
@@ -82,10 +84,13 @@ textarea::placeholder {
 .tooltip-pop-shown {
 	opacity: 1;
 }
+.tooltip-pop-scrollable {
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	pointer-events: auto;
+}
 .tooltip-pop-multiline {
-	max-width: calc(100% - 4 * var(--space-2));
 	white-space: pre-line;
-	overflow-wrap: anywhere;
 }
 @keyframes pulse {
 	50% {

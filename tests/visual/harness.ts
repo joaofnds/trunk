@@ -197,6 +197,15 @@ export class VisualHarness {
 		);
 	}
 
+	inspectDiffCell(
+		repository: string,
+		test: CaptureTest,
+	): Promise<{ cornersHit: boolean; label: string | null; selected: boolean }> {
+		return this.onPage(test, (page) =>
+			page.inspectDiffCell(join(this.repos, repository), test.signal),
+		);
+	}
+
 	/** Opens `repository` the way a restored tab does and captures one footer
 	 *  of the staging panel. */
 	captureFooter(
@@ -419,6 +428,53 @@ class AppPage {
 		}
 
 		return this.settledCapture(abandoned);
+	}
+
+	async inspectDiffCell(
+		path: string,
+		abandoned: AbortSignal,
+	): Promise<{ cornersHit: boolean; label: string | null; selected: boolean }> {
+		await this.openRepository(path, {}, abandoned);
+		const row = this.page
+			.getByTestId("commit-row")
+			.filter({ hasText: "upstream five" });
+		const cell = row.getByTestId("diff-stat");
+		await cell.getByTestId("diff-stat-bar").waitFor({ signal: abandoned });
+		const point = await cell.evaluate(
+			(element) => {
+				const header = element
+					.closest('[role="listbox"]')
+					?.querySelector("[data-testid=column-header] > [data-column=diff]");
+				const row = element.closest('[role="option"]');
+				if (!header || !row)
+					throw new Error("diff column or commit row missing");
+				const { left, right } = header.getBoundingClientRect();
+				const { top, bottom } = row.getBoundingClientRect();
+				const cornersHit = [left + 1, right - 1].every((x) =>
+					[top + 1, bottom - 1].every((y) =>
+						element.contains(document.elementFromPoint(x, y)),
+					),
+				);
+				return { cornersHit, x: right - 1, y: bottom - 1 };
+			},
+			undefined,
+			{ signal: abandoned },
+		);
+		await this.page.mouse.move(point.x, point.y);
+		const label = await this.page
+			.locator(".tooltip-pop-shown")
+			.textContent({ signal: abandoned });
+		await this.page.mouse.click(point.x, point.y);
+		await row.and(this.page.locator('[aria-selected="true"]')).waitFor({
+			signal: abandoned,
+		});
+		return {
+			cornersHit: point.cornersHit,
+			label,
+			selected:
+				(await row.getAttribute("aria-selected", { signal: abandoned })) ===
+				"true",
+		};
 	}
 
 	/** The footer is what the capture waits for: a rebase the command stops

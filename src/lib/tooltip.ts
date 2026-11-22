@@ -1,6 +1,6 @@
 // Native `title` has a browser-fixed ~500ms appearance delay no API can shorten.
 // This action renders a custom tooltip that appears after SHOW_DELAY_MS, centered
-// under its trigger and clamped to the viewport so it never spills off-screen.
+// on its trigger and placed above it when the space below runs out.
 // `aria-label` on the trigger remains the accessible name; this is visual only.
 
 import { textOverrun } from "./text-overrun.js";
@@ -41,45 +41,90 @@ function attachTooltip(
 ): TooltipHandle {
 	let label = text;
 	let el: HTMLDivElement | null = null;
+	let ready = false;
 	let showTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function place() {
 		if (!el) return;
+
 		const rect = node.getBoundingClientRect();
+		const below = window.innerHeight - VIEWPORT_MARGIN - rect.bottom;
+		const above = rect.top - VIEWPORT_MARGIN;
+		el.style.maxHeight = "";
+		const height = el.offsetHeight;
+		const openBelow =
+			height + TRIGGER_GAP <= below ||
+			(height + TRIGGER_GAP > above && below >= above);
+		const available = openBelow ? below : above;
+		const scrollable = height + TRIGGER_GAP > available;
+		el.classList.toggle("tooltip-pop-scrollable", scrollable);
+		if (scrollable) el.style.maxHeight = `${Math.max(0, available)}px`;
+		// A scrollable report touches the trigger so the pointer can enter it.
+		const gap = scrollable ? 0 : TRIGGER_GAP;
 		el.style.left = `${clampedLeft(rect, el.offsetWidth, window.innerWidth)}px`;
-		el.style.top = `${rect.bottom + TRIGGER_GAP}px`;
+		el.style.top = `${openBelow ? rect.bottom + gap : rect.top - gap - el.offsetHeight}px`;
 	}
 
 	function renderLabel(element: HTMLDivElement) {
-		element.textContent = label;
+		if (element.textContent !== label) element.textContent = label;
 		element.classList.toggle("tooltip-pop-multiline", label.includes("\n"));
 	}
 
-	function show() {
-		// Skip blank labels so a trigger with no text (e.g. a not-yet-computed
-		// value) never flashes an empty popup.
-		if (el || !label.trim() || !isWanted()) return;
-		el = document.createElement("div");
-		el.className = "tooltip-pop";
-		renderLabel(el);
-		document.body.appendChild(el);
-		place();
-		requestAnimationFrame(() => el?.classList.add("tooltip-pop-shown"));
-	}
-
-	function scheduleShow() {
-		clearTimeout(showTimer);
-		showTimer = setTimeout(show, SHOW_DELAY_MS);
-	}
-
-	function hide() {
-		clearTimeout(showTimer);
+	function removePopup() {
 		el?.remove();
 		el = null;
 	}
 
+	function refresh() {
+		if (!ready) return;
+
+		if (!label.trim() || !isWanted()) {
+			removePopup();
+			return;
+		}
+
+		if (!el) {
+			el = document.createElement("div");
+			el.className = "tooltip-pop";
+			el.addEventListener("mouseleave", leave);
+			document.body.appendChild(el);
+			requestAnimationFrame(() => el?.classList.add("tooltip-pop-shown"));
+		}
+		renderLabel(el);
+		place();
+	}
+
+	function scheduleShow() {
+		clearTimeout(showTimer);
+		showTimer = setTimeout(() => {
+			ready = true;
+			window.addEventListener("resize", refresh);
+			refresh();
+		}, SHOW_DELAY_MS);
+	}
+
+	function hide() {
+		clearTimeout(showTimer);
+		ready = false;
+		window.removeEventListener("resize", refresh);
+		removePopup();
+	}
+
+	function leave(event: MouseEvent) {
+		const next = event.relatedTarget;
+		if (
+			el?.classList.contains("tooltip-pop-scrollable") &&
+			next instanceof Node &&
+			(el.contains(next) || node.contains(next))
+		) {
+			return;
+		}
+
+		hide();
+	}
+
 	node.addEventListener("mouseenter", scheduleShow);
-	node.addEventListener("mouseleave", hide);
+	node.addEventListener("mouseleave", leave);
 	node.addEventListener("focus", scheduleShow);
 	node.addEventListener("blur", hide);
 	node.addEventListener("click", hide);
@@ -87,16 +132,12 @@ function attachTooltip(
 	return {
 		update(next: string) {
 			label = next;
-			if (!el) return;
-			if (next.trim()) {
-				renderLabel(el);
-				place();
-			} else hide();
+			refresh();
 		},
 		destroy() {
 			hide();
 			node.removeEventListener("mouseenter", scheduleShow);
-			node.removeEventListener("mouseleave", hide);
+			node.removeEventListener("mouseleave", leave);
 			node.removeEventListener("focus", scheduleShow);
 			node.removeEventListener("blur", hide);
 			node.removeEventListener("click", hide);
