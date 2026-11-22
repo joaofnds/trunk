@@ -866,15 +866,20 @@ describe("ReviewPanel", () => {
 			render(ReviewPanel, { props: panelProps() });
 			await flush();
 
-			// The Orphaned flag names the LOCKED reason.
-			expect(
-				screen.getByTitle("File gone. Only the saved excerpt survives."),
-			).toHaveTextContent("Orphaned");
+			expect(screen.getByText("File gone")).toBeVisible();
 			expect(
 				screen.getByRole("button", { name: "Lines 10–12" }),
 			).toBeDisabled();
-			// The comment text + excerpt remain visible.
-			expect(screen.getByText("stale note")).toBeInTheDocument();
+			expect(screen.getByText("stale note")).toBeVisible();
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Collapse thread" }),
+			);
+
+			expect(
+				screen.getByRole("button", { name: "Expand thread" }),
+			).toBeVisible();
+			expect(screen.getByText("File gone")).toBeVisible();
 		});
 
 		// resolve_threads walks a blob per comment, so it is the read
@@ -902,9 +907,7 @@ describe("ReviewPanel", () => {
 			older.resolve([resolvable("c1")]);
 			await flush();
 
-			expect(
-				screen.getByTitle("File gone. Only the saved excerpt survives."),
-			).toHaveTextContent("Orphaned");
+			expect(screen.getByText("File gone")).toBeVisible();
 			expect(
 				screen.getByRole("button", { name: "Lines 10–12" }),
 			).toBeDisabled();
@@ -1019,35 +1022,29 @@ describe("ReviewPanel", () => {
 			expect(container.querySelectorAll(".diff-gutter").length).toBe(3);
 		});
 
-		it("maps each OrphanReason to its locked badge label", async () => {
-			installReads({
-				commits,
-				comments: [
-					lineAnchoredComment("c1", COMMIT_A, "a"),
-					lineAnchoredComment("c2", COMMIT_A, "b"),
-					commitLevelComment("c3", COMMIT_B, "c"),
-				],
-				resolutions: [
-					orphan("c1", "CommitGone"),
-					orphan("c2", "LineOutOfRange"),
-					orphan("c3", "FileGone"),
-				],
-			});
-			render(ReviewPanel, { props: panelProps() });
-			await flush();
+		it.each([
+			["CommitGone", "Commit gone"],
+			["LineOutOfRange", "Line out of range"],
+			["FileGone", "File gone"],
+			["ContentGone", "Code gone"],
+		] as const)(
+			"shows the reason for a %s resolution",
+			async (reason, label) => {
+				const thread =
+					reason === "ContentGone"
+						? currentFileComment("c1", "review this line")
+						: lineAnchoredComment("c1", COMMIT_A, "review this line");
+				installReads({
+					commits,
+					comments: [thread],
+					resolutions: [orphan(thread.id, reason)],
+				});
+				render(ReviewPanel, { props: panelProps() });
+				await flush();
 
-			expect(
-				screen.getByTitle("Commit gone. Only the saved excerpt survives."),
-			).toHaveTextContent("Orphaned");
-			expect(
-				screen.getByTitle(
-					"Line out of range. Only the saved excerpt survives.",
-				),
-			).toHaveTextContent("Orphaned");
-			expect(
-				screen.getByTitle("File gone. Only the saved excerpt survives."),
-			).toHaveTextContent("Orphaned");
-		});
+				expect(screen.getByText(label)).toBeVisible();
+			},
+		);
 	});
 
 	// Copy writes the doc of the threads the panel shows, so the filter decides
@@ -2471,7 +2468,7 @@ describe("ReviewPanel branch sections", () => {
 		).toHaveTextContent("src/main.ts");
 	});
 
-	it("names the lines each card covers in a tag", async () => {
+	it("names the lines each card covers in its header", async () => {
 		installReads({
 			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
 			comments: [lineAnchoredComment("c1", COMMIT_A, "one")],

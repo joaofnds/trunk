@@ -1,11 +1,6 @@
 <script module lang="ts">
-// The state of a thread or a review as a tinted pill: a glyph and a word in the
-// state's color. A label and no control, so it sits beside a control without
-// competing with it. Stale and orphaned are flags rather than states, drawn the
-// same way so a card shows them beside the state they qualify, as is pending,
-// which marks a comment held in its review's batch. A review's state carries no
-// glyph: open takes the open thread's color, stale is dashed, and settled takes
-// the done color.
+// Thread headers show ordinary states as a glyph and label. The frame is
+// reserved for flags, held messages and review summaries.
 
 import type { ReviewState, ThreadState } from "../../lib/types.js";
 
@@ -19,9 +14,8 @@ export const THREAD_LABELS: Record<ThreadState | "stale", string> = {
 	stale: "Stale",
 };
 
-const LABELS: Record<ThreadPill | ReviewState, string> = {
+const LABELS: Record<Exclude<ThreadPill, "orphaned"> | ReviewState, string> = {
 	...THREAD_LABELS,
-	orphaned: "Orphaned",
 	pending: "Pending",
 	settled: "Settled",
 };
@@ -30,31 +24,51 @@ const LABELS: Record<ThreadPill | ReviewState, string> = {
 <script lang="ts">
 import StateGlyph from "./StateGlyph.svelte";
 
-type Props = { state: ThreadPill } | { review: ReviewState };
+type Props =
+	| { state: Exclude<ThreadPill, "orphaned"> }
+	| { state: "orphaned"; reason: string }
+	| { review: ReviewState };
 
 let props: Props = $props();
 
 const glyph = $derived("state" in props ? props.state : null);
 const shown = $derived("state" in props ? props.state : props.review);
 
+const label = $derived(
+	"reason" in props
+		? props.reason
+		: LABELS["state" in props ? props.state : props.review],
+);
+const framed = $derived(
+	glyph === null ||
+		glyph === "orphaned" ||
+		glyph === "pending" ||
+		glyph === "stale",
+);
+
 const PILL =
-	"state-pill inline-flex items-center gap-1 shrink-0 h-control-xs pr-2 rounded-full text-caption font-medium font-sans whitespace-nowrap";
+	"state-pill inline-flex items-center gap-1 shrink-0 h-control-xs text-caption font-medium font-sans whitespace-nowrap";
 </script>
 
 <span
 	class="{PILL} pill-{shown}"
-	class:pl-1={glyph !== null}
+	class:pill-frame={framed}
+	class:rounded-full={framed}
+	class:pr-2={framed}
+	class:pl-1={framed && glyph !== null}
 	class:pl-2={glyph === null}
 >
 	{#if glyph !== null}
 		<StateGlyph state={glyph} size={11} />
 	{/if}
-	<span>{LABELS[shown]}</span>
+	<span>{label}</span>
 </span>
 
 <style>
 .state-pill {
 	color: var(--pill-color);
+}
+.pill-frame {
 	background: color-mix(in oklch, var(--pill-color) 12%, transparent);
 	box-shadow: inset 0 0 0 1px
 		color-mix(in oklch, var(--pill-color) 30%, transparent);
@@ -81,8 +95,8 @@ const PILL =
 .pill-stale {
 	--pill-color: var(--color-thread-stale);
 }
-.pill-pending,
-.pill-stale {
+.pill-frame.pill-pending,
+.pill-frame.pill-stale {
 	background: transparent;
 	box-shadow: none;
 	border: 1px dashed color-mix(in oklch, var(--pill-color) 70%, transparent);

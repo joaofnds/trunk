@@ -70,8 +70,7 @@ describe("commenting on a file no pending change touches", () => {
 		await app.events.externalChange(app.repo.path);
 
 		await waitFor("the orphan and stale markers the vanished code earns", () =>
-			app.review.orphanBadges()[0] ===
-				"Code gone. Only the saved excerpt survives." &&
+			app.review.orphanBadges()[0] === "Code gone" &&
 			app.review.staleMarkers()[0] === "stale"
 				? true
 				: null,

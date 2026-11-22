@@ -22,7 +22,7 @@ const FILE_REF = ".comment-card-fileref";
 const RANGE = ".comment-card-range";
 /** A card in the review panel names only its lines; their tag's tooltip names
  *  the file too, in the same form a card elsewhere spells out. */
-const SCOPE_TAG = ".comment-card-scope button";
+const SCOPE = ".comment-card-scope";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION =
 	'[aria-label="Thread actions"] button, .thread-message button[aria-label$=" comment"]';
@@ -43,7 +43,7 @@ const FINDER_LIST = '[aria-label="Tracked files"]';
 const FINDER_ROW = `${FINDER_LIST} [role="option"]`;
 const SELECTABLE_LINE = "[data-gutter-grip]";
 const FULL_FILE_COMMENT = '[aria-label="Comment on selected lines"]';
-const JUMP_TO_CODE = `[aria-label="Jump to code"], ${SCOPE_TAG}`;
+const JUMP_TO_CODE = `[aria-label="Jump to code"], ${SCOPE} button`;
 const DIFF_PATH = '[data-testid="diff-path"]';
 const REPLY_TEXT = 'textarea[aria-label="Reply"]';
 const REPLY_BODY = ".thread-reply-text";
@@ -624,10 +624,10 @@ export class ReviewDriver {
 		return cards().map(locationOf);
 	}
 
-	/** What each thread card's scope tag in the review panel says it covers,
+	/** What each thread card's scope in the review panel says it covers,
 	 *  topmost first: its lines, or the whole file. */
 	threadScopes(): string[] {
-		return cards().map((card) => textIn(card, SCOPE_TAG));
+		return cards().map((card) => textIn(card, SCOPE));
 	}
 
 	/** The pinned code the topmost thread card shows, line by line. For a
@@ -640,13 +640,9 @@ export class ReviewDriver {
 		return [...lines].map(collapse);
 	}
 
-	/** Why each thread card's Orphaned flag says it no longer resolves against
-	 *  the repository, topmost first, empty where a card carries no flag. The
-	 *  flag names the reason in its tooltip. */
+	/** The missing-code reason shown on each thread card, topmost first. */
 	orphanBadges(): string[] {
-		return cards().map(
-			(card) => card.querySelector(ORPHAN_BADGE)?.getAttribute("title") ?? "",
-		);
+		return cards().map((card) => textIn(card, ORPHAN_BADGE));
 	}
 
 	/** The visible stale marker each thread card carries, empty while fresh. */
@@ -763,7 +759,7 @@ function cardFor(fileRef: string): HTMLElement | undefined {
 function locationOf(card: HTMLElement): string {
 	return (
 		textIn(card, FILE_REF) ||
-		card.querySelector<HTMLElement>(SCOPE_TAG)?.title ||
+		card.querySelector<HTMLElement>(SCOPE)?.title ||
 		card.querySelector<HTMLElement>(RANGE)?.title ||
 		""
 	);

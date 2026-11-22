@@ -158,9 +158,9 @@ describe("ThreadCard", () => {
 		it("titles its range with the file and lines it points at", () => {
 			renderCard({ scoped: true, jumpable: true, onjump: () => {} });
 
-			expect(
-				screen.getByRole("button", { name: "Lines 10–11" }),
-			).toHaveAttribute("title", "src/foo.ts:L10-L11");
+			expect(screen.getByTitle("src/foo.ts:L10-L11")).toHaveTextContent(
+				"Lines 10–11",
+			);
 		});
 
 		it("names a single line", () => {
@@ -196,12 +196,10 @@ describe("ThreadCard", () => {
 				expect(screen.queryByText("Lines 1–609")).not.toBeInTheDocument();
 			});
 
-			it("titles its tag with the file alone", () => {
+			it("titles its scope with the file alone", () => {
 				renderCard({ scoped: true, thread: wholeFile, onjump: () => {} });
 
-				expect(
-					screen.getByRole("button", { name: "Whole file" }),
-				).toHaveAttribute("title", "src/foo.ts");
+				expect(screen.getByTitle("src/foo.ts")).toHaveTextContent("Whole file");
 			});
 
 			it("opens the file", async () => {
@@ -268,27 +266,14 @@ describe("ThreadCard", () => {
 		it("marks an orphaned comment and says why", () => {
 			renderCard({ orphaned: true, orphanLabel: "commit gone" });
 
-			expect(
-				screen.getByTitle("Commit gone. Only the saved excerpt survives."),
-			).toHaveTextContent("Orphaned");
+			expect(screen.getByText("Commit gone")).toBeVisible();
 		});
 
-		it("notes over the excerpt that an orphaned comment's code is gone", () => {
-			renderCard({ orphaned: true, orphanLabel: "commit gone" });
-
-			expect(
-				screen.getByText("Saved excerpt. Commit gone."),
-			).toBeInTheDocument();
-		});
-
-		it("notes over the excerpt that a stale comment's lines moved", () => {
+		it("shows the saved code without a separate caption on a stale thread", () => {
 			renderCard({ thread: { ...comment, stale: true } });
 
-			expect(
-				screen.getByText(
-					"Saved excerpt. These lines have moved or changed since.",
-				),
-			).toBeInTheDocument();
+			expect(screen.getByText("const x = 2;")).toBeInTheDocument();
+			expect(screen.queryByText(/^Saved excerpt/i)).not.toBeInTheDocument();
 		});
 	});
 
@@ -332,7 +317,8 @@ describe("ThreadCard", () => {
 		});
 
 		expect(screen.getByText("const answer = 42;")).toBeTruthy();
-		expect(screen.getByText("Saved excerpt. Code gone.")).toBeTruthy();
+		expect(screen.getByText("Code gone")).toBeTruthy();
+		expect(screen.queryByText(/^Saved excerpt/i)).not.toBeInTheDocument();
 		expect(screen.getByText("Stale")).toBeTruthy();
 	});
 
@@ -1002,7 +988,7 @@ describe("ThreadCard", () => {
 		expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
 	});
 
-	it("shows the thread's current state in a chip", () => {
+	it("shows the thread's current state in its header", () => {
 		const dismissed: Thread = { ...comment, state: "dismissed" };
 
 		renderCard({ thread: dismissed });

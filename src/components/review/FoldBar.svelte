@@ -30,7 +30,7 @@ interface Props {
 let { collapsed, noun, inset, ontoggle, lead, children }: Props = $props();
 
 const INSETS: Record<FoldInset, string> = {
-	thread: "px-1",
+	thread: "min-h-control flex-wrap gap-y-0 px-1",
 	group: "px-4",
 	file: "",
 };

@@ -26,7 +26,7 @@ let {
 const BASE =
 	"cursor-pointer text-left hover:underline focus-visible:underline " +
 	"focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent " +
-	"disabled:pointer-events-none disabled:opacity-50";
+	"disabled:pointer-events-none";
 
 const TONES: Record<LinkButtonTone, string> = {
 	inherit: "text-inherit hover:text-accent focus-visible:text-accent",
@@ -51,6 +51,7 @@ const SHAPES = { truncate: "block w-full truncate" };
 	class={[
 		BASE,
 		TONES[tone],
+		tone === "muted" ? "disabled:text-text-subtle" : "disabled:opacity-50",
 		mono ? FACES.mono : null,
 		truncate ? SHAPES.truncate : null,
 	]}

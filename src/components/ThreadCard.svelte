@@ -39,7 +39,6 @@ import type {
 import Button, { type ButtonVariant } from "../lib/ui/Button.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
-import Tag from "../lib/ui/Tag.svelte";
 import CommentEditor from "./review/CommentEditor.svelte";
 import FoldBar from "./review/FoldBar.svelte";
 import StatePill from "./review/StatePill.svelte";
@@ -186,14 +185,6 @@ const locationTitle = $derived(
 
 const orphanReason = $derived(
 	orphanLabel ? orphanLabel[0].toUpperCase() + orphanLabel.slice(1) : null,
-);
-
-const excerptNote = $derived(
-	orphanReason
-		? `Saved excerpt. ${orphanReason}.`
-		: thread.stale
-			? "Saved excerpt. These lines have moved or changed since."
-			: null,
 );
 
 // A current-file excerpt is plain code, like the full-file source: it is the
@@ -548,13 +539,6 @@ async function requestDeleteReply(replyId: string) {
 				class="comment-card-diff"
 				class:comment-card-diff-dim={thread.stale || orphaned}
 			>
-				{#if excerptNote}
-					<p
-						class="m-0 flex h-control items-center gap-1 px-3 font-sans text-small text-text-subtle shadow-hairline"
-					>
-						{excerptNote}
-					</p>
-				{/if}
 				<div class="py-1">
 					{#each excerptShown as line, i (i)}
 						<div class="diff-line diff-line-{line.kind}">
@@ -726,23 +710,22 @@ async function requestDeleteReply(replyId: string) {
 			>{thread.review_id}</span
 		>
 	{:else if scoped}
-		{#if location === null}
-			<Tag variant="label" dashed
-				><GitCommitHorizontal size={11} aria-hidden="true" />Whole commit</Tag
-			>
-		{:else if onjump}
-			<span class="comment-card-scope pointer-events-auto contents"
-				><Tag
-					title={locationTitle}
-					dashed={wholeFile}
+		<span
+			class="comment-card-scope inline-flex shrink-0 items-stretch self-stretch whitespace-nowrap text-small text-text-muted"
+			title={location !== null && onjump ? locationTitle : undefined}
+			class:pointer-events-auto={location !== null && onjump !== undefined}
+		>
+			{#if location !== null && onjump}
+				<LinkButton
+					tone="muted"
 					disabled={orphaned || !jumpable}
 					onclick={() => onjump?.(thread)}
-					>{@render scopeContent()}</Tag
-				></span
-			>
-		{:else}
-			<Tag variant="label" dashed={wholeFile}>{@render scopeContent()}</Tag>
-		{/if}
+					>{@render scopeContent()}</LinkButton
+				>
+			{:else}
+				{@render scopeContent()}
+			{/if}
+		</span>
 	{:else if location !== null}
 		<span
 			class="comment-card-fileref min-w-0 truncate font-mono text-small"
@@ -764,8 +747,8 @@ async function requestDeleteReply(replyId: string) {
 	{#if orphanReason}
 		<span
 			class="orphan-badge pointer-events-auto contents"
-			title="{orphanReason}. Only the saved excerpt survives."
-			><StatePill state="orphaned" /></span
+			title="{orphanReason}. Jump to code is unavailable."
+			><StatePill state="orphaned" reason={orphanReason} /></span
 		>
 	{/if}
 	{#if collapsed}
@@ -798,7 +781,7 @@ async function requestDeleteReply(replyId: string) {
 		{/if}
 	{/if}
 	<fieldset
-		class="flex min-w-auto items-center gap-1 pointer-events-auto"
+		class="ml-auto flex min-w-auto items-center gap-1 pointer-events-auto"
 		aria-label="Thread actions"
 	>
 		{#each stateActions as action (action.next)}
@@ -828,9 +811,19 @@ async function requestDeleteReply(replyId: string) {
 {/snippet}
 
 {#snippet scopeContent()}
-	{#if wholeFile}
-		<FileText size={11} aria-hidden="true" />
-	{/if}{scopeLabel}
+	<span
+		class="inline-flex h-full items-center gap-1"
+		class:font-mono={location !== null && !wholeFile}
+	>
+		{#if location === null}
+			<GitCommitHorizontal size={11} aria-hidden="true" />Whole commit
+		{:else}
+			{#if wholeFile}
+				<FileText size={11} aria-hidden="true" />
+			{/if}
+			{scopeLabel}
+		{/if}
+	</span>
 {/snippet}
 
 <style>
@@ -869,7 +862,7 @@ async function requestDeleteReply(replyId: string) {
 }
 .comment-card-header {
 	display: flex;
-	height: var(--control-h);
+	min-height: var(--control-h);
 	min-width: 0;
 	background: var(--color-comment-card-header-bg);
 }

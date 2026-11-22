@@ -98,8 +98,8 @@ async function mountPanel() {
 		props,
 		context: new Map([[SCHEDULER, clock]]),
 	});
-	await screen.findByTitle("Commit gone. Only the saved excerpt survives.");
-	await screen.findByTitle("Code gone. Only the saved excerpt survives.");
+	await screen.findByText("Commit gone");
+	await screen.findByText("Code gone");
 	await waitFor(() => expect(host.count("refresh_thread_staleness")).toBe(1));
 	await manager.refresh();
 	await tick();
@@ -132,9 +132,7 @@ describe("refs-only review refresh", () => {
 		await view.rerender(props);
 
 		await waitFor(() => {
-			expect(
-				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
-			).toBeNull();
+			expect(screen.queryByText("Code gone")).toBeNull();
 		});
 		expect(host.count("resolve_threads")).toBe(resolutions + 1);
 	});
@@ -152,9 +150,7 @@ describe("refs-only review refresh", () => {
 		await view.rerender(props);
 
 		await waitFor(() => {
-			expect(
-				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
-			).toBeNull();
+			expect(screen.queryByText("Code gone")).toBeNull();
 		});
 	});
 
@@ -171,13 +167,9 @@ describe("refs-only review refresh", () => {
 		await view.rerender(props);
 
 		await waitFor(() => {
-			expect(
-				screen.queryByTitle("Commit gone. Only the saved excerpt survives."),
-			).toBeNull();
+			expect(screen.queryByText("Commit gone")).toBeNull();
 		});
-		expect(
-			screen.getByTitle("Code gone. Only the saved excerpt survives."),
-		).toBeVisible();
+		expect(screen.getByText("Code gone")).toBeVisible();
 		expect(host.count("resolve_threads")).toBe(fullReads);
 	});
 	it("resolves changed thread anchors only when their repository tab returns", async () => {
@@ -195,9 +187,7 @@ describe("refs-only review refresh", () => {
 		await view.rerender({ ...props, tabActive: true });
 
 		await waitFor(() => {
-			expect(
-				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
-			).toBeNull();
+			expect(screen.queryByText("Code gone")).toBeNull();
 		});
 		expect(host.count("resolve_threads")).toBe(resolutions + 1);
 	});
@@ -234,15 +224,9 @@ describe("refs-only review refresh", () => {
 		await waitFor(() =>
 			expect(host.count("refresh_thread_ref_staleness")).toBe(1),
 		);
-		await waitFor(() =>
-			expect(
-				screen.queryByTitle("Commit gone. Only the saved excerpt survives."),
-			).toBeNull(),
-		);
+		await waitFor(() => expect(screen.queryByText("Commit gone")).toBeNull());
 
-		expect(
-			screen.getByTitle("Code gone. Only the saved excerpt survives."),
-		).toBeInTheDocument();
+		expect(screen.getByText("Code gone")).toBeInTheDocument();
 		expect(manager.threads.find(({ id }) => id === "pin")?.stale).toBe(true);
 		expect(manager.revisionScope).toBe("refs");
 		expect(host.count("resolve_threads")).toBe(fullResolutions);
@@ -279,15 +263,7 @@ describe("refs-only review refresh", () => {
 			{ id: "pin", resolvable: true, reason: null },
 		]);
 		await waitFor(() => expect(host.count("resolve_thread_refs")).toBe(1));
-		await waitFor(() =>
-			expect(
-				screen.queryByTitle("Code gone. Only the saved excerpt survives."),
-			).toBeNull(),
-		);
-		await waitFor(() =>
-			expect(
-				screen.queryByTitle("Commit gone. Only the saved excerpt survives."),
-			).toBeNull(),
-		);
+		await waitFor(() => expect(screen.queryByText("Code gone")).toBeNull());
+		await waitFor(() => expect(screen.queryByText("Commit gone")).toBeNull());
 	});
 });
