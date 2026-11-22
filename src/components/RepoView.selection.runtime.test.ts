@@ -119,7 +119,10 @@ describe("RepoView staging selection", () => {
 		action.release({ file_still_changed: false });
 		await drainReplies();
 
-		expect(screen.getByTestId("diff-path")).toHaveTextContent(file.path);
+		expect(screen.getByTestId("diff-path")).toHaveAttribute(
+			"data-path",
+			file.path,
+		);
 		expect(screen.getByText("updated staged content")).toBeVisible();
 		expect(staged.getByText(file.path)).toBeVisible();
 		expect(unstaged.queryByText(file.path)).toBeNull();
@@ -189,7 +192,10 @@ describe("RepoView staging selection", () => {
 		action.release({ file_still_changed: true });
 		await drainReplies();
 
-		expect(screen.getByTestId("diff-path")).toHaveTextContent(two.path);
+		expect(screen.getByTestId("diff-path")).toHaveAttribute(
+			"data-path",
+			two.path,
+		);
 		expect(
 			screen.getByRole("button", { name: "Stage Lines (1)" }),
 		).toBeEnabled();

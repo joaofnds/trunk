@@ -3,6 +3,7 @@ import { waitFor } from "../harness/wait.js";
 import {
 	type CommentBadge,
 	commentBadgeIn,
+	fileRowAt,
 	firstMatching,
 	openContextMenu,
 	pressButton,
@@ -75,9 +76,7 @@ export class StagingDriver {
 	/** Opens the unstaged file's diff in the center pane. */
 	async openFile(path: string): Promise<void> {
 		const row = await waitFor(`the unstaged ${path} row`, () =>
-			firstMatching(`${UNSTAGED_SECTION} ${FILE_ROW}`, (text) =>
-				text.includes(path),
-			),
+			fileRowAt(`${UNSTAGED_SECTION} ${FILE_ROW}`, path),
 		);
 
 		row.click();
@@ -87,9 +86,7 @@ export class StagingDriver {
 	 *  Returns once the file has crossed into the staged section. */
 	async stageFile(path: string): Promise<void> {
 		const row = await waitFor(`the unstaged ${path} row`, () =>
-			firstMatching(`${UNSTAGED_SECTION} ${FILE_ROW}`, (text) =>
-				text.includes(path),
-			),
+			fileRowAt(`${UNSTAGED_SECTION} ${FILE_ROW}`, path),
 		);
 
 		const button = await waitFor(`the stage action on ${path}`, () =>
@@ -98,16 +95,14 @@ export class StagingDriver {
 		button.click();
 
 		await waitFor(`${path} in the staged section`, () =>
-			this.stagedFiles().some((file) => file.includes(path)) ? true : null,
+			fileRowAt(`${STAGED_SECTION} ${FILE_ROW}`, path),
 		);
 	}
 
 	/** Opens the staged file's diff in the center pane. */
 	async openStagedFile(path: string): Promise<void> {
 		const row = await waitFor(`the staged ${path} row`, () =>
-			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
-				text.includes(path),
-			),
+			fileRowAt(`${STAGED_SECTION} ${FILE_ROW}`, path),
 		);
 
 		row.click();
@@ -116,9 +111,7 @@ export class StagingDriver {
 	/** Right-clicks a staged file, returning once the menu it opens is on screen. */
 	async stagedFileContextMenu(path: string): Promise<void> {
 		const row = await waitFor(`the staged ${path} row`, () =>
-			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
-				text.includes(path),
-			),
+			fileRowAt(`${STAGED_SECTION} ${FILE_ROW}`, path),
 		);
 
 		await openContextMenu(row, this.menu, path);
@@ -129,7 +122,7 @@ export class StagingDriver {
 	 *  cannot land on the wrong section. */
 	async openConflictedFile(path: string): Promise<void> {
 		const row = await waitFor(`the conflicted ${path} row`, () =>
-			firstMatching(FILE_ROW, (text) => text.includes(path)),
+			fileRowAt(FILE_ROW, path),
 		);
 
 		row.click();
@@ -172,11 +165,7 @@ export class StagingDriver {
 
 	/** The review count pill on one staged file. */
 	stagedFileCommentBadge(path: string): CommentBadge | null {
-		return commentBadgeIn(
-			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
-				text.includes(path),
-			),
-		);
+		return commentBadgeIn(fileRowAt(`${STAGED_SECTION} ${FILE_ROW}`, path));
 	}
 
 	/** The content of every added row in the diff pane, topmost first. */

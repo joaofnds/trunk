@@ -53,6 +53,16 @@ describe("buildTree", () => {
 		});
 	});
 
+	it("keeps a directory reported by Git as a selectable leaf", () => {
+		const file = makeFile("tools/vendor/");
+		const [parent] = buildTree([file]);
+		expect(parent).toMatchObject({
+			type: "directory",
+			path: "tools",
+			children: [{ type: "file", name: "vendor/", path: file.path, file }],
+		});
+	});
+
 	// --- Group: path compression (D-04, TREE-07) ---
 	describe("path compression (D-04)", () => {
 		it("compresses single-child directory chains", () => {

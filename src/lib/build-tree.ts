@@ -1,3 +1,4 @@
+import { splitFilePath } from "./file-path.js";
 import { sumTallies } from "./review-filter.js";
 import type { FileStatus, ReviewTally } from "./types.js";
 
@@ -20,7 +21,7 @@ export type TreeNode = DirectoryNode | FileNode;
 /** Intermediate trie node used during tree construction. */
 interface IntermediateDir {
 	children: Map<string, IntermediateDir>;
-	files: FileStatus[];
+	files: FileNode[];
 	path: string;
 }
 
@@ -40,26 +41,21 @@ export function buildTree(files: FileStatus[]): TreeNode[] {
 	const root: IntermediateDir = { children: new Map(), files: [], path: "" };
 
 	for (const file of files) {
-		const segments = file.path.split("/");
+		const { directory, name } = splitFilePath(file.path);
 		let current = root;
-
-		// Walk directory segments (all but last, which is the filename)
-		for (let i = 0; i < segments.length - 1; i++) {
-			const seg = segments[i];
-			let child = current.children.get(seg);
+		for (const segment of directory ? directory.split("/") : []) {
+			let child = current.children.get(segment);
 			if (!child) {
 				child = {
 					children: new Map(),
 					files: [],
-					path: segments.slice(0, i + 1).join("/"),
+					path: current.path ? `${current.path}/${segment}` : segment,
 				};
-				current.children.set(seg, child);
+				current.children.set(segment, child);
 			}
 			current = child;
 		}
-
-		// Push file into the deepest directory
-		current.files.push(file);
+		current.files.push({ type: "file", name, path: file.path, file });
 	}
 
 	// Phase 2: Convert trie to TreeNode[]
@@ -81,19 +77,7 @@ function convert(dir: IntermediateDir): TreeNode[] {
 		result.push(compress(dirNode));
 	}
 
-	// Convert files
-	for (const file of dir.files) {
-		const parts = file.path.split("/");
-		const filename = parts[parts.length - 1];
-		result.push({
-			type: "file",
-			name: filename,
-			path: file.path,
-			file,
-		});
-	}
-
-	return sortNodes(result);
+	return sortNodes(result.concat(dir.files));
 }
 
 /**

@@ -87,10 +87,10 @@ function trackFocusLeaving(e: FocusEvent) {
 let prevTreeMode: boolean | undefined;
 
 let tree = $derived(buildTree(files));
+let dirPaths = $derived(collectDirPaths(tree));
 
 // Migrate expanded paths when tree structure changes (e.g. directory compression)
 $effect(() => {
-	const dirPaths = collectDirPaths(tree);
 	const current = untrack(() => expanded);
 	const migrated = migrateExpanded(current, dirPaths);
 	if (migrated) {
@@ -109,11 +109,16 @@ let flatRows = $derived<FlatRow[]>(
 			})),
 );
 
-// Reset on mode change (D-09): when treeMode changes, reset expanded/focus
+// Start the new layout with its folders closed except the route to the open file.
 $effect(() => {
 	const currentMode = treeMode;
 	if (prevTreeMode !== undefined && prevTreeMode !== currentMode) {
-		expanded = new Set();
+		const path = selectedPath;
+		expanded = new Set(
+			currentMode && path
+				? [...dirPaths].filter((dir) => path.startsWith(`${dir}/`))
+				: [],
+		);
 		focusIndex = 0;
 		lastFocusedPath = null;
 	}
@@ -125,7 +130,7 @@ let prevExpandAll = 0;
 $effect(() => {
 	if (expandAllSignal > 0 && expandAllSignal !== prevExpandAll) {
 		prevExpandAll = expandAllSignal;
-		expanded = collectDirPaths(tree);
+		expanded = dirPaths;
 	}
 });
 
@@ -401,7 +406,6 @@ function handleKeydown(e: KeyboardEvent) {
 					? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file)
 					: undefined}
 				depth={treeMode ? row.depth : 0}
-				displayName={treeMode ? row.node.name : undefined}
 				selected={isMarked(i, row)}
 				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
 				commentTally={commentTallies?.get(row.node.file.path) ?? null}

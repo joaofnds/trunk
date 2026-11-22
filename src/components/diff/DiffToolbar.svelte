@@ -18,7 +18,6 @@ import { onMount } from "svelte";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
-import { renamePartsOf } from "../../lib/rename-display.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
 import { singleClick } from "../../lib/single-click.js";
 import {
@@ -34,6 +33,7 @@ import type {
 } from "../../lib/types.js";
 import Button from "../../lib/ui/Button.svelte";
 import CommentBadge from "../CommentBadge.svelte";
+import FilePathLabel from "../FilePathLabel.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -109,17 +109,10 @@ onMount(() => {
 	if (fontProbe) fixedPitch = measureRowMetrics(fontProbe).monospace;
 });
 
-// The header repeats the file list's own badge and rename form so the two
-// surfaces name the same change the same way. Both come from the shared
-// helpers rather than a second mapping here.
 const badge = $derived(
 	selectedStatus === null
 		? null
 		: (STATUS_BADGES[fileStatusOf(selectedStatus)] ?? UNKNOWN_STATUS_BADGE),
-);
-
-const rename = $derived(
-	selectedPath === null ? null : renamePartsOf(selectedPath, selectedOldPath),
 );
 
 const whitespaceHidesLines = $derived(ignoreWhitespace && showsLines);
@@ -192,14 +185,14 @@ const compact = $derived(
 	{/if}
 
 	<span class="filename">
-		{#if rename !== null}
-			<!-- The old path yields space first: it takes only the width the new
-           path leaves, down to its floor, and the new path ellipsizes after. -->
-			<span data-testid="diff-old-path" class="old-path">{rename.from}</span>
-			<span aria-hidden="true" class="rename-arrow">&rarr;</span>
-			<span data-testid="diff-path" class="new-path">{rename.to}</span>
-		{:else if selectedPath}
-			<span data-testid="diff-path" class="new-path">{selectedPath}</span>
+		{#if selectedPath !== null}
+			<span
+				class="flex min-w-0"
+				data-testid="diff-path"
+				data-path={selectedPath}
+			>
+				<FilePathLabel path={selectedPath} oldPath={selectedOldPath} />
+			</span>
 		{/if}
 		<CommentBadge count={commentCount} tally={commentTally} />
 	</span>
@@ -411,8 +404,6 @@ const compact = $derived(
 	gap: var(--space-1);
 }
 
-/* Clipped, so the parts of a rename that cannot shrink (the old path's floor and
-   the arrow) are cut at its edge rather than drawn over the next control. */
 .filename {
 	flex: 1;
 	overflow: hidden;
@@ -420,27 +411,8 @@ const compact = $derived(
 	align-items: baseline;
 	gap: var(--space-1);
 	font-size: var(--text-small);
-	color: var(--color-text-muted);
+	color: var(--color-text);
 	text-align: left;
-}
-
-.old-path {
-	flex: 1 1 0;
-	min-width: 2ch;
-	max-width: max-content;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.rename-arrow {
-	flex-shrink: 0;
-}
-
-.new-path {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
 }
 
 .status-badge {

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import type { RepoSpec } from "../app/harness/host-client.js";
 import { SuiteHarness, type VisualHarness } from "./harness.js";
 
-const FILE = "review.txt";
+const FILE = "src/review.txt";
 const ILLUSTRATION = "https://trunk-review.test.invalid/history.svg";
 const lines = Array.from({ length: 12 }, (_, index) => `Line ${index + 1}`);
 const EDITED: RepoSpec = {

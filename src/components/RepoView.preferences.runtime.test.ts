@@ -146,7 +146,7 @@ describe("RepoView global preferences", () => {
 		const firstChanges = within(
 			await firstPane.findByTestId("staging-unstaged-section"),
 		);
-		expect(await firstChanges.findByText(nestedFile.path)).toBeVisible();
+		expect(await firstChanges.findByTitle(nestedFile.path)).toBeVisible();
 
 		await fireEvent.click(firstToggle);
 		await first.rerender({ tabActive: false });

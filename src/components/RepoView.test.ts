@@ -4356,7 +4356,7 @@ describe("RepoView", () => {
 				});
 
 				await openTheEditorOnTheClickedCommit();
-				await fireEvent.click(await screen.findByText(file.path));
+				await fireEvent.click(await screen.findByTitle(file.path));
 				await loader[state]();
 
 				await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -4543,15 +4543,15 @@ describe("RepoView", () => {
 				throw new Error("the initial rebase focus did not enter its barriers");
 			}
 			await fireEvent.click(rebaseRow(1));
-			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
+			expect(await screen.findByTitle(focusedFile.path)).toBeTruthy();
 
 			resolveStaleDetail(makeRebaseDetail(HEAD_OID, "head commit"));
 			resolveStaleFiles([makeRebaseFile("src/head.ts")]);
 			await flush();
 
-			expect(screen.queryByText("src/head.ts")).toBeFalsy();
-			expect(screen.getByText(focusedFile.path)).toBeTruthy();
-			await fireEvent.click(screen.getByText(focusedFile.path));
+			expect(screen.queryByTitle("src/head.ts")).toBeFalsy();
+			expect(screen.getByTitle(focusedFile.path)).toBeTruthy();
+			await fireEvent.click(screen.getByTitle(focusedFile.path));
 			expect(mockInvoke).toHaveBeenCalledWith(
 				"diff_commit_file",
 				expect.objectContaining({
@@ -4594,12 +4594,12 @@ describe("RepoView", () => {
 				throw new Error("the initial rebase focus did not enter its barrier");
 			}
 			await fireEvent.click(rebaseRow(1));
-			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
+			expect(await screen.findByTitle(focusedFile.path)).toBeTruthy();
 
 			rejectStaleDetail(new Error("stale focus failed"));
 			await flush();
 
-			expect(screen.getByText(focusedFile.path)).toBeTruthy();
+			expect(screen.getByTitle(focusedFile.path)).toBeTruthy();
 		});
 
 		// Focuses the clicked commit, then HEAD with HEAD's files held, and opens
@@ -4640,7 +4640,7 @@ describe("RepoView", () => {
 			holdHeadFiles = true;
 			await fireEvent.click(rebaseRow(0));
 			await headFilesAsked.promise;
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			await screen.findByRole("button", { name: "Close diff" });
 
 			return headFiles;
@@ -4661,7 +4661,7 @@ describe("RepoView", () => {
 
 			headFiles.resolve([makeRebaseFile("src/head-only.ts")]);
 
-			expect(await screen.findByText("src/head-only.ts")).toBeTruthy();
+			expect(await screen.findByTitle("src/head-only.ts")).toBeTruthy();
 			await waitFor(() =>
 				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
 			);
@@ -4698,7 +4698,7 @@ describe("RepoView", () => {
 			});
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			await screen.findByText("REBASE DIFF");
 		}
 
@@ -4735,7 +4735,7 @@ describe("RepoView", () => {
 				expect(screen.queryByRole("button", { name: "Close diff" })).toBeNull(),
 			);
 
-			await fireEvent.click(screen.getByText(path));
+			await fireEvent.click(screen.getByTitle(path));
 
 			expect(await screen.findByText("REBASE DIFF")).toBeTruthy();
 		});
@@ -4813,7 +4813,7 @@ describe("RepoView", () => {
 
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			expect(await screen.findByText("INITIAL")).toBeTruthy();
 			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
 			await fireEvent.click(screen.getByTitle("Show full file"));
@@ -4869,7 +4869,7 @@ describe("RepoView", () => {
 			const [head] = await screen.findAllByTestId("commit-row");
 			await fireEvent.click(head);
 			await fireEvent.click(
-				await within(await screen.findByTestId("commit-detail")).findByText(
+				await within(await screen.findByTestId("commit-detail")).findByTitle(
 					"src/main.ts",
 				),
 			);
@@ -4882,7 +4882,7 @@ describe("RepoView", () => {
 			await getMenuAction("Interactive Rebase...")();
 			await screen.findByRole("listbox", { name: "Commits to rebase" });
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText("src/rebase.ts"));
+			await fireEvent.click(await screen.findByTitle("src/rebase.ts"));
 			await waitFor(() =>
 				expect(screen.getAllByText("A DIFF")).toHaveLength(2),
 			);
@@ -4924,7 +4924,7 @@ describe("RepoView", () => {
 			});
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			expect(await screen.findByText("OLD REBASE")).toBeTruthy();
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "diff_commit_file"
@@ -4978,14 +4978,14 @@ describe("RepoView", () => {
 			});
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(first));
+			await fireEvent.click(await screen.findByTitle(first));
 			expect(await screen.findByText(`${first} HUNK`)).toBeTruthy();
-			await fireEvent.click(screen.getByText(second));
+			await fireEvent.click(screen.getByTitle(second));
 			expect(await screen.findByText(`${second} HUNK`)).toBeTruthy();
 			await fireEvent.click(screen.getByTitle("Show full file"));
 			expect(await screen.findByText(`${second} FULL`)).toBeTruthy();
 
-			await fireEvent.click(screen.getByText(first));
+			await fireEvent.click(screen.getByTitle(first));
 			await firstFullRequested.promise;
 
 			expect(screen.queryByText(`${first} HUNK`)).toBeFalsy();
@@ -5020,7 +5020,7 @@ describe("RepoView", () => {
 			});
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			expect(await screen.findByText("ORIGINAL REBASE")).toBeTruthy();
 
 			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
@@ -5053,7 +5053,7 @@ describe("RepoView", () => {
 
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await fireEvent.click(await screen.findByText(path));
+			await fireEvent.click(await screen.findByTitle(path));
 			await vi.waitFor(() => expect(resolveDiff).toBeTypeOf("function"));
 			await screen.findByText("Loading diff…");
 			await fireEvent.click(screen.getByRole("button", { name: "Close diff" }));
@@ -5155,8 +5155,8 @@ describe("RepoView", () => {
 
 			await openTheEditorOnTheClickedCommit();
 			await fireEvent.click(rebaseRow(1));
-			await screen.findByText("src/rebase.ts");
-			await fireEvent.click(screen.getByText("src/rebase.ts"));
+			await screen.findByTitle("src/rebase.ts");
+			await fireEvent.click(screen.getByTitle("src/rebase.ts"));
 
 			expect(
 				(await screen.findAllByText("rebase comment")).length,
@@ -6266,7 +6266,7 @@ describe("RepoView", () => {
 				oncontentmodechange: vi.fn(),
 			};
 			const view = render(RepoView, { props });
-			await fireEvent.click(await screen.findByText("src/edited.ts"));
+			await fireEvent.click(await screen.findByTitle("src/edited.ts"));
 			expect(await screen.findByText("let count = 1;")).toBeTruthy();
 			fireReviewShowPanel();
 			await flush();
@@ -6320,7 +6320,7 @@ describe("RepoView", () => {
 			await changeContentMode("full");
 			const requestHeld = holdStagingDiffRequests();
 
-			await fireEvent.click(screen.getByText("src/edited.ts"));
+			await fireEvent.click(screen.getByTitle("src/edited.ts"));
 			await vi.waitFor(() => expect(requestHeld()).toBe(true));
 
 			expect(await screen.findByText("Loading diff…")).toBeTruthy();
@@ -6331,7 +6331,7 @@ describe("RepoView", () => {
 			await showTrackedFileOverStagingFile("hunk");
 			const requestHeld = holdStagingDiffRequests();
 
-			await fireEvent.click(screen.getByText("src/other.ts"));
+			await fireEvent.click(screen.getByTitle("src/other.ts"));
 			await vi.waitFor(() => expect(requestHeld()).toBe(true));
 
 			expect(await screen.findByText("Loading diff…")).toBeTruthy();

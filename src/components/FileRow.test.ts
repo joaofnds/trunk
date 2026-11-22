@@ -18,6 +18,23 @@ describe("FileRow", () => {
 		expect(screen.getByText("README.md")).toBeInTheDocument();
 	});
 
+	it.each([
+		["option", "vendor/ tools"],
+		["treeitem", "vendor/"],
+	] as const)("names an embedded repository in a %s", (role, label) => {
+		const path = "tools/vendor/";
+		render(FileRow, {
+			props: {
+				file: makeFile(path, "New"),
+				role,
+				actionLabel: "+",
+				onaction: vi.fn(),
+			},
+		});
+		expect(screen.getByTitle(path).textContent?.trim()).toBe(label);
+		expect(screen.getByRole(role)).toHaveAttribute("data-path", path);
+	});
+
 	// The backend sends old_path as JSON null, not an absent key, so a row that
 	// only checks for undefined renders an arrow with nothing before it.
 	it("shows no rename arrow when old_path is null", () => {
@@ -37,7 +54,7 @@ describe("FileRow", () => {
 		expect(screen.getByTestId("staging-file")).not.toHaveTextContent("→");
 	});
 
-	it("names both paths in full for a rename inside one folder", () => {
+	it("shows both filenames followed by their shared directory once", () => {
 		render(FileRow, {
 			props: {
 				file: {
@@ -52,11 +69,11 @@ describe("FileRow", () => {
 			},
 		});
 		expect(screen.getByTestId("staging-file")).toHaveTextContent(
-			"code/util.ts → code/math-util.ts",
+			"util.ts → math-util.ts code",
 		);
 	});
 
-	it("keeps both paths whole when the file moved between folders", () => {
+	it("shows both directories when the file moved and changed name", () => {
 		render(FileRow, {
 			props: {
 				file: {
@@ -71,10 +88,13 @@ describe("FileRow", () => {
 			},
 		});
 		const row = screen.getByTestId("staging-file");
-		expect(row).toHaveTextContent("src/util.ts → lib/math-util.ts");
+		expect(row).toHaveTextContent("util.ts → math-util.ts src/ → lib/");
+		expect(
+			screen.getByTitle("src/util.ts → lib/math-util.ts"),
+		).toBeInTheDocument();
 	});
 
-	it("shows only the new basename for a rename in tree mode", () => {
+	it("shows the old and new names once beneath their shared folder", () => {
 		render(FileRow, {
 			props: {
 				file: {
@@ -83,30 +103,48 @@ describe("FileRow", () => {
 					status: "Renamed",
 					is_binary: false,
 				},
-				role: "option",
+				role: "treeitem",
 				actionLabel: "+",
 				onaction: vi.fn(),
-				displayName: "math-util.ts",
 			},
 		});
-		const row = screen.getByTestId("staging-file");
-		expect(row).toHaveTextContent("util.ts");
-		expect(row).toHaveTextContent("math-util.ts");
-		expect(row).not.toHaveTextContent("src/");
+		expect(
+			screen.getByTitle("src/util.ts → src/math-util.ts"),
+		).toHaveTextContent(/^util\.ts → math-util\.ts$/);
 	});
 
-	it("renders displayName when provided", () => {
+	it("names the source folder of a same-name move in the destination tree", () => {
+		render(FileRow, {
+			props: {
+				file: {
+					...makeFile("published/index.ts", "Renamed"),
+					old_path: "drafts/index.ts",
+				},
+				role: "treeitem",
+				actionLabel: "−",
+				onaction: vi.fn(),
+			},
+		});
+		expect(screen.getByRole("treeitem")).toHaveTextContent(
+			"index.ts from drafts/",
+		);
+		expect(
+			screen.getByTitle("drafts/index.ts → published/index.ts"),
+		).toBeInTheDocument();
+	});
+
+	it("shows the basename alone beneath its folder", () => {
 		render(FileRow, {
 			props: {
 				file: makeFile("src/lib/utils/short.ts", "Modified"),
-				role: "option",
+				role: "treeitem",
 				actionLabel: "+",
 				onaction: vi.fn(),
-				displayName: "short.ts",
 			},
 		});
-		expect(screen.getByText("short.ts")).toBeInTheDocument();
-		expect(screen.queryByText("src/lib/utils/short.ts")).toBeNull();
+		expect(screen.getByTitle("src/lib/utils/short.ts")).toHaveTextContent(
+			/^short\.ts$/,
+		);
 	});
 
 	it.each([

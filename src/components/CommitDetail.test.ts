@@ -381,7 +381,8 @@ describe("CommitDetail", () => {
 			},
 		});
 
-		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+		expect(screen.getByRole("option", { selected: true })).toHaveAttribute(
+			"data-path",
 			open,
 		);
 	});

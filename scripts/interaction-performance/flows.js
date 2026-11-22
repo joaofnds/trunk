@@ -17,9 +17,30 @@
 
     return matches[0];
   };
+  // File rows and diff headers now render the name first. A retained build
+  // exposes the full path in text. In either case, wait for the name to render.
+  const displayedPath = element => {
+    const path = element.dataset.path;
+    const end = path.endsWith("/") ? path.length - 1 : path.length;
+    const slash = path.lastIndexOf("/", end - 1);
+    const leaf = element.querySelector(".leaf:not(.former) bdi");
+    if (leaf?.textContent !== path.slice(slash + 1)) return undefined;
+    if (element.getAttribute("role") === "treeitem") return path;
+
+    const directory = path.slice(0, Math.max(0, slash));
+    const displayed = element.querySelector(".context .directory:last-child bdi")?.textContent ?? "";
+    return displayed === directory || displayed === (directory || ".") + "/" ? path : undefined;
+  };
+  const filePath = element => element.dataset.path === undefined
+    ? element.querySelector("span.flex-1 > span")?.textContent.trim()
+    : displayedPath(element);
+  const diffPath = element => element?.dataset.path === undefined
+    ? element?.textContent.trim() : displayedPath(element);
   const file = (section, path) => {
     const matches = all(`${section} [data-testid="staging-file"]`).filter(element =>
-      [...element.querySelectorAll("span")].some(span => span.textContent.trim() === path));
+      element.dataset.path === undefined
+        ? [...element.querySelectorAll("span")].some(span => span.textContent.trim() === path)
+        : displayedPath(element) === path);
     if (matches.length !== 1) throw new Error(`file unavailable: ${section} ${path} (${matches.length})`);
 
     return matches[0];
@@ -57,7 +78,7 @@
   const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
   const options = { contextLines: 3, ignoreWhitespace: false, showFullFile: false };
   const paths = kind => all(`[data-testid="staging-${kind}-section"] [data-testid="staging-file"]`)
-    .map(element => element.querySelector("span.flex-1 > span")?.textContent.trim()).sort();
+    .map(filePath).sort();
   const same = (actual, expected) => JSON.stringify(actual) === JSON.stringify([...expected].sort());
   const statusReady = expected => all('[data-testid="staging-staged-section"]').length === 1 &&
     all('[data-testid="staging-unstaged-section"]').length === 1 &&
@@ -85,7 +106,7 @@
       rows.some(row => [...row.querySelectorAll("span")].some(span => span.textContent.trim() === name) &&
         [...row.querySelectorAll("span")].some(span => span.textContent.trim() === `(${count})`)));
   });
-  const pathReady = path => all('[data-testid="diff-path"]').some(element => element.textContent.trim() === path);
+  const pathReady = path => all('[data-testid="diff-path"]').some(element => diffPath(element) === path);
   const contentReady = text => all(".diff-line-content").some(element => element.textContent.includes(text));
   const callsSince = index => window.interactionProbe.calls.slice(index);
   const completed = (index, command) => callsSince(index).some(call => call.name === `invoke:${command}`);
@@ -241,7 +262,7 @@
           all('[data-testid="commit-detail"] .summary').some(element => element.textContent.trim() === spec.summary) &&
           all('[data-testid="commit-row"][aria-selected="true"]').some(element => element.textContent.includes(spec.summary)) &&
           same(all('[data-testid="commit-detail"] [data-testid="staging-file"]')
-            .map(element => element.querySelector("span.flex-1 > span")?.textContent.trim()).sort(), spec.files);
+            .map(filePath).sort(), spec.files);
         break;
       case "commit-file":
         action = () => file('[data-testid="commit-detail"]', spec.path).click();
@@ -295,7 +316,7 @@
           .some(element => element.textContent.includes(spec.summary)) &&
           all('[data-testid="commit-detail"] .summary').some(element => element.textContent.trim() === spec.summary) &&
           same(all('[data-testid="commit-detail"] [data-testid="staging-file"]')
-            .map(element => element.querySelector("span.flex-1 > span")?.textContent.trim()).sort(), spec.files);
+            .map(filePath).sort(), spec.files);
         break;
       case "pane-toggle": {
         const focus = button("Review");
@@ -494,13 +515,13 @@
     let actionStarted = false;
     let actionReturned = false;
     const contentObserver = new MutationObserver(() => {
-      const path = all('[data-testid="diff-path"]')[0]?.textContent.trim();
+      const path = diffPath(all('[data-testid="diff-path"]')[0]);
       const content = all('.diff-line-content')[0]?.textContent;
       if (path && content && (transitions.at(-1)?.path !== path || transitions.at(-1)?.content !== content)) {
         transitions.push({ at: performance.now(), path, content });
       }
     });
-    contentObserver.observe(document, { subtree: true, childList: true, characterData: true });
+    contentObserver.observe(document, { subtree: true, childList: true, characterData: true, attributeFilter: ["data-path"] });
     const start = performance.now();
     const wallStart = Date.now();
     Object.assign(window.interactionFlowLast, { start, wallStart, beforeCalls, beforeFrames });

@@ -112,8 +112,8 @@ function stagingRowFor(element: Element): HTMLElement {
 
 // A busy row draws no button of its own, so a click on it cannot race the
 // operation that moves it.
-function rowAction(text: string, name: string): HTMLElement | null {
-	const row = stagingRowFor(screen.getByText(text));
+function rowAction(path: string, name: string): HTMLElement | null {
+	const row = stagingRowFor(screen.getByTitle(path));
 	return within(row.parentElement ?? document.body).queryByRole("button", {
 		name,
 	});
@@ -751,7 +751,7 @@ describe("StagingPanel merge-continue", () => {
 		render(StagingPanel, {
 			props: { ...noReviewCounts(), repoPath: "/repo", onstatuschange },
 		});
-		const row = stagingRowFor(await screen.findByText("src/a.ts"));
+		const row = stagingRowFor(await screen.findByTitle("src/a.ts"));
 		const rowWithActions = row.parentElement;
 		if (rowWithActions === null) throw new Error("file row is detached");
 
@@ -829,7 +829,7 @@ describe("StagingPanel merge-continue", () => {
 			render(StagingPanel, {
 				props: { ...noReviewCounts(), repoPath: "/repo" },
 			});
-			const row = stagingRowFor(await screen.findByText("src/a.ts"));
+			const row = stagingRowFor(await screen.findByTitle("src/a.ts"));
 			const rowWithActions = row.parentElement;
 			if (rowWithActions === null) throw new Error("file row is detached");
 
@@ -891,7 +891,7 @@ describe("StagingPanel merge-continue", () => {
 
 			await screen.findByRole("button", { name: "Mark All Resolved" });
 
-			expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+			expect(screen.getByTitle("src/a.ts")).toBeInTheDocument();
 			expect(
 				within(screen.getByTestId("staging-unstaged-section")).getByText(
 					"notes.md",
@@ -912,7 +912,7 @@ describe("StagingPanel merge-continue", () => {
 			});
 
 			await screen.findByRole("button", { name: "Mark All Resolved" });
-			const row = stagingRowFor(screen.getByText("src/a.ts"));
+			const row = stagingRowFor(screen.getByTitle("src/a.ts"));
 			const rowWithActions = row.parentElement;
 			if (rowWithActions === null) throw new Error("file row is detached");
 
@@ -959,7 +959,7 @@ describe("StagingPanel merge-continue", () => {
 				render(StagingPanel, {
 					props: { ...noReviewCounts(), repoPath: "/repo" },
 				});
-				const row = stagingRowFor(await screen.findByText("src/a.ts"));
+				const row = stagingRowFor(await screen.findByTitle("src/a.ts"));
 				vi.mocked(MenuItem.new).mockClear();
 
 				await fireEvent.contextMenu(row);

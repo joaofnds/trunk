@@ -22,7 +22,7 @@ import "../__tests__/helpers/tauri-mock";
 beforeEach(() => stubLayout({ width: 300, height: 4000 }));
 afterEach(restoreLayout);
 describe("TreeFileList", () => {
-	it("renders file paths in flat mode", () => {
+	it("shows the filename before its directory in the flat list", () => {
 		const files = [makeFile("src/a.ts"), makeFile("b.ts")];
 		render(TreeFileList, {
 			props: {
@@ -32,8 +32,8 @@ describe("TreeFileList", () => {
 				onfileaction: vi.fn(),
 			},
 		});
-		expect(screen.getByText("src/a.ts")).toBeInTheDocument();
-		expect(screen.getByText("b.ts")).toBeInTheDocument();
+		expect(screen.getByTitle("src/a.ts")).toHaveTextContent(/a\.ts\s*src/);
+		expect(screen.getByTitle("b.ts")).toHaveTextContent("b.ts");
 	});
 
 	it("can open the tree when a filename looks like a directory key", async () => {
@@ -154,7 +154,7 @@ describe("TreeFileList", () => {
 			},
 		});
 		// Click on the file name text
-		const fileText = screen.getByText("src/a.ts");
+		const fileText = screen.getByRole("option");
 		await fireEvent.click(fileText);
 		expect(onfileclick).toHaveBeenCalledWith("src/a.ts");
 	});
@@ -531,6 +531,48 @@ describe("TreeFileList", () => {
 
 			expect(list.scrollTop).toBe(401 * ROW - VIEWPORT);
 			expect(screen.getByText("file-400.ts")).toBeInTheDocument();
+		});
+
+		it("keeps a nested selected file visible through a list and tree round trip", async () => {
+			const selectedPath = "src/review/threads/index.ts";
+			const props = {
+				files: [
+					...files.map((file) => makeFile(`${file.path}/index.ts`)),
+					makeFile("src/review/comments/index.ts"),
+					makeFile(selectedPath),
+				],
+				treeMode: false,
+				actionLabel: "Stage",
+				selectedPath,
+				onfileaction: () => {},
+			};
+			const { rerender } = render(TreeFileList, { props });
+			await rerender({ ...props, treeMode: true });
+
+			const tree = screen.getByRole("tree");
+			const treeSelection = within(tree).getByRole("treeitem", {
+				selected: true,
+			});
+			expect(within(treeSelection).getByTitle(selectedPath)).toHaveTextContent(
+				"index.ts",
+			);
+			expect(
+				within(tree).getByRole("treeitem", {
+					name: /^comments/,
+					expanded: false,
+				}),
+			).toBeInTheDocument();
+			expect(tree.scrollTop).toBe((files.length + 4) * ROW - VIEWPORT);
+
+			await rerender(props);
+			const list = screen.getByRole("listbox");
+			const listSelection = within(list).getByRole("option", {
+				selected: true,
+			});
+			expect(within(listSelection).getByTitle(selectedPath)).toHaveTextContent(
+				"index.ts",
+			);
+			expect(list.scrollTop).toBe(props.files.length * ROW - VIEWPORT);
 		});
 	});
 });

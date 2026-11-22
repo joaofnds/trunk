@@ -146,9 +146,9 @@ describe("the diff surfaces", () => {
 				const files = app.repo.commitFiles();
 				return files.length > 0 ? files : null;
 			}),
-		).resolves.toEqual(["R src/util.ts → src/math-util.ts"]);
+		).resolves.toEqual(["R util.ts → math-util.ts src"]);
 
-		await app.repo.openCommitFile("math-util.ts");
+		await app.repo.openCommitFile("src/math-util.ts");
 
 		await expect(
 			waitFor("the renamed file's diff", () => {
@@ -164,7 +164,7 @@ describe("the diff surfaces", () => {
 		await app.repo.open();
 
 		await app.repo.selectCommit("rename a file and edit one line");
-		await app.repo.commitFileContextMenu("math-util.ts");
+		await app.repo.commitFileContextMenu("src/math-util.ts");
 
 		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
 			"Copy Relative Path",
@@ -181,7 +181,7 @@ describe("the diff surfaces", () => {
 		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
 		await app.repo.open();
 		await app.repo.selectCommit("rename a file and edit one line");
-		await app.repo.commitFileContextMenu("math-util.ts");
+		await app.repo.commitFileContextMenu("src/math-util.ts");
 
 		app.contextMenu.choose("Copy Old Relative Path");
 
@@ -194,7 +194,7 @@ describe("the diff surfaces", () => {
 		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
 		await app.repo.open();
 		await app.repo.selectCommit("rename a file and edit one line");
-		await app.repo.commitFileContextMenu("math-util.ts");
+		await app.repo.commitFileContextMenu("src/math-util.ts");
 		app.clipboard.refuseWrites("clipboard is locked");
 
 		app.contextMenu.choose("Copy Old Relative Path");
@@ -211,7 +211,7 @@ describe("the diff surfaces", () => {
 		await app.repo.open();
 		await app.staging.open();
 		await app.staging.stageEverything();
-		await app.staging.stagedFileContextMenu("math-util.ts");
+		await app.staging.stagedFileContextMenu("src/math-util.ts");
 		app.clipboard.refuseWrites("clipboard is locked");
 
 		app.contextMenu.choose("Copy Old Relative Path");
@@ -229,7 +229,7 @@ describe("the diff surfaces", () => {
 		await app.staging.open();
 		await app.staging.stageEverything();
 
-		await app.staging.stagedFileContextMenu("math-util.ts");
+		await app.staging.stagedFileContextMenu("src/math-util.ts");
 
 		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
 			"Copy Relative Path",

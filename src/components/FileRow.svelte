@@ -2,13 +2,13 @@
 import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
-import { renamePartsOf } from "../lib/rename-display.js";
 import { singleClick } from "../lib/single-click.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus, ReviewTally } from "../lib/types.js";
 import Row, { type RowRole } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
+import FilePathLabel from "./FilePathLabel.svelte";
 
 interface Props {
 	file: FileStatus;
@@ -22,7 +22,6 @@ interface Props {
 	onfocus?: () => void;
 	oncontextmenu?: (e: MouseEvent) => void;
 	depth?: number;
-	displayName?: string;
 	selected?: boolean;
 	commentCount?: number;
 	commentTally?: ReviewTally | null;
@@ -38,27 +37,12 @@ let {
 	onfocus,
 	oncontextmenu,
 	depth = 0,
-	displayName,
 	selected = false,
 	commentCount = 0,
 	commentTally = null,
 }: Props = $props();
 
 let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
-
-// A rename names both paths in full. Tree mode has already shortened the new
-// path to its basename and the tree's own nesting says where the file is, so
-// the old side shortens to its basename there rather than sitting beside it at
-// full length.
-let rename = $derived.by(() => {
-	const parts = renamePartsOf(file.path, file.old_path ?? null);
-	if (parts === null || displayName === undefined) return parts;
-
-	return {
-		from: parts.from.split("/").pop() ?? parts.from,
-		to: displayName,
-	};
-});
 
 let badgeBg = $derived(
 	isLoading
@@ -92,6 +76,7 @@ function openMenu(e: MouseEvent) {
 
 <Row
 	data-testid="staging-file"
+	data-path={file.path}
 	variant="item"
 	{role}
 	{selected}
@@ -112,32 +97,12 @@ function openMenu(e: MouseEvent) {
 		>{badge.letter}</span
 	>
 
-	<!-- Filename, or both paths when the file was renamed -->
-	<span class="flex-1 overflow-hidden flex items-baseline gap-1 text-callout">
-		{#if rename !== null}
-			<!-- The old path yields space first: it takes only the width the new
-           path leaves, down to its floor, and the new path ellipsizes after. -->
-			<span
-				class="flex-1 max-w-max path-min overflow-hidden text-ellipsis whitespace-nowrap text-text-muted"
-				>{rename.from}</span
-			>
-			<span aria-hidden="true" class="shrink-0 text-text-muted">→</span>
-			<span class="overflow-hidden text-ellipsis whitespace-nowrap"
-				>{rename.to}</span
-			>
-		{:else}
-			<span class="overflow-hidden text-ellipsis whitespace-nowrap"
-				>{displayName ?? file.path}</span
-			>
-		{/if}
-	</span>
+	<FilePathLabel
+		path={file.path}
+		oldPath={file.old_path}
+		tree={role === "treeitem"}
+	/>
 
 	<!-- Review-comment count for this file -->
 	<CommentBadge count={commentCount} tally={commentTally} />
 </Row>
-
-<style>
-.path-min {
-	min-width: 2ch;
-}
-</style>

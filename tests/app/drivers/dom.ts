@@ -27,6 +27,13 @@ export function commentBadgeIn(owner: HTMLElement | null): CommentBadge | null {
 	return tone && Number.isFinite(count) ? { count, tone } : null;
 }
 
+/** Find the row for an exact repository path in either file-list layout. */
+export function fileRowAt(selector: string, path: string): HTMLElement | null {
+	return document.querySelector<HTMLElement>(
+		`${selector}[data-path="${CSS.escape(path)}"]`,
+	);
+}
+
 /** The first element matching `selector` whose text satisfies `matches`, or null
  *  while the interface is not showing one. Every driver locates its target by
  *  what the user reads on it. */

@@ -496,72 +496,40 @@ describe("DiffToolbar file header", () => {
 		expect(screen.getByTitle("Added")).toHaveTextContent("A");
 	});
 
-	it("names both paths when the file was renamed", () => {
+	it("offers both exact paths for a rename and identifies its destination", () => {
 		render(DiffToolbar, {
 			props: {
 				...baseProps,
-				selectedPath: "code/math-util.ts",
-				selectedStatus: "Renamed" as const,
-				selectedOldPath: "util.ts",
+				selectedPath: "review/new.ts",
+				selectedStatus: "Renamed",
+				selectedOldPath: "review/old.ts",
 			},
 		});
-		expect(screen.getByTestId("diff-old-path")).toHaveTextContent("util.ts");
-		expect(screen.getByTestId("diff-path")).toHaveTextContent(
-			"code/math-util.ts",
+
+		const label = screen.getByTitle("review/old.ts → review/new.ts");
+		expect(label).toHaveTextContent(/^old\.ts → new\.ts review$/);
+		expect(screen.getByTestId("diff-path")).toHaveAttribute(
+			"data-path",
+			"review/new.ts",
 		);
 	});
 
-	it("names one path when the file was not renamed", () => {
+	it("offers the exact path while leading with the filename", () => {
 		render(DiffToolbar, {
 			props: {
 				...baseProps,
 				selectedPath: "src/main.rs",
-				selectedStatus: "Modified" as const,
-				selectedOldPath: null,
-			},
-		});
-		expect(screen.queryByTestId("diff-old-path")).toBeNull();
-		expect(screen.getByTestId("diff-path")).toHaveTextContent("src/main.rs");
-	});
-
-	// jsdom lays nothing out, so these read the declared values that decide
-	// which part of the file name gives way to the controls beside it.
-	it("declares the path to ellipsize inside a container that clips what cannot", () => {
-		render(DiffToolbar, {
-			props: {
-				...baseProps,
-				selectedPath: "src/main.rs",
-				selectedOldPath: null,
+				selectedStatus: "Modified",
 			},
 		});
 
-		const path = screen.getByTestId("diff-path");
-
-		expect(ellipsizing(path)).toEqual(ELLIPSIZES);
-		expect(clipping(path.closest(".filename") as HTMLElement)).toEqual({
-			flexShrink: "1",
-			overflow: "hidden",
-		});
-	});
-
-	it("declares a rename's old path to take only the width the new path leaves", () => {
-		render(DiffToolbar, {
-			props: {
-				...baseProps,
-				selectedPath: "code/math-util.ts",
-				selectedStatus: "Renamed" as const,
-				selectedOldPath: "util.ts",
-			},
-		});
-
-		const old = getComputedStyle(screen.getByTestId("diff-old-path"));
-
-		expect({
-			flexGrow: old.flexGrow,
-			flexBasis: old.flexBasis,
-			maxWidth: old.maxWidth,
-		}).toEqual({ flexGrow: "1", flexBasis: "0px", maxWidth: "max-content" });
-		expect(ellipsizing(screen.getByTestId("diff-path"))).toEqual(ELLIPSIZES);
+		expect(screen.getByTitle("src/main.rs")).toHaveTextContent(
+			/^main\.rs src$/,
+		);
+		expect(screen.getByTestId("diff-path")).toHaveAttribute(
+			"data-path",
+			"src/main.rs",
+		);
 	});
 
 	it("shows no badge until a file is selected", () => {
@@ -569,25 +537,3 @@ describe("DiffToolbar file header", () => {
 		expect(screen.queryByTestId("diff-status-badge")).toBeNull();
 	});
 });
-
-const ELLIPSIZES = {
-	flexShrink: "1",
-	overflow: "hidden",
-	textOverflow: "ellipsis",
-	whiteSpace: "nowrap",
-};
-
-function ellipsizing(element: HTMLElement) {
-	const style = getComputedStyle(element);
-	return {
-		flexShrink: style.flexShrink,
-		overflow: style.overflow,
-		textOverflow: style.textOverflow,
-		whiteSpace: style.whiteSpace,
-	};
-}
-
-function clipping(element: HTMLElement) {
-	const style = getComputedStyle(element);
-	return { flexShrink: style.flexShrink, overflow: style.overflow };
-}

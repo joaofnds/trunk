@@ -467,8 +467,7 @@ class AppPage {
 			.click(options);
 		await this.page
 			.getByTestId("staging-unstaged-section")
-			.getByTestId("staging-file")
-			.filter({ hasText: file })
+			.getByTitle(file, { exact: true })
 			.click(options);
 		await this.page.getByTitle("Side-by-side view").click(options);
 		const viewport = this.page.locator(".split-view .exact-virtual-viewport");

@@ -34,10 +34,7 @@ export class DiffPaneDriver {
 	/** The path the pane's header says it is showing, which is what a refresh in
 	 *  place must leave alone. */
 	selectedPath(): string | null {
-		return (
-			document.querySelector<HTMLElement>(DIFF_PATH)?.textContent?.trim() ??
-			null
-		);
+		return document.querySelector<HTMLElement>(DIFF_PATH)?.dataset.path ?? null;
 	}
 
 	/** Whether the pane is showing a failed read rather than content, which is

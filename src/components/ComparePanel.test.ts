@@ -133,7 +133,7 @@ describe("ComparePanel", () => {
 
 	it("selects a file from the list", async () => {
 		const { onfileselect } = renderPanel();
-		await fireEvent.click(screen.getByText("src/main.ts"));
+		await fireEvent.click(screen.getByTitle("src/main.ts"));
 		expect(onfileselect).toHaveBeenCalledWith("src/main.ts");
 	});
 

@@ -1,5 +1,5 @@
 import { waitFor } from "../harness/wait.js";
-import { enabledButton, firstMatching } from "./dom.js";
+import { enabledButton, fileRowAt, firstMatching } from "./dom.js";
 
 const EDITOR = ".rebase-editor";
 const ROW = "[data-rebase-row]";
@@ -79,17 +79,15 @@ export class RebaseEditorDriver {
 
 	/** Opens one file from the focused commit in the rebase takeover's diff. */
 	async openFile(path: string): Promise<void> {
-		const row = await waitFor(
-			`the ${path} rebase file`,
-			() =>
-				[...document.querySelectorAll<HTMLElement>(FILE_ROW)].find(
-					(candidate) => textOf(candidate).includes(path),
-				) ?? null,
+		const row = await waitFor(`the ${path} rebase file`, () =>
+			fileRowAt(FILE_ROW, path),
 		);
 
 		row.click();
 		await waitFor(`the ${path} rebase diff`, () =>
-			textOf(document.querySelector(DIFF_PATH)) === path ? true : null,
+			document.querySelector<HTMLElement>(DIFF_PATH)?.dataset.path === path
+				? true
+				: null,
 		);
 	}
 

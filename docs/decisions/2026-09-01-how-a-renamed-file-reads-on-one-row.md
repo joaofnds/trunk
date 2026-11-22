@@ -1,6 +1,8 @@
 # A renamed file names both paths in full
 
-Status: accepted, 2026-09-01 (João). Follows the rename detection in
+Status: superseded for file lists and diff headers on 2026-11-22. Those surfaces now lead with the filenames. They show a shared directory once, distinguish both directories on a move, and expose the original and destination paths in full on hover. Tree rows name the source directory on a move because their parent supplies the destination.
+
+Original decision: accepted, 2026-09-01 (João). Follows the rename detection in
 `2026-09-01-rename-detection-and-the-pathspec-trap.md`.
 
 ## What it does

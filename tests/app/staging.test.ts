@@ -4,8 +4,7 @@ import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
 
 const FILE = "src/main.ts";
-/** How either section writes a modified file: status badge, then path. */
-const MODIFIED_ROW = `M ${FILE}`;
+const MODIFIED_ROW = "M main.ts src";
 
 const NUMBERED = Array.from({ length: 24 }, (_, at) => `line ${at + 1}`);
 const REWRITTEN = NUMBERED.with(2, "line 3 CHANGED");

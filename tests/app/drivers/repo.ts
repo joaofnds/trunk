@@ -5,6 +5,7 @@ import { waitFor } from "../harness/wait.js";
 import {
 	type CommentBadge,
 	commentBadgeIn,
+	fileRowAt,
 	firstMatching,
 	openContextMenu,
 } from "./dom.js";
@@ -126,9 +127,7 @@ export class RepoDriver {
 	}
 
 	private async clickFileRow(path: string, waitMessage: string): Promise<void> {
-		const row = await waitFor(waitMessage, () =>
-			firstMatching(FILE_ROW, (text) => text.includes(path)),
-		);
+		const row = await waitFor(waitMessage, () => fileRowAt(FILE_ROW, path));
 
 		row.click();
 	}
@@ -160,9 +159,7 @@ export class RepoDriver {
 
 	/** The review count pill on a selected commit's file row. */
 	commitFileCommentBadge(path: string): CommentBadge | null {
-		return commentBadgeIn(
-			firstMatching(FILE_ROW, (text) => text.includes(path)),
-		);
+		return commentBadgeIn(fileRowAt(FILE_ROW, path));
 	}
 
 	/** Right-clicks a commit, returning once the menu it opens is on screen. */
@@ -175,7 +172,7 @@ export class RepoDriver {
 	/** Right-clicks a file in the selected commit's detail pane. */
 	async commitFileContextMenu(path: string): Promise<void> {
 		const row = await waitFor(`the ${path} row`, () =>
-			firstMatching(FILE_ROW, (text) => text.includes(path)),
+			fileRowAt(FILE_ROW, path),
 		);
 
 		await openContextMenu(row, this.menu, path);
