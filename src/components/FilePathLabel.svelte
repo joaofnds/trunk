@@ -23,7 +23,7 @@ let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 {/snippet}
 
 <span class="file-label text-small" {title}>
-	<span class="names font-mono text-callout">
+	<span class="names text-callout">
 		{#if previous && renamed}
 			<span class="leaf former"><bdi>{previous.name}</bdi></span>
 			<span class="arrow">→</span>
