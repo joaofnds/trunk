@@ -51,8 +51,8 @@ impl MergeBeginOutcome {
 
 /// The name git's own merge message records for what it merges, in the forms
 /// `git fmt-merge-msg` writes for a single branch, remote-tracking branch or tag.
-fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
-    let msg = merge_msg?;
+pub(super) fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
+    let msg = merge_msg?.lines().next()?;
     [
         "Merge branch '",
         "Merge remote-tracking branch '",
@@ -60,7 +60,11 @@ fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
     ]
     .iter()
     .find_map(|prefix| msg.strip_prefix(prefix))
-    .and_then(|rest| rest.split('\'').next())
+    .and_then(|rest| {
+        rest.rsplit_once("' into ")
+            .map(|(name, _)| name)
+            .or_else(|| rest.strip_suffix('\''))
+    })
     .map(String::from)
 }
 

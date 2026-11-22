@@ -73,7 +73,7 @@ function openMenu(e: MouseEvent) {
 {#snippet action()}
 	<RowAction
 		size="compact"
-		tone={actionLabel === "+" ? "success" : "danger"}
+		tone={actionLabel === "+" ? "success" : "warning"}
 		onclick={(e: MouseEvent) => singleClick(e, () => onaction?.())}
 		oncontextmenu={openMenu}
 		aria-label={actionLabel === "+" ? "Stage directory" : "Unstage directory"}

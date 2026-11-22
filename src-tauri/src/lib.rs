@@ -450,6 +450,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::operation_state::merge_branch_begin,
         commands::operation_state::rebase_branch,
         commands::merge_editor::get_merge_sides,
+        commands::merge_editor::get_merge_base,
         commands::merge_editor::save_merge_result,
         commands::merge_editor::conflict_marker_files,
         commands::interactive_rebase::get_rebase_todo,

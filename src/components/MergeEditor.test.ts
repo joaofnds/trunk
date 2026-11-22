@@ -37,7 +37,13 @@ const mockInvoke = vi.mocked(invoke);
 type Dialog = typeof import("@tauri-apps/plugin-dialog");
 
 function sidesOf(...regions: MergeRegion[]): MergeSides {
-	return { regions };
+	return {
+		regions,
+		revision: "snapshot",
+		base_oid: null,
+		current_label: null,
+		incoming_label: null,
+	};
 }
 
 const MERGE_SIDES = makeMergeSides();
@@ -50,6 +56,77 @@ describe("MergeEditor", () => {
 			if (cmd === "write_merge_result") return Promise.resolve(undefined);
 			return Promise.resolve(undefined);
 		});
+	});
+
+	it("reads the selected base on request and keeps the draft when the reader closes", async () => {
+		const sides = { ...MERGE_SIDES, base_oid: "base-blob" };
+		mockInvoke.mockImplementation(async (cmd) =>
+			cmd === "get_merge_sides" ? sides : { scope: "file", text: "old line" },
+		);
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "src/f",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const output = await screen.findByRole("textbox", { name: "Merge output" });
+		await fireEvent.input(output, { target: { value: "my draft" } });
+		expect(mockInvoke.mock.calls.map(([command]) => command)).not.toContain(
+			"get_merge_base",
+		);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show merge base for conflict 1" }),
+		);
+		const reader = await screen.findByRole("dialog", {
+			name: "Merge base · full file",
+		});
+		expect(within(reader).getByRole("textbox")).toHaveValue("old line");
+		await fireEvent.click(
+			within(reader).getByRole("button", { name: "Close" }),
+		);
+		expect(output).toHaveValue("my draft");
+		expect(mockInvoke.mock.calls.map(([command]) => command)).not.toContain(
+			"save_merge_result",
+		);
+	});
+
+	it("discards a base reply after the editor moves to another file", async () => {
+		let deliver!: (value: unknown) => void;
+		mockInvoke.mockImplementation((cmd, args) =>
+			cmd === "get_merge_sides"
+				? Promise.resolve({
+						...MERGE_SIDES,
+						base_oid:
+							args && "filePath" in args && args.filePath === "first"
+								? "blob"
+								: null,
+					})
+				: new Promise((resolve) => {
+						deliver = resolve;
+					}),
+		);
+		const props = {
+			repoPath: "/repo",
+			filePath: "first",
+			onclose: vi.fn(),
+			onresolved: vi.fn(),
+		};
+		const editor = render(MergeEditor, { props });
+		await fireEvent.click(
+			await screen.findByRole("button", {
+				name: "Show merge base for conflict 1",
+			}),
+		);
+		await editor.rerender({ ...props, filePath: "second" });
+		await screen.findByRole("textbox", { name: "Merge output" });
+		deliver({ scope: "conflict", text: "stale" });
+		await Promise.resolve();
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(
+			screen.queryByRole("button", { name: /Show merge base/ }),
+		).toBeNull();
 	});
 
 	it("renders without crashing", async () => {
@@ -78,6 +155,51 @@ describe("MergeEditor", () => {
 		expect(screen.getByText("Loading merge editor...")).toBeInTheDocument();
 	});
 
+	it("freezes the approved output while staging and unlocks a failed draft", async () => {
+		let reject!: (error: Error) => void;
+		mockInvoke.mockImplementation((cmd) =>
+			cmd === "get_merge_sides"
+				? Promise.resolve(MERGE_SIDES)
+				: new Promise((_resolve, rejected) => {
+						reject = rejected;
+					}),
+		);
+		render(MergeEditor, {
+			props: {
+				repoPath: "/r",
+				filePath: "a",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const output = await screen.findByRole("textbox", { name: "Merge output" });
+		const take = screen.getByRole("button", { name: "Take All Current" });
+		const reset = screen.getByRole("button", {
+			name: "Reset merge selections",
+		});
+		const block = screen.getByRole("button", {
+			name: "Take conflict 1 from Current (Ours)",
+		});
+		await fireEvent.click(take);
+		await fireEvent.input(output, { target: { value: "first draft" } });
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Save and Mark Resolved" }),
+		);
+		expect(output).toHaveAttribute("readonly");
+		expect(take).toBeDisabled();
+		expect(reset).toBeDisabled();
+		expect(block).toBeDisabled();
+		expect(mockInvoke).toHaveBeenCalledWith(
+			"save_merge_result",
+			expect.objectContaining({ content: "first draft" }),
+		);
+		reject(new Error("index changed"));
+		await waitFor(() => expect(output).not.toHaveAttribute("readonly"));
+		expect(output).toHaveValue("first draft");
+		expect(take).toBeEnabled();
+		expect(reset).toBeEnabled();
+	});
+
 	it("renders panel headers after loading", async () => {
 		render(MergeEditor, {
 			props: {
@@ -88,7 +210,9 @@ describe("MergeEditor", () => {
 			},
 		});
 		await waitFor(() => {
-			expect(screen.getByText("Current (Ours)")).toBeInTheDocument();
+			expect(
+				screen.getByRole("region", { name: "Current (Ours)" }),
+			).toBeInTheDocument();
 		});
 		expect(screen.getByText("Output")).toBeInTheDocument();
 	});
@@ -138,7 +262,7 @@ describe("MergeEditor", () => {
 		expect(onclose).toHaveBeenCalledOnce();
 	});
 
-	it("paints every resolving action in the success tone", async () => {
+	it("reserves the success tone for staging the result", async () => {
 		render(MergeEditor, {
 			props: {
 				repoPath: "/test/repo",
@@ -151,15 +275,15 @@ describe("MergeEditor", () => {
 			expect(screen.getByText("Save and Mark Resolved")).toBeInTheDocument();
 		});
 
-		for (const label of [
-			"Take All Current",
-			"Take All Incoming",
-			"Save and Mark Resolved",
-		]) {
-			expect(screen.getByRole("button", { name: label })).toHaveClass(
-				"bg-success-bg",
-			);
-		}
+		expect(
+			screen.getByRole("button", { name: "Save and Mark Resolved" }),
+		).toHaveClass("bg-success-bg");
+		expect(
+			screen.getByRole("button", { name: "Take All Current" }),
+		).not.toHaveClass("bg-success-bg");
+		expect(
+			screen.getByRole("button", { name: "Take All Incoming" }),
+		).not.toHaveClass("bg-success-bg");
 	});
 
 	it("draws the conflict chrome as small icon controls", async () => {
@@ -506,18 +630,10 @@ describe("MergeEditor", () => {
 			expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
 				path: "/test/repo",
 				filePath: "src/main.ts",
+				expectedRevision: "snapshot",
 				content: "first\nours one\nours two\nours three\nlast\n",
 			});
 			expect(screen.queryByText(/unresolved$/)).toBeNull();
-		});
-
-		it("saves an edited output whatever is taken", async () => {
-			render(MergeEditor, { props });
-			const result = await output();
-
-			await fireEvent.input(result, { target: { value: "first\nmine\n" } });
-
-			expect(save()).toBeEnabled();
 		});
 
 		it("returns every conflict to unresolved on reset", async () => {
@@ -583,6 +699,43 @@ describe("MergeEditor", () => {
 				await fireEvent.input(result, { target: { value: typed } });
 				return result;
 			}
+
+			it.each([true, false])(
+				"stages an intentionally empty conflict only on confirmation (%s)",
+				async (confirmed) => {
+					ask.mockResolvedValue(confirmed);
+					render(MergeEditor, { props });
+					const result = await output();
+					const text = `${result.value}// unrelated comment`;
+					await fireEvent.input(result, { target: { value: text } });
+
+					expect(screen.getByText("1 block to review")).toBeInTheDocument();
+					await fireEvent.click(
+						screen.getByRole("button", { name: "Review and Save…" }),
+					);
+
+					await waitFor(() => expect(ask).toHaveBeenCalled());
+					const staged = mockInvoke.mock.calls.filter(
+						([command]) => command === "save_merge_result",
+					);
+					expect(staged).toEqual(
+						confirmed
+							? [
+									[
+										"save_merge_result",
+										{
+											path: props.repoPath,
+											filePath: props.filePath,
+											expectedRevision: "snapshot",
+											content: text,
+										},
+									],
+								]
+							: [],
+					);
+					expect(result.value).toBe(text);
+				},
+			);
 
 			it("replaces the typed output with a take the user confirms", async () => {
 				ask.mockResolvedValue(true);
@@ -661,6 +814,9 @@ describe("MergeEditor", () => {
 				"textbox",
 			)) as HTMLTextAreaElement;
 
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Take All Current" }),
+			);
 			await fireEvent.input(result, {
 				target: { value: "first\nmine\nlast\n" },
 			});
@@ -671,6 +827,7 @@ describe("MergeEditor", () => {
 			expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
 				path: "/test/repo",
 				filePath: "src/main.ts",
+				expectedRevision: "snapshot",
 				content: "first\r\nmine\r\nlast\r\n",
 			});
 		});

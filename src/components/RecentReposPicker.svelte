@@ -9,6 +9,7 @@ import {
 } from "../lib/recent-picker-keys.js";
 import { getRecentRepos, type RecentRepo } from "../lib/store.js";
 import Button from "../lib/ui/Button.svelte";
+import Dialog, { paletteInputClass } from "../lib/ui/Dialog.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
 
 interface Props {
@@ -27,7 +28,6 @@ let highlightedIdx = $state(0);
 let loading = $state(false);
 let inputEl: HTMLInputElement | undefined = $state();
 let listEl: HTMLDivElement | undefined = $state();
-let dialogEl: HTMLDialogElement | undefined = $state();
 
 const filtered = $derived(filterRecents(recents, query));
 
@@ -104,29 +104,17 @@ function handleKeydown(e: KeyboardEvent) {
 			return;
 	}
 }
-
-$effect(() => {
-	if (dialogEl && !dialogEl.open) dialogEl.showModal();
-});
 </script>
 
 {#if visible}
-	<!-- Palette-shaped: no title, no padding, pinned near the top. The
-	     fixed/inset/mx-auto trio re-states the modal centering that the
-	     preflight margin reset wipes, then the top margin drops it. -->
-	<dialog
-		bind:this={dialogEl}
-		class="fixed inset-x-0 top-0 mx-auto flex flex-col rounded overflow-hidden backdrop:bg-backdrop w-dialog-max picker h-fit p-0 bg-surface border border-border text-text"
-		aria-label="Open a recent repository"
-		oncancel={onclose}
-	>
+	<Dialog variant="palette" title="Open a recent repository" oncancel={onclose}>
 		<input
 			bind:this={inputEl}
 			bind:value={query}
 			onkeydown={handleKeydown}
 			aria-label="Search recent repositories"
 			placeholder="Search recent repositories"
-			class="w-full px-3 py-2 text-body outline-none bg-transparent text-text border-b border-border"
+			class={paletteInputClass}
 		>
 		<div role="status" class="text-callout text-text-subtle">
 			{#if openingName}
@@ -158,7 +146,6 @@ $effect(() => {
 					{@const dp = resolvedPaths[repo.path] ?? repo.path}
 					<ListOption
 						layout="stack"
-						highlight="hover"
 						selected={idx === highlightedIdx}
 						onmousemove={() => (highlightedIdx = idx)}
 						onclick={() => onpick(repo)}
@@ -171,12 +158,5 @@ $effect(() => {
 				{/each}
 			</div>
 		{/if}
-	</dialog>
+	</Dialog>
 {/if}
-
-<style>
-.picker {
-	max-width: 90vw;
-	margin-top: var(--dialog-drop);
-}
-</style>

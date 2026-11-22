@@ -61,6 +61,10 @@ function refs(name: string): RefsResponse {
 	};
 }
 
+function graphAtRevision(revision: number): GraphResponse {
+	return { commits: [], max_columns: 0, revision, checked: true };
+}
+
 describe("BranchSidebar branch creation", () => {
 	beforeEach(() => {
 		host.seedResponse("list_refs", refs("main"));
@@ -145,6 +149,35 @@ describe("BranchSidebar remote grouping", () => {
 			});
 		},
 	);
+
+	it("offers to hide only matching branches within a filtered remote", async () => {
+		host.seedResponse("list_refs", {
+			...refs("main"),
+			remote: [
+				branch("origin/main", "origin"),
+				branch("origin/topic", "origin"),
+			],
+		});
+		host.seedResponse("set_ref_visibility", graphAtRevision(1));
+		render(BranchSidebar, {
+			props: { repoPath: "/repo", remoteState: createRemoteState() },
+		});
+		await fireEvent.click(await screen.findByText("Remote (2)"));
+		await fireEvent.input(screen.getByPlaceholderText("Filter branches…"), {
+			target: { value: "topic" },
+		});
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Hide matching origin branches" }),
+		);
+		await waitFor(() =>
+			expect(host.preferences.get("ref_visibility")).toEqual({
+				"/repo": {
+					...EVERYTHING_VISIBLE,
+					hiddenRefs: ["refs/remotes/origin/topic"],
+				},
+			}),
+		);
+	});
 
 	it("keeps numeric group names in ascending order before other groups", async () => {
 		host.seedResponse("list_refs", {
@@ -324,10 +357,6 @@ describe("BranchSidebar ref visibility", () => {
 		hiddenRefs: ["refs/heads/topic"],
 		hiddenStashes: [],
 	};
-	function graphAtRevision(revision: number): GraphResponse {
-		return { commits: [], max_columns: 0, revision, checked: true };
-	}
-
 	beforeEach(() => {
 		host.seedResponse("list_refs", {
 			...refs("main"),
@@ -480,21 +509,27 @@ describe("BranchSidebar ref visibility", () => {
 		expect(screen.getByLabelText("Show topic")).toBeInTheDocument();
 	});
 
-	it.each(["absent", "main"])(
-		"skips a graph rebuild when the filter %s leaves no hideable refs",
-		async (filter) => {
+	it.each([
+		["absent", "Local (0 of 2)", 1],
+		["main", "Local (1 of 2)", 0],
+	])(
+		"counts matches for %s and omits an eye with no eligible refs",
+		async (filter, label, emptyMessages) => {
 			render(BranchSidebar, {
 				props: { repoPath: "/repo", remoteState: createRemoteState() },
 			});
 			await screen.findByLabelText("Hide topic");
+
 			await fireEvent.input(screen.getByPlaceholderText("Filter branches…"), {
 				target: { value: filter },
 			});
 
-			await fireEvent.click(screen.getByLabelText("Hide all Local refs"));
-
-			expect(host.count("set_ref_visibility")).toBe(0);
-			expect(host.preferences.has("ref_visibility")).toBe(false);
+			expect(screen.getByText(label)).toBeInTheDocument();
+			expect(screen.queryByTestId("branch-section-visibility-btn")).toBeNull();
+			expect(screen.getByLabelText("Create new branch")).toBeEnabled();
+			expect(screen.queryAllByText("No matching refs or stashes")).toHaveLength(
+				emptyMessages,
+			);
 		},
 	);
 });

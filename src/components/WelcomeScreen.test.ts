@@ -59,6 +59,12 @@ describe("WelcomeScreen", () => {
 		expect(remove.parentElement).toHaveClass("group-hover:opacity-100");
 	});
 
+	it("identifies a recent repository by its name first and retains its full path", async () => {
+		const { row } = await renderWithRecentRepo();
+		expect(row.textContent?.trim()).toMatch(/^trunk\s*~?\//);
+		expect(row).toHaveAttribute("title", "/Users/test/code/trunk");
+	});
+
 	it("lists every recent repo under a Recent heading", async () => {
 		vi.mocked(getRecentRepos).mockResolvedValue([
 			{ name: "trunk", path: "/Users/test/code/trunk" },

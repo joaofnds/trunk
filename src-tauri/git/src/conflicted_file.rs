@@ -59,7 +59,7 @@ pub fn regions(
     working: &str,
     marker_size: usize,
 ) -> Result<Vec<MergeRegion>, ReadError> {
-    let pieces = match read(working, marker_size) {
+    let pieces = match read(working, marker_size, false) {
         Reading::Conflicts(pieces) => pieces,
         Reading::Unclosed => return Err(ReadError::UnclosedConflict),
         Reading::NoConflict => vec![Piece::Merged(split_lines(working))],
@@ -147,7 +147,50 @@ fn give_the_final_newline_to_its_sides(regions: &mut Vec<MergeRegion>) {
 /// or of the default size, closed or not.
 #[must_use]
 pub fn holds_conflict(working: &str, marker_size: usize) -> bool {
-    !matches!(read(working, marker_size), Reading::NoConflict)
+    !matches!(read(working, marker_size, false), Reading::NoConflict)
+}
+
+/// The marked ancestor for the conflict on screen, provided those sides still
+/// identify the same conflict and all the marked base sections reconstruct the indexed file.
+#[must_use]
+pub fn marked_ancestor(
+    working: &str,
+    marker_size: usize,
+    ordinal: usize,
+    ours: &[String],
+    theirs: &[String],
+    ancestor: &str,
+) -> Option<String> {
+    let Reading::Conflicts(pieces) = read(working, marker_size, true) else {
+        return None;
+    };
+    let lines = pieces
+        .iter()
+        .filter_map(|piece| match piece {
+            Piece::Conflict(lines) => Some(lines),
+            Piece::Merged(_) => None,
+        })
+        .nth(ordinal)?;
+    if lines.ours != ours || lines.theirs != theirs {
+        return None;
+    }
+    // Replacing every marked conflict with its base must reconstruct the
+    // entire indexed ancestor in order. Finding the same text somewhere in
+    // the file cannot establish which conflict it belongs to.
+    if pieces
+        .iter()
+        .any(|piece| matches!(piece, Piece::Conflict(lines) if lines.base.is_none()))
+    {
+        return None;
+    }
+    let reconstructed = pieces.iter().flat_map(|piece| match piece {
+        Piece::Merged(lines) => lines.as_slice(),
+        Piece::Conflict(lines) => lines.base.as_deref().unwrap_or_default(),
+    });
+    reconstructed
+        .copied()
+        .eq(ancestor.split('\n'))
+        .then(|| lines.base.as_deref().unwrap_or_default().join("\n"))
 }
 
 /// The file split as the editor joins it back: on every newline, so a file that ends in
@@ -170,6 +213,7 @@ enum Piece<'a> {
 
 #[derive(Default)]
 struct ConflictLines<'a> {
+    base: Option<Vec<&'a str>>,
     ours: Vec<&'a str>,
     theirs: Vec<&'a str>,
 }
@@ -210,6 +254,7 @@ fn whole_file_conflict(sides: Sides<'_>) -> Vec<Piece<'_>> {
     vec![
         Piece::Merged(ours[..shared_start].to_vec()),
         Piece::Conflict(ConflictLines {
+            base: None,
             ours: ours[shared_start..ours.len() - shared_end].to_vec(),
             theirs: theirs[shared_start..theirs.len() - shared_end].to_vec(),
         }),
@@ -226,16 +271,16 @@ enum Reading<'a> {
 /// The file read at the size its attributes name, or at git's default when that finds
 /// no conflict, since an attribute the merge itself brought in was not the one git
 /// wrote the markers with.
-fn read(working: &str, marker_size: usize) -> Reading<'_> {
-    match pieces(working, &Markers::new(marker_size)) {
+fn read(working: &str, marker_size: usize, include_base: bool) -> Reading<'_> {
+    match pieces(working, &Markers::new(marker_size), include_base) {
         Reading::NoConflict if marker_size != DEFAULT_MARKER_SIZE => {
-            pieces(working, &Markers::new(DEFAULT_MARKER_SIZE))
+            pieces(working, &Markers::new(DEFAULT_MARKER_SIZE), include_base)
         }
         reading => reading,
     }
 }
 
-fn pieces<'a>(working: &'a str, markers: &Markers) -> Reading<'a> {
+fn pieces<'a>(working: &'a str, markers: &Markers, include_base: bool) -> Reading<'a> {
     let mut pieces = Vec::new();
     let mut merged: Vec<&str> = Vec::new();
     let mut open: Option<OpenConflict<'_>> = None;
@@ -245,7 +290,7 @@ fn pieces<'a>(working: &'a str, markers: &Markers) -> Reading<'a> {
             None if markers.opens(line) => open = Some(OpenConflict::new()),
             None => merged.push(line),
             Some(conflict) => {
-                if conflict.take(line, markers) == Progress::Closed
+                if conflict.take(line, markers, include_base) == Progress::Closed
                     && let Some(conflict) = open.take()
                 {
                     pieces.push(Piece::Merged(std::mem::take(&mut merged)));
@@ -292,15 +337,22 @@ impl<'a> OpenConflict<'a> {
         }
     }
 
-    fn take(&mut self, line: &'a str, markers: &Markers) -> Progress {
+    fn take(&mut self, line: &'a str, markers: &Markers, include_base: bool) -> Progress {
         match self.section {
-            Section::Ours if markers.starts_base(line) => self.section = Section::Base,
+            Section::Ours if markers.starts_base(line) => {
+                self.section = Section::Base;
+                self.lines.base = include_base.then(Vec::new);
+            }
             Section::Ours | Section::Base if markers.separates(line) => {
                 self.section = Section::Theirs;
             }
             Section::Theirs if markers.closes(line) => return Progress::Closed,
             Section::Ours => self.lines.ours.push(line),
-            Section::Base => {}
+            Section::Base => {
+                if let Some(base) = &mut self.lines.base {
+                    base.push(line);
+                }
+            }
             Section::Theirs => self.lines.theirs.push(line),
         }
         Progress::Open

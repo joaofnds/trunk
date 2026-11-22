@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -82,23 +82,20 @@ describe("FileFinder", () => {
 		).toBeInTheDocument();
 	});
 
-	it("shows how many comments an unchanged file already carries", () => {
+	it("names the visible thread states on a file with mixed comments", () => {
 		open({
-			commentCounts: new Map([["src/alpha.ts", 2]]),
-			commentTallies: new Map([["src/alpha.ts", { done: 2 }]]),
+			commentCounts: new Map([["src/alpha.ts", 3]]),
+			commentTallies: new Map([["src/alpha.ts", { open: 2, addressed: 1 }]]),
 		});
 
-		const alpha = screen.getByRole("option", {
-			name: "src/alpha.ts, 2 comments",
+		const row = screen.getByRole("option", {
+			name: "src/alpha.ts, 3 comments, 2 open and 1 addressed",
 		});
-
-		expect(alpha?.textContent).toContain("2");
-		expect(alpha?.getAttribute("aria-label")).toBe("src/alpha.ts, 2 comments");
-		const badge = alpha?.querySelector(".finder-comment-count");
-		expect(badge?.getAttribute("aria-label")).toBe("2 review comments");
-		expect(badge?.getAttribute("style")).toContain(
-			"background: var(--color-thread-done)",
-		);
+		const badge = within(row).getByRole("img", {
+			name: "3 review comments, 2 open and 1 addressed",
+		});
+		expect(within(badge).getByText("2")).toBeInTheDocument();
+		expect(within(badge).getByText("1")).toBeInTheDocument();
 	});
 
 	it("shows no count on a file nothing is pinned to", () => {
@@ -106,7 +103,7 @@ describe("FileFinder", () => {
 
 		const beta = screen.getByRole("option", { name: "src/beta.ts, changed" });
 
-		expect(beta?.querySelector(".finder-comment-count")).toBeNull();
+		expect(within(beta).queryByRole("img")).toBeNull();
 	});
 
 	it("shows filenames before their directory by default", () => {

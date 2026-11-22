@@ -7,7 +7,7 @@
 // so a parent can enforce the filter gate simply by zeroing the count, which
 // keeps children dumb.
 import MessageSquare from "@lucide/svelte/icons/message-square";
-import { tallyEntries } from "../lib/review-filter.js";
+import { tallyBreakdown, tallyEntries } from "../lib/review-filter.js";
 import type { ReviewTally, ReviewTone } from "../lib/types.js";
 
 interface Props {
@@ -26,9 +26,8 @@ const pills = $derived.by(() => {
 
 const label = $derived.by(() => {
 	const total = `${count} review ${count === 1 ? "comment" : "comments"}`;
-	if (pills.length < 2) return total;
-	const shares = pills.map((pill) => `${pill.count} ${pill.tone}`);
-	return `${total}, ${shares.slice(0, -1).join(", ")} and ${shares.at(-1)}`;
+	const breakdown = tallyBreakdown(pills);
+	return breakdown ? `${total}, ${breakdown}` : total;
 });
 </script>
 

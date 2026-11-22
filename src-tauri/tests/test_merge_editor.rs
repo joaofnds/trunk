@@ -2,6 +2,7 @@ mod common;
 
 use common::context::TestContext;
 use trunk_git::conflicted_file::MergeRegion;
+use trunk_lib::commands::merge_editor::{MergeBaseSelection, MergeBaseView, get_merge_base_inner};
 
 fn lines(text: &str) -> Vec<String> {
     text.split('\n').map(str::to_owned).collect()
@@ -20,6 +21,229 @@ fn conflicted_file_txt() -> TestContext {
         .with_commit("Main commit")
         .with_conflict("feature")
         .build()
+}
+
+#[test]
+fn indexed_ancestor_shows_only_a_verified_diff3_block() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "start\nancestor\nelsewhere\n")
+        .with_commit("base")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "start\nfeature\nelsewhere\n")
+        .with_commit("theirs")
+        .checkout("main")
+        .with_file("file.txt", "start\nmain\nelsewhere\n")
+        .with_commit("ours")
+        .with_conflict("feature")
+        .build();
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+    let oid = sides.base_oid.unwrap();
+    let selection = MergeBaseSelection {
+        ordinal: 0,
+        ours: lines("main"),
+        theirs: lines("feature"),
+    };
+    let read = || {
+        get_merge_base_inner(
+            ctx.path(),
+            "file.txt",
+            &oid,
+            Some(&selection),
+            ctx.state_map(),
+        )
+        .unwrap()
+    };
+    let file = ctx.repo_path().join("file.txt");
+    std::fs::write(
+        &file,
+        "start\n<<<<<<< HEAD\nmain\n=======\nfeature\n>>>>>>> feature\nelsewhere\n",
+    )
+    .unwrap();
+    assert!(matches!(read(), MergeBaseView::File(text) if text == "start\nancestor\nelsewhere\n"));
+    let diff3 = "start\n<<<<<<< HEAD\nmain\n||||||| base\nancestor\n=======\nfeature\n>>>>>>> feature\nelsewhere\n";
+    std::fs::write(&file, diff3).unwrap();
+    assert!(matches!(read(), MergeBaseView::Conflict(text) if text == "ancestor"));
+    std::fs::write(&file, diff3.replace("ancestor", "elsewhere")).unwrap();
+    assert!(matches!(read(), MergeBaseView::File(text) if text == "start\nancestor\nelsewhere\n"));
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn approved_output_can_be_staged_again_after_an_index_lock_failure() {
+    let ctx = conflicted_file_txt();
+    let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
+    let lock = ctx.repo().path().join("index.lock");
+    std::fs::File::create_new(&lock).unwrap();
+    let err = ctx
+        .save_merge_draft("file.txt", "approved draft", &revision)
+        .unwrap_err();
+    assert_eq!(err.code, "stage_failed");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"approved draft"
+    );
+    std::fs::remove_file(lock).unwrap();
+    ctx.save_merge_draft("file.txt", "approved draft", &revision)
+        .unwrap();
+    let repo = ctx.repo();
+    let index = repo.index().unwrap();
+    assert!(!index.has_conflicts());
+    let entry = index.get_path(std::path::Path::new("file.txt"), 0).unwrap();
+    assert_eq!(
+        repo.find_blob(entry.id).unwrap().content(),
+        b"approved draft"
+    );
+}
+
+#[test]
+fn manual_draft_preserves_the_index_and_new_working_bytes_if_the_file_changed() {
+    let ctx = conflicted_file_txt();
+    let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
+    let file = ctx.repo_path().join("file.txt");
+    std::fs::write(&file, "external edit").unwrap();
+    let err = ctx
+        .save_merge_draft("file.txt", "my draft", &revision)
+        .unwrap_err();
+    assert_eq!(err.code, "conflict_changed");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "external edit");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn manual_draft_is_refused_if_a_stage_changed_with_the_same_working_bytes() {
+    let ctx = conflicted_file_txt();
+    let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    let path = std::path::Path::new("file.txt");
+    let original = std::fs::read(ctx.repo_path().join(path)).unwrap();
+    let oid = repo.blob(b"a different incoming side").unwrap();
+    let previous = index.get_path(path, 3).unwrap();
+    index
+        .add(&git2::IndexEntry {
+            id: oid,
+            ..previous
+        })
+        .unwrap();
+    index.write().unwrap();
+    assert_eq!(
+        ctx.save_merge_draft("file.txt", "draft", &revision)
+            .unwrap_err()
+            .code,
+        "conflict_changed"
+    );
+    assert_eq!(std::fs::read(ctx.repo_path().join(path)).unwrap(), original);
+    assert_eq!(repo.index().unwrap().get_path(path, 3).unwrap().id, oid);
+}
+
+#[test]
+fn edited_marker_lines_lose_only_their_own_revision_label() {
+    let ctx = conflicted_file_txt();
+    let path = ctx.repo_path().join("file.txt");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(path, text.replace("feature content", "locally typed")).unwrap();
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+    assert_eq!(sides.current_label.as_deref(), Some("main"));
+    assert!(sides.incoming_label.is_none());
+}
+
+#[test]
+fn incoming_merge_label_preserves_an_apostrophe_in_the_branch_name() {
+    let ctx = conflicted_file_txt();
+    let repo = ctx.repo();
+    let incoming = repo
+        .find_reference("refs/heads/feature")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    repo.branch("dev's-feature", &incoming, false).unwrap();
+    std::fs::write(
+        repo.path().join("MERGE_MSG"),
+        "Merge branch 'dev's-feature' into release'\n",
+    )
+    .unwrap();
+    assert_eq!(
+        ctx.get_merge_sides("file.txt")
+            .unwrap()
+            .incoming_label
+            .as_deref(),
+        Some("dev's-feature")
+    );
+}
+
+#[test]
+fn merge_side_labels_name_the_revisions_that_supply_the_file() {
+    let ctx = conflicted_file_txt();
+    let repo = ctx.repo();
+    std::fs::write(repo.path().join("MERGE_MSG"), "Merge branch 'feature'\n").unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(sides.current_label.as_deref(), Some("main"));
+    assert_eq!(sides.incoming_label.as_deref(), Some("feature"));
+}
+
+#[test]
+fn merge_side_label_uses_the_merge_commit_when_a_named_ref_has_moved() {
+    let ctx = conflicted_file_txt();
+    let repo = ctx.repo();
+    std::fs::write(repo.path().join("MERGE_MSG"), "Merge branch 'feature'\n").unwrap();
+    let incoming = repo
+        .find_reference("refs/heads/feature")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    let abbreviated = incoming.as_object().short_id().unwrap();
+    repo.reference(
+        "refs/heads/feature",
+        repo.head().unwrap().target().unwrap(),
+        true,
+        "moved",
+    )
+    .unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(
+        sides.incoming_label.as_deref(),
+        Some(abbreviated.as_str().unwrap())
+    );
+}
+
+#[test]
+fn a_rebase_names_the_detached_target_and_the_replayed_commit() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Base")
+        .with_branch("topic")
+        .checkout("topic")
+        .with_file("file.txt", "replayed")
+        .with_commit("Topic")
+        .checkout("main")
+        .with_file("file.txt", "target")
+        .with_commit("Target")
+        .checkout("topic")
+        .build();
+    let repo = ctx.repo();
+    let short = |name| {
+        repo.revparse_single(name)
+            .unwrap()
+            .short_id()
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let current = short("refs/heads/main");
+    let incoming = format!("Replaying {}", short("refs/heads/topic"));
+    ctx.rebase_branch("main").unwrap();
+
+    let sides = ctx.get_merge_sides("file.txt").unwrap();
+
+    assert_eq!(sides.current_label, Some(current));
+    assert_eq!(sides.incoming_label, Some(incoming));
 }
 
 #[test]
@@ -121,6 +345,7 @@ fn get_merge_sides_reads_a_conflict_where_both_sides_added_the_file() {
         .build();
 
     let sides = ctx.get_merge_sides("new_file.txt").unwrap();
+    assert!(sides.base_oid.is_none());
 
     assert_eq!(
         sides.regions[0],
@@ -356,13 +581,11 @@ fn save_merge_result_writes_and_stages() {
     );
 }
 
-/// A link standing where the conflicted file should be is not the file, so the save
-/// replaces it with the resolution rather than writing through it to the file it
-/// points at.
 #[cfg(unix)]
 #[test]
-fn save_merge_result_replaces_a_link_in_the_working_tree_with_the_resolution() {
+fn save_merge_result_preserves_a_link_that_replaced_the_working_copy() {
     let ctx = conflicted_file_txt();
+    let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
     let outside = tempfile::tempdir().unwrap();
     let secret = outside.path().join("secret.txt");
     std::fs::write(&secret, "secret").unwrap();
@@ -370,19 +593,13 @@ fn save_merge_result_replaces_a_link_in_the_working_tree_with_the_resolution() {
     std::fs::remove_file(&file).unwrap();
     std::os::unix::fs::symlink(&secret, &file).unwrap();
 
-    ctx.save_merge_result("file.txt", "resolved content")
-        .unwrap();
-
+    let err = ctx
+        .save_merge_draft("file.txt", "resolved content", &revision)
+        .unwrap_err();
+    assert_eq!(err.code, "conflict_changed");
     assert_eq!(std::fs::read_to_string(&secret).unwrap(), "secret");
-    assert!(!file.is_symlink(), "the link is still there");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "resolved content");
-    let staged = ctx
-        .repo()
-        .index()
-        .unwrap()
-        .get_path(std::path::Path::new("file.txt"), 0)
-        .unwrap();
-    assert_eq!(staged.mode, 0o100_644);
+    assert!(file.is_symlink());
+    assert!(ctx.repo().index().unwrap().has_conflicts());
 }
 
 #[cfg(unix)]
@@ -400,6 +617,7 @@ fn save_merge_result_refuses_a_file_inside_a_linked_directory() {
         .with_commit("Main commit")
         .with_conflict("feature")
         .build();
+    let revision = ctx.get_merge_sides("dir/file.txt").unwrap().revision;
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("file.txt"), "secret").unwrap();
     let dir = ctx.repo_path().join("dir");
@@ -407,10 +625,10 @@ fn save_merge_result_refuses_a_file_inside_a_linked_directory() {
     std::os::unix::fs::symlink(outside.path(), &dir).unwrap();
 
     let err = ctx
-        .save_merge_result("dir/file.txt", "resolved content")
+        .save_merge_draft("dir/file.txt", "resolved content", &revision)
         .unwrap_err();
 
-    assert_eq!(err.code, "write_error");
+    assert_eq!(err.code, "conflict_changed");
     assert_eq!(
         std::fs::read_to_string(outside.path().join("file.txt")).unwrap(),
         "secret"

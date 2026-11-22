@@ -10,7 +10,7 @@ import { vi } from "vitest";
 export function reportWidthOf(
 	reported: (target: Element) => boolean,
 	width: number,
-): { resize(width: number): void } {
+): { resize(width: number, height?: number): void } {
 	const observations: Observation[] = [];
 
 	vi.stubGlobal(
@@ -50,8 +50,8 @@ export function reportWidthOf(
 	}
 
 	return {
-		resize(next: number) {
-			for (const observation of observations) report(observation, next);
+		resize(next: number, height = 0) {
+			for (const observation of observations) report(observation, next, height);
 		},
 	};
 }
@@ -62,17 +62,17 @@ interface Observation {
 	readonly target: Element;
 }
 
-function report(observation: Observation, width: number) {
-	const box: ResizeObserverSize = { inlineSize: width, blockSize: 0 };
+function report(observation: Observation, width: number, height = 0) {
+	const box: ResizeObserverSize = { inlineSize: width, blockSize: height };
 	const contentRect: DOMRectReadOnly = {
 		x: 0,
 		y: 0,
 		width,
-		height: 0,
+		height,
 		top: 0,
 		left: 0,
 		right: width,
-		bottom: 0,
+		bottom: height,
 		toJSON: () => ({}),
 	};
 	const entry: ResizeObserverEntry = {

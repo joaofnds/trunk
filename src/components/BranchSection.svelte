@@ -11,6 +11,7 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 interface Props {
 	label: string;
 	count: number;
+	filteredFrom?: number;
 	expanded: boolean;
 	ontoggle: () => void;
 	showCreateButton?: boolean;
@@ -28,6 +29,7 @@ interface Props {
 let {
 	label,
 	count,
+	filteredFrom,
 	expanded,
 	ontoggle,
 	showCreateButton = false,
@@ -52,12 +54,14 @@ let allHidden = $derived(groupState === "all");
 			<Plus size={12} />
 		</RowAction>
 	{/if}
-	{#if ontogglevisibility}
+	{#if ontogglevisibility && count > 0}
 		<RowAction
 			tone="muted"
 			data-testid="branch-section-visibility-btn"
 			onclick={() => ontogglevisibility?.()}
-			aria-label="{visibilityVerb(allHidden)} all {label} refs"
+			aria-label="{visibilityVerb(allHidden)} {filteredFrom === undefined
+				? "all"
+				: "matching"} {label} refs"
 			data-group-state={groupState}
 		>
 			<VisibilityIcon hidden={allHidden} />
@@ -83,7 +87,7 @@ let allHidden = $derived(groupState === "all");
 		<span
 			class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 truncate"
 		>
-			{`${label} (${count})`}
+			{label} ({count}{filteredFrom === undefined ? "" : ` of ${filteredFrom}`})
 		</span>
 	</Row>
 

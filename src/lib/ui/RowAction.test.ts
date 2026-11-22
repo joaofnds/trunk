@@ -62,6 +62,7 @@ describe("RowAction", () => {
 		["muted", "text-text-muted"],
 		["text", "text-text"],
 		["success", "text-success"],
+		["warning", "text-warning"],
 		["danger", "text-danger"],
 	] as const)("paints the %s tone from its token", (tone, paint) => {
 		render(RowAction, {

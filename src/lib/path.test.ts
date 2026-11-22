@@ -1,5 +1,6 @@
+import "../__tests__/helpers/tauri-mock";
 import { describe, expect, it } from "vitest";
-import { repositoryName } from "./path.js";
+import { displayPath, repositoryName } from "./path.js";
 
 describe("repositoryName", () => {
 	it.each([
@@ -8,5 +9,15 @@ describe("repositoryName", () => {
 		["/", "/"],
 	])("names %s as %s", (path, name) => {
 		expect(repositoryName(path)).toBe(name);
+	});
+});
+
+describe("displayPath", () => {
+	it.each([
+		["/Users/test", "~/"],
+		["/Users/test/code/trunk", "~/code/trunk"],
+		["/Users/test-tools/code", "/Users/test-tools/code"],
+	])("shows %s as %s", async (path, label) => {
+		expect(await displayPath(path)).toBe(label);
 	});
 });

@@ -1,12 +1,12 @@
 import { waitFor } from "../harness/wait.js";
-import { enabledButton, fileRowAt, firstMatching } from "./dom.js";
+import { enabledButton, fileRowAt } from "./dom.js";
 
 const EDITOR = ".rebase-editor";
 const ROW = "[data-rebase-row]";
 const MESSAGE = ".rebase-cell-message";
 const TOOLBAR = ".rebase-toolbar-meta";
 const START = "Start Rebase";
-const CANCEL = "Cancel Rebase";
+const CANCEL = 'button[aria-label="Cancel rebase preview"]';
 const FILE_ROW = '[data-testid="staging-file"]';
 const DETAIL_SUMMARY = ".commit-message .summary";
 const DIFF_PATH = '[data-testid="diff-path"]';
@@ -110,7 +110,7 @@ export class RebaseEditorDriver {
 	/** Closes the takeover without starting its plan. */
 	async cancel(): Promise<void> {
 		const cancel = await waitFor("the cancel-rebase button", () =>
-			firstMatching("button", (text) => text === CANCEL),
+			document.querySelector<HTMLButtonElement>(CANCEL),
 		);
 
 		cancel.click();

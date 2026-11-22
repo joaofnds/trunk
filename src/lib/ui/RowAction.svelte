@@ -4,6 +4,7 @@ export type RowActionTone =
 	| "muted"
 	| "text"
 	| "success"
+	| "warning"
 	| "danger"
 	| "destructive";
 export type RowActionSize = "target" | "compact";
@@ -39,6 +40,7 @@ const TONES: Record<RowActionTone, string> = {
 	muted: "text-text-muted hover:text-text",
 	text: "text-text hover:text-text-strong",
 	success: "text-success",
+	warning: "text-warning",
 	danger: "text-danger",
 	destructive: "text-text-subtle hover:text-danger focus-visible:text-danger",
 };

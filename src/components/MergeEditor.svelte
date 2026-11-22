@@ -1,14 +1,17 @@
 <script lang="ts">
 import Check from "@lucide/svelte/icons/check";
+import CheckCheck from "@lucide/svelte/icons/check-check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import CircleX from "@lucide/svelte/icons/circle-x";
 import Minus from "@lucide/svelte/icons/minus";
+import Plus from "@lucide/svelte/icons/plus";
 import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
 import X from "@lucide/svelte/icons/x";
-import { tick } from "svelte";
+import { onDestroy, tick } from "svelte";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { ask } from "../lib/dialog.js";
+import { flattened } from "../lib/display-text.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
@@ -26,8 +29,10 @@ import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
 import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import Dialog from "../lib/ui/Dialog.svelte";
 import Row from "../lib/ui/Row.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
+import FilePathLabel from "./FilePathLabel.svelte";
 
 interface Props {
 	repoPath: string;
@@ -59,7 +64,12 @@ const SIDE_LABEL = {
 } as const;
 
 // ---------- State ----------
-let regions = $state<readonly MergeRegion[]>([]);
+let sources = $state.raw<MergeSides | null>(null);
+let regions = $derived(sources?.regions ?? []);
+let loadVersion = 0;
+onDestroy(() => {
+	loadVersion++;
+});
 let takenLines = $state<Set<string>>(new Set());
 let manualEdit = $state(false);
 let manualText = $state("");
@@ -77,6 +87,48 @@ const UNRESOLVABLE_HERE: ReadonlySet<string> = new Set([
 ]);
 let focusedConflictIdx = $state(0);
 let saving = $state(false);
+type BaseView = { scope: "conflict" | "file"; text: string };
+let baseView = $state.raw<{
+	number: number;
+	opener: HTMLElement;
+	content?: BaseView;
+	error?: string;
+} | null>(null);
+
+async function showBase(row: FlatRow, opener: HTMLElement) {
+	const region = regions[row.regionIdx];
+	const baseOid = sources?.base_oid;
+	if (!baseOid || region?.type !== "conflict") return;
+	const request = { number: row.conflictNum, opener };
+	baseView = request;
+	try {
+		const content = await safeInvoke<BaseView>("get_merge_base", {
+			path: repoPath,
+			filePath,
+			baseOid,
+			selection: {
+				ordinal: row.conflictNum - 1,
+				ours: region.oursLines,
+				theirs: region.theirsLines,
+			},
+		});
+		if (baseView === request) baseView = { ...request, content };
+	} catch (e) {
+		if (baseView === request)
+			baseView = {
+				...request,
+				error: errorMessage(e, "Could not read the merge base"),
+			};
+	}
+}
+
+function closeBase() {
+	const opener = baseView?.opener;
+	baseView = null;
+	tick().then(() => {
+		if (opener?.isConnected) opener.focus({ preventScroll: true });
+	});
+}
 
 let panelRefs: HTMLElement[] = [];
 let panelScrollTop = $state(0);
@@ -268,9 +320,8 @@ let outputText = $derived(
 let hasPrev = $derived(focusedConflictIdx > 0);
 let hasNext = $derived(focusedConflictIdx < conflictIndices.length - 1);
 let hasConflicts = $derived(conflictIndices.length > 0);
-let unresolved = $derived(
-	manualEdit ? 0 : countUnresolved(regions, takenLines),
-);
+let unresolved = $derived(countUnresolved(regions, takenLines));
+let needsReview = $derived(manualEdit && unresolved > 0);
 
 // Virtualization derived state
 let aligned = $derived(flattenAligned(regions));
@@ -313,17 +364,19 @@ $effect(() => {
 // no longer conflicted (a reset, or a resolve from elsewhere) closes the editor;
 // any other failure, a binary side among them, stays on screen with its reason.
 function loadSides(path: string) {
+	const version = ++loadVersion;
+	baseView = null;
 	loading = true;
 	error = null;
 	pickedIn = null;
 
 	safeInvoke<MergeSides>("get_merge_sides", { path: repoPath, filePath: path })
 		.then((result) => {
-			if (path !== filePath) return;
+			if (version !== loadVersion || path !== filePath) return;
 
-			const sides = JSON.stringify(result.regions);
+			const sides = JSON.stringify([result.revision, result.regions]);
 			const kept = picks.get(repoPath, path, sides);
-			regions = result.regions;
+			sources = result;
 			takenLines = new Set(kept?.taken);
 			lastClickedKey = null;
 			manualEdit = kept?.typed != null;
@@ -335,7 +388,7 @@ function loadSides(path: string) {
 			tick().then(() => scrollToConflict(0));
 		})
 		.catch((e) => {
-			if (path !== filePath) return;
+			if (version !== loadVersion || path !== filePath) return;
 
 			if (isTrunkError(e) && e.code === "not_conflicted") {
 				onclose();
@@ -411,17 +464,21 @@ function holdScrollEvents() {
 
 // ---------- Event handlers ----------
 function afterDiscardingTypedOutput(action: () => void) {
+	if (saving) return;
 	if (!manualEdit) {
 		action();
 		return;
 	}
 
+	const version = loadVersion;
+	const typed = manualText;
 	void ask("Discard the text you typed into the output?", {
 		title: "Discard Typed Output",
 		kind: "warning",
 		okLabel: "Discard",
 	}).then((discard) => {
-		if (!discard) return;
+		if (saving || !discard || version !== loadVersion || typed !== manualText)
+			return;
 
 		manualEdit = false;
 		manualText = "";
@@ -484,6 +541,7 @@ function toggleLineFrom(key: string, extending: boolean) {
 }
 
 function handleOutputEdit(e: Event) {
+	if (saving) return;
 	manualEdit = true;
 	manualText = (e.target as HTMLTextAreaElement).value;
 }
@@ -518,18 +576,43 @@ function scrollToConflict(idx: number) {
 }
 
 async function handleSaveAndResolve() {
+	if (!sources || saving || (!manualEdit && unresolved > 0)) return;
+	const version = loadVersion;
+	const path = filePath;
+	const repo = repoPath;
+	const edited = manualText;
+	const expectedRevision = sources.revision;
 	saving = true;
 	try {
+		if (needsReview) {
+			const blocks =
+				unresolved === 1 ? "1 conflict had" : `${unresolved} conflicts had`;
+			const confirmed = await ask(
+				`${blocks} no lines selected before you edited Output. Stage ${flattened(path)} exactly as shown and mark it resolved?`,
+				{
+					title: "Review Manual Resolution",
+					kind: "warning",
+					okLabel: "Stage This Output",
+				},
+			);
+			if (
+				!confirmed ||
+				version !== loadVersion ||
+				edited !== manualText ||
+				!manualEdit
+			)
+				return;
+		}
 		await safeInvoke("save_merge_result", {
-			path: repoPath,
-			filePath,
+			path: repo,
+			filePath: path,
+			expectedRevision,
 			content: manualEdit
 				? manualText.replace(/\r?\n/g, lineEndingOf(regions))
 				: outputText,
 		});
-		picks.forget(repoPath, filePath);
-		// File resolved — staging panel updates automatically
-		onresolved();
+		picks.forget(repo, path);
+		if (version === loadVersion) onresolved();
 	} catch (e) {
 		reportErrorToast(e, "Save failed");
 	} finally {
@@ -560,11 +643,25 @@ registerUpdateBlocker(
 	<div class="w-full conflict-header shrink-0">
 		<Row
 			variant="divider"
+			reveal="always"
 			tone="muted"
 			aria-label="Take conflict {row.conflictNum} from {SIDE_LABEL[side]}"
 			aria-pressed={taken}
+			disabled={saving}
 			onclick={() => handleToggleHunk(side, row.regionIdx)}
 		>
+			{#snippet actions()}
+				{#if side === "ours" && sources?.base_oid}
+					<Button
+						size="sm"
+						variant="ghost"
+						aria-label="Show merge base for conflict {row.conflictNum}"
+						tooltip="Show merge base"
+						onclick={(e) => showBase(row, e.currentTarget)}
+						>Base</Button
+					>
+				{/if}
+			{/snippet}
 			{#if taken === true}
 				<Check size={14} class="text-success" />
 			{:else if taken === "mixed"}
@@ -577,16 +674,13 @@ registerUpdateBlocker(
 	</div>
 {/snippet}
 
-{#snippet conflictLine(row: FlatRow, bgColor: string)}
+{#snippet conflictLine(row: FlatRow)}
 	{@const taken = takenLines.has(row.key)}
-	<div
-		class="merge-line shrink-0"
-		style:height="{LINE_HEIGHT}px"
-		style:background={bgColor}
-	>
+	<div class="merge-line shrink-0" style:height="{LINE_HEIGHT}px">
 		<Row
 			variant="fill"
 			aria-pressed={taken}
+			disabled={saving}
 			onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
 		>
 			<span class="flex-1 self-stretch flex min-w-0">
@@ -604,7 +698,7 @@ registerUpdateBlocker(
 						>
 					{:else}
 						<span class="icon-add"
-							><Check size={14} class="text-success" /></span
+							><Plus size={14} class="text-text-muted" /></span
 						>
 					{/if}
 				</span>
@@ -614,6 +708,41 @@ registerUpdateBlocker(
 				>
 			</span>
 		</Row>
+	</div>
+{/snippet}
+
+{#snippet sourceHeader(
+	side: "ours" | "theirs",
+	revision: string | null | undefined,
+	take: () => void,
+)}
+	{@const label = side === "ours" ? "Current" : "Incoming"}
+	<div
+		class="source-header h-bar bg-surface border-b border-border flex items-center px-2 gap-2 shrink-0"
+	>
+		<span
+			class="source-label flex-1 min-w-0 truncate text-callout text-text"
+			title={revision ? `${label} · ${flattened(revision)}` : SIDE_LABEL[side]}
+		>
+			{label}{#if revision}
+				<span class="source-revision text-text-muted"
+					><span class="source-separator">{" · "}</span>
+					{flattened(revision)}</span
+				>
+			{/if}
+		</span>
+		<Button
+			size="sm"
+			disabled={saving}
+			onclick={take}
+			aria-label="Take All {label}"
+			tooltip="Take All {label}"
+		>
+			<span class="take-all-text"
+				>Take All<span class="take-side-name">{` ${label}`}</span></span
+			>
+			<span class="take-all-icon"><CheckCheck size={14} /></span>
+		</Button>
 	</div>
 {/snippet}
 
@@ -652,19 +781,14 @@ registerUpdateBlocker(
 		<div class="flex-1 flex min-h-0">
 			<!-- Current (Ours) Panel -->
 			<section
-				class="flex-1 flex flex-col min-w-0 border-r border-border"
+				class="current-side flex-1 flex flex-col min-w-0 border-r border-border"
 				aria-label={SIDE_LABEL.ours}
 			>
-				<!-- Header -->
-				<div
-					class="h-bar bg-accent-bg hairline-accent flex items-center py-0 px-2 gap-2 shrink-0"
-				>
-					<span class="text-callout text-text">{SIDE_LABEL.ours}</span>
-					<span class="flex-1"></span>
-					<Button size="sm" variant="success" onclick={handleTakeAllCurrent}
-						>Take All Current</Button
-					>
-				</div>
+				{@render sourceHeader(
+					"ours",
+					sources?.current_label,
+					handleTakeAllCurrent,
+				)}
 
 				<!-- Virtualized scrollable content -->
 				<div
@@ -687,7 +811,7 @@ registerUpdateBlocker(
 						{:else if row.type === "conflict-header"}
 							{@render conflictHeader("ours", row)}
 						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row, "var(--color-diff-add-bg)")}
+							{@render conflictLine(row)}
 						{:else}
 							{@render contextLine(row)}
 						{/if}
@@ -702,19 +826,14 @@ registerUpdateBlocker(
 
 			<!-- Incoming (Theirs) Panel -->
 			<section
-				class="flex-1 flex flex-col min-w-0"
+				class="incoming-side flex-1 flex flex-col min-w-0"
 				aria-label={SIDE_LABEL.theirs}
 			>
-				<!-- Header -->
-				<div
-					class="h-bar bg-success-bg hairline-success flex items-center py-0 px-2 gap-2 shrink-0"
-				>
-					<span class="text-callout text-text">{SIDE_LABEL.theirs}</span>
-					<span class="flex-1"></span>
-					<Button size="sm" variant="success" onclick={handleTakeAllIncoming}
-						>Take All Incoming</Button
-					>
-				</div>
+				{@render sourceHeader(
+					"theirs",
+					sources?.incoming_label,
+					handleTakeAllIncoming,
+				)}
 
 				<!-- Virtualized scrollable content -->
 				<div
@@ -736,7 +855,7 @@ registerUpdateBlocker(
 						{:else if row.type === "conflict-header"}
 							{@render conflictHeader("theirs", row)}
 						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row, "var(--color-diff-delete-bg)")}
+							{@render conflictLine(row)}
 						{:else}
 							{@render contextLine(row)}
 						{/if}
@@ -752,97 +871,189 @@ registerUpdateBlocker(
 
 		<!-- Bottom panel: Output (50% height) -->
 		<div class="flex-1 flex flex-col min-h-0 border-t border-border">
-			<!-- Header: 3-column grid so the nav naturally centers -->
-			<div
-				class="h-bar bg-muted-bg hairline-muted grid output-bar items-center py-0 px-2 shrink-0"
-			>
-				<!-- Left: label -->
-				<div class="flex items-center gap-2">
-					<span class="text-callout text-text">Output</span>
-					{#if manualEdit}
-						<span class="text-caption text-text-muted">(manual edit)</span>
-					{:else if unresolved > 0}
-						<span class="text-caption text-text-muted"
-							>{unresolved}
-							{unresolved === 1 ? "conflict" : "conflicts"}
-							unresolved</span
-						>
-					{/if}
-					<Button
-						icon
-						size="sm"
-						variant="ghost"
-						onclick={handleReset}
-						aria-label="Reset merge selections"
-						title="Clear every conflict's selection"
-						><RotateCcw size={14} /></Button
-					>
-				</div>
-
-				<!-- Center: conflict navigation -->
-				<div class="flex items-center gap-1">
-					{#if hasConflicts}
+			<div class="merge-toolbar">
+				<div
+					class="h-bar bg-surface shadow-hairline grid output-bar items-center px-2 gap-2 shrink-0"
+				>
+					<div class="output-file flex items-center min-w-0 gap-2">
+						<span class="text-callout text-text-muted">Output</span>
+						<FilePathLabel path={filePath} />
+					</div>
+					<div class="output-progress flex items-center gap-1">
+						{#if needsReview}
+							<span class="text-caption text-text-muted whitespace-nowrap"
+								>{unresolved} {unresolved === 1 ? "block" : "blocks"} to
+								review</span
+							>
+						{:else if unresolved > 0}
+							<span class="text-caption text-text-muted whitespace-nowrap"
+								>{unresolved}
+								{unresolved === 1 ? "conflict" : "conflicts"} unresolved</span
+							>
+						{:else if manualEdit}
+							<span class="text-caption text-text-muted whitespace-nowrap"
+								>Manual edit</span
+							>
+						{/if}
 						<Button
 							icon
 							size="sm"
 							variant="ghost"
-							onclick={handlePrevConflict}
-							disabled={!hasPrev}
-							aria-label="Previous conflict"
-							><ChevronUp size={16} /></Button
+							disabled={saving}
+							onclick={handleReset}
+							aria-label="Reset merge selections"
+							title="Clear every conflict's selection"
+							><RotateCcw size={14} /></Button
 						>
-						<span class="text-small text-text-muted whitespace-nowrap"
-							>{focusedConflictIdx + 1}/{conflictIndices.length}</span
+						{#if hasConflicts}
+							<Button
+								icon
+								size="sm"
+								variant="ghost"
+								onclick={handlePrevConflict}
+								disabled={!hasPrev}
+								aria-label="Previous conflict"
+								><ChevronUp size={16} /></Button
+							>
+							<span class="text-small text-text-muted whitespace-nowrap"
+								>{focusedConflictIdx + 1}/{conflictIndices.length}</span
+							>
+							<Button
+								icon
+								size="sm"
+								variant="ghost"
+								onclick={handleNextConflict}
+								disabled={!hasNext}
+								aria-label="Next conflict"
+								><ChevronDown size={16} /></Button
+							>
+						{/if}
+					</div>
+
+					<!-- Right: actions -->
+					<div class="flex items-center gap-2 justify-end">
+						<Button
+							size="sm"
+							variant="success"
+							onclick={handleSaveAndResolve}
+							disabled={saving || (!manualEdit && unresolved > 0)}
+							>{needsReview
+								? "Review and Save…"
+								: "Save and Mark Resolved"}</Button
 						>
 						<Button
 							icon
 							size="sm"
 							variant="ghost"
-							onclick={handleNextConflict}
-							disabled={!hasNext}
-							aria-label="Next conflict"
-							><ChevronDown size={16} /></Button
+							onclick={onclose}
+							aria-label="Close merge editor"
+							><X size={16} /></Button
 						>
-					{/if}
-				</div>
-
-				<!-- Right: actions -->
-				<div class="flex items-center gap-2 justify-end">
-					<Button
-						size="sm"
-						variant="success"
-						onclick={handleSaveAndResolve}
-						disabled={saving || unresolved > 0}
-						>Save and Mark Resolved</Button
-					>
-					<Button
-						icon
-						size="sm"
-						variant="ghost"
-						onclick={onclose}
-						aria-label="Close merge editor"
-						><X size={16} /></Button
-					>
+					</div>
 				</div>
 			</div>
 
 			<!-- Editable output textarea -->
 			<textarea
 				aria-label="Merge output"
+				readonly={saving}
 				bind:this={panelRefs[OUTPUT_PANEL]}
 				value={outputText}
 				wrap="off"
 				oninput={handleOutputEdit}
 				onscroll={() => handleScroll(OUTPUT_PANEL)}
-				class="flex-1 w-full resize-none border-none bg-bg text-text font-mono text-callout py-1 px-2 outline-none box-border"
+				class="flex-1 w-full resize-none border-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-accent bg-bg text-text font-mono text-callout py-1 px-2 box-border"
 				style:line-height="{LINE_HEIGHT}px"
 			></textarea>
 		</div>
 	{/if}
 </div>
 
+{#if baseView}
+	<Dialog
+		size="md"
+		title={baseView.content?.scope === "file"
+			? "Merge base · full file"
+			: `Merge base · conflict ${baseView.number}`}
+		oncancel={closeBase}
+	>
+		<div class="flex flex-col min-w-0 gap-2">
+			<div class="flex items-center text-callout text-text-muted"
+				><FilePathLabel path={filePath} /></div
+			>
+			{#if baseView.error}
+				<p role="alert" class="text-callout text-text-muted"
+					>{baseView.error}</p
+				>
+			{:else if baseView.content}
+				{#if baseView.content.text}
+					<textarea
+						readonly
+						wrap="off"
+						class="merge-base-code w-full resize-none bg-bg p-2 text-callout leading-code font-mono text-text"
+						rows={Math.min(
+							24,
+							Math.max(2, baseView.content.text.split("\n", 24).length),
+						)}
+						aria-label="Merge base text"
+						value={baseView.content.text}
+					></textarea>
+				{:else}
+					<p class="text-callout text-text-muted"
+						>{baseView.content.scope === "file"
+							? "Empty file"
+							: "No lines in the base"}</p
+					>
+				{/if}
+			{:else}
+				<p role="status" class="text-callout text-text-muted"
+					>Reading merge base…</p
+				>
+			{/if}
+			<div class="flex justify-end"
+				><Button size="sm" onclick={closeBase}>Close</Button></div
+			>
+		</div>
+	</Dialog>
+{/if}
+
 <style>
-/* Untaken lines: no icon by default, show green check on row hover */
+.merge-base-code {
+	max-height: 60vh;
+}
+.current-side,
+.incoming-side {
+	container-type: inline-size;
+}
+@container (max-width: 13rem) {
+	.take-side-name {
+		display: none;
+	}
+}
+.take-all-icon {
+	display: none;
+}
+@container (max-width: 10rem) {
+	.source-header {
+		height: auto;
+		min-height: var(--bar-h);
+		padding-block: var(--space-1);
+		gap: var(--space-1);
+	}
+	.source-revision {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.source-separator,
+	.take-all-text {
+		display: none;
+	}
+	.take-all-icon {
+		display: inline-flex;
+	}
+}
+/* A plus previews taking a line. The check belongs to a line already taken. */
 .merge-line .icon-add {
 	display: none;
 }
@@ -875,19 +1086,43 @@ registerUpdateBlocker(
 	width: calc(12 * var(--u));
 }
 
-.hairline-accent {
-	box-shadow: inset 0 -1px 0 var(--color-accent);
+.current-side {
+	--merge-source: var(--color-accent);
 }
 
-.hairline-success {
-	box-shadow: inset 0 -1px 0 var(--color-success);
+.incoming-side {
+	--merge-source: var(--color-accent-alt);
 }
 
-.hairline-muted {
-	box-shadow: inset 0 -1px 0 var(--color-text-muted);
+.source-label {
+	border-inline-start: 2px solid var(--merge-source);
+	padding-inline-start: var(--space-1);
+}
+
+.merge-line {
+	background: var(--color-surface-raised);
+	box-shadow: inset 2px 0 var(--merge-source);
+}
+
+.merge-toolbar {
+	container-type: inline-size;
 }
 
 .output-bar {
-	grid-template-columns: 1fr auto 1fr;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+@container (max-width: 34rem) {
+	.output-bar {
+		height: auto;
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+	.output-file,
+	.output-progress {
+		min-height: var(--bar-h);
+	}
+	.output-file {
+		grid-column: 1 / -1;
+	}
 }
 </style>

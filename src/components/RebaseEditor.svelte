@@ -23,6 +23,7 @@ import type { RebaseBase, RebaseTodoItem } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Chip from "../lib/ui/Chip.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
+import Keycap from "../lib/ui/Keycap.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
@@ -777,28 +778,27 @@ registerUpdateBlocker(
 
 	<!-- Bottom bar -->
 	<div class="rebase-bottombar">
-		<div class="rebase-shortcuts">
-			<span class="rebase-shortcut-label">shortcuts:</span>
-			<span class="rebase-shortcut-key">P</span>
-			Pick
-			<span class="rebase-shortcut-key">S</span>
-			Squash
-			<span class="rebase-shortcut-key">R</span>
-			Reword
-			<span class="rebase-shortcut-key">D</span>
-			Drop
-			<span class="rebase-shortcut-key">Shift+↑</span>
-			Move Up
-			<span class="rebase-shortcut-key">Shift+↓</span>
-			Move Down
-		</div>
+		<ul class="rebase-shortcuts" aria-label="Keyboard shortcuts">
+			{#each [
+				["P", "Pick"],
+				["S", "Squash"],
+				["R", "Reword"],
+				["D", "Drop"],
+				["Shift+↑", "Move Up"],
+				["Shift+↓", "Move Down"],
+			] as [key, action] (key)}
+				<li class="inline-flex items-center gap-1 whitespace-nowrap">
+					<Keycap>{key}</Keycap>{action}
+				</li>
+			{/each}
+		</ul>
 		<div class="rebase-bottombar-right">
 			<Button
 				size="sm"
-				variant="danger"
+				aria-label="Cancel rebase preview"
 				disabled={starting}
 				onclick={handleCancel}
-				>Cancel Rebase</Button
+				>Cancel</Button
 			>
 			<Button
 				size="sm"
@@ -880,23 +880,8 @@ registerUpdateBlocker(
 	color: var(--color-text-muted);
 	display: flex;
 	align-items: center;
-	gap: var(--space-1);
+	gap: var(--space-1) var(--space-2);
 	flex-wrap: wrap;
-}
-
-.rebase-shortcut-label {
-	font-weight: var(--weight-semibold);
-	margin-right: var(--space-1);
-}
-
-.rebase-shortcut-key {
-	background: var(--color-bg);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius);
-	padding: 0 var(--space-1);
-	font-family: var(--font-mono);
-	font-size: var(--text-caption);
-	margin-left: var(--space-2);
 }
 
 .rebase-bottombar-right {

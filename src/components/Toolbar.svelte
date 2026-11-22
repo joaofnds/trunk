@@ -565,6 +565,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 {#if branchDialogOpen}
 	<InputDialog
 		title="Create Branch"
+		confirmLabel="Create branch"
 		fields={[
 			{
 				key: "name",

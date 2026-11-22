@@ -244,6 +244,10 @@ export type MergeRegion =
 	  };
 
 export interface MergeSides {
+	readonly revision: string;
+	readonly base_oid: string | null;
+	readonly current_label: string | null;
+	readonly incoming_label: string | null;
 	readonly regions: readonly MergeRegion[];
 }
 

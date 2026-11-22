@@ -352,6 +352,10 @@ pub struct OperationCommit {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct MergeSides {
+    pub revision: String,
+    pub base_oid: Option<String>,
+    pub current_label: Option<String>,
+    pub incoming_label: Option<String>,
     pub regions: Vec<trunk_git::conflicted_file::MergeRegion>,
 }
 

@@ -3,6 +3,7 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import X from "@lucide/svelte/icons/x";
 import { slide } from "svelte/transition";
+import { motionDuration } from "../lib/motion-duration.js";
 import Button from "../lib/ui/Button.svelte";
 
 interface Props {
@@ -58,7 +59,7 @@ function autofocus(node: HTMLElement) {
 </script>
 
 <div
-	transition:slide={{ duration: 150, axis: "y" }}
+	transition:slide={{ duration: motionDuration(150), axis: "y" }}
 	class="absolute top-0 right-2 z-10 search-bar h-control-lg bg-surface-raised border border-border rounded shadow-md flex items-center py-0 px-2 gap-1"
 >
 	<input

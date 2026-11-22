@@ -183,6 +183,37 @@ describe("StagingPanel", () => {
 		});
 	});
 
+	it("keeps directory expansion and list view available in a narrow tree header", async () => {
+		stubLayout({ width: 200, height: 700, replace: true });
+		const props = {
+			repoPath: "/repo",
+			treeViewEnabled: true,
+			ontreeviewtoggle: vi.fn(),
+			...noReviewCounts(),
+		};
+		render(StagingPanel, { props });
+
+		const options = await screen.findByRole("combobox", {
+			name: "Tree view options",
+		});
+		expect(
+			within(options).getByRole("option", { name: "Switch to list view" }),
+		).toBeInTheDocument();
+		await fireEvent.change(options, { target: { value: "collapse" } });
+		expect(screen.getByRole("treeitem", { name: /src/ })).toHaveAttribute(
+			"aria-expanded",
+			"false",
+		);
+		await fireEvent.change(options, { target: { value: "expand" } });
+		expect(screen.getByRole("treeitem", { name: /src/ })).toHaveAttribute(
+			"aria-expanded",
+			"true",
+		);
+		await fireEvent.change(options, { target: { value: "list" } });
+		expect(props.ontreeviewtoggle).toHaveBeenCalledOnce();
+		expect(options).toHaveValue("");
+	});
+
 	it("renders without crashing", () => {
 		const { container } = render(StagingPanel, {
 			props: {
@@ -722,6 +753,19 @@ describe("StagingPanel merge-continue", () => {
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();
 	});
 
+	it("identifies marking conflicts resolved in a narrow pane", async () => {
+		stubLayout({ width: 200, height: 700, replace: true });
+		mockMergeState([
+			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+		]);
+		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
+
+		expect(
+			await screen.findByRole("button", { name: "Mark All Resolved" }),
+		).toBeVisible();
+		expect(screen.getByText("1 conflict")).toBeVisible();
+	});
+
 	it("hides an empty unstaged list beside a merge's conflicts", async () => {
 		mockMergeState([
 			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
@@ -928,6 +972,10 @@ describe("StagingPanel merge-continue", () => {
 
 	describe("when taking a whole side from a conflicted file's menu", () => {
 		const sides: MergeSides = {
+			revision: "snapshot",
+			current_label: null,
+			incoming_label: null,
+			base_oid: null,
 			regions: [
 				mergedRegion("a"),
 				conflictRegion(["B-ours"], ["B-theirs"]),
@@ -975,6 +1023,7 @@ describe("StagingPanel merge-continue", () => {
 
 				await waitFor(() =>
 					expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
+						expectedRevision: "snapshot",
 						path: "/repo",
 						filePath: "src/a.ts",
 						content: merged,

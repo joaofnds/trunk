@@ -56,6 +56,17 @@ describe("Dialog", () => {
 		);
 	});
 
+	it("opens a named search palette with the search field at the top", () => {
+		render(Dialog, {
+			props: { title: "Search files", variant: "palette", children: body },
+		});
+
+		expect(
+			screen.getByRole("dialog", { name: "Search files" }),
+		).toHaveAttribute("open");
+		expect(screen.queryByRole("heading")).toBeNull();
+	});
+
 	it("reports the element's cancel to its caller", async () => {
 		const cancels: Event[] = [];
 		render(Dialog, {

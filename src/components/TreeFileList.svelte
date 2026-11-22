@@ -347,7 +347,10 @@ function handleKeydown(e: KeyboardEvent) {
 			}
 			break;
 	}
-	if (focusIndex !== prevIndex) revealRow(focusIndex);
+	if (focusIndex !== prevIndex) {
+		if (fromRow) takeFocus();
+		revealRow(focusIndex);
+	}
 
 	// Track focused path for preservation across data changes
 	const focusedRow = flatRows[focusIndex];
@@ -432,6 +435,7 @@ function handleKeydown(e: KeyboardEvent) {
 		onfocusin={() => (listFocused = true)}
 		onfocusout={trackFocusLeaving}
 		class={LIST}
+		class:cursor-active={listFocused}
 	>
 		{@render rows()}
 	</div>
@@ -444,7 +448,14 @@ function handleKeydown(e: KeyboardEvent) {
 		onfocusin={() => (listFocused = true)}
 		onfocusout={trackFocusLeaving}
 		class={LIST}
+		class:cursor-active={listFocused}
 	>
 		{@render rows()}
 	</div>
 {/if}
+
+<style>
+.cursor-active :global([aria-selected="true"]) {
+	box-shadow: inset 2px 0 0 var(--color-accent);
+}
+</style>

@@ -895,6 +895,7 @@ const columnLabels: ColumnHeader[] = [
 // InputDialog state
 interface DialogConfig {
 	title: string;
+	confirmLabel: string;
 	fields: {
 		key: string;
 		label: string;
@@ -930,6 +931,7 @@ async function handleCheckoutCommit(commit: GraphCommit) {
 function handleCreateBranch(commit: GraphCommit) {
 	dialogConfig = {
 		title: "Create Branch",
+		confirmLabel: "Create branch",
 		fields: [{ key: "name", label: "Branch name", required: true }],
 		onsubmit: async (values) => {
 			closeDialog();
@@ -954,6 +956,7 @@ function handleCreateBranch(commit: GraphCommit) {
 function handleCreateTag(commit: GraphCommit) {
 	dialogConfig = {
 		title: "Create Tag",
+		confirmLabel: "Create tag",
 		fields: [
 			{ key: "name", label: "Tag name", required: true },
 			{ key: "message", label: "Message (optional)", multiline: true },
@@ -1393,6 +1396,7 @@ async function handleDeleteBranch(branchName: string) {
 function handleRenameBranch(branchName: string) {
 	dialogConfig = {
 		title: "Rename Branch",
+		confirmLabel: "Rename branch",
 		fields: [
 			{
 				key: "name",
@@ -3256,6 +3260,7 @@ $effect(() => {
 {#if dialogConfig}
 	<InputDialog
 		title={dialogConfig.title}
+		confirmLabel={dialogConfig.confirmLabel}
 		fields={dialogConfig.fields}
 		onsubmit={dialogConfig.onsubmit}
 		oncancel={closeDialog}

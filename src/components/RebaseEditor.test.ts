@@ -526,7 +526,7 @@ describe("RebaseEditor", () => {
 		});
 	});
 
-	it("renders Cancel Rebase and Start Rebase buttons", () => {
+	it("names the preview dismissal and start actions", () => {
 		render(RebaseEditor, {
 			props: {
 				repoPath: "/test/repo",
@@ -537,11 +537,13 @@ describe("RebaseEditor", () => {
 				onstart: vi.fn(),
 			},
 		});
-		expect(screen.getByText("Cancel Rebase")).toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Cancel rebase preview" }),
+		).toBeInTheDocument();
 		expect(screen.getByText("Start Rebase")).toBeInTheDocument();
 	});
 
-	it("paints starting in the success tone and cancelling in the danger tone", () => {
+	it("paints starting in the success tone and cancelling in the neutral tone", () => {
 		render(RebaseEditor, {
 			props: {
 				repoPath: "/test/repo",
@@ -556,12 +558,12 @@ describe("RebaseEditor", () => {
 		expect(screen.getByRole("button", { name: "Start Rebase" })).toHaveClass(
 			"bg-success-bg",
 		);
-		expect(screen.getByRole("button", { name: "Cancel Rebase" })).toHaveClass(
-			"bg-danger-bg",
-		);
+		expect(
+			screen.getByRole("button", { name: "Cancel rebase preview" }),
+		).toHaveClass("bg-transparent");
 	});
 
-	it("calls onclose when Cancel Rebase clicked", async () => {
+	it("closes when the user cancels the preview", async () => {
 		const onclose = vi.fn();
 		render(RebaseEditor, {
 			props: {
@@ -573,7 +575,9 @@ describe("RebaseEditor", () => {
 				onstart: vi.fn(),
 			},
 		});
-		await fireEvent.click(screen.getByText("Cancel Rebase"));
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Cancel rebase preview" }),
+		);
 		expect(onclose).toHaveBeenCalledOnce();
 	});
 

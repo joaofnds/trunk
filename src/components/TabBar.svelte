@@ -45,6 +45,61 @@ $effect(() => {
 	}
 });
 
+// Prefer a complete trailing word when long checkout directories differ there.
+// Keep the whole directory when that abbreviation would identify two checkouts.
+function compactAncestor(name: string, peers: string[]): string {
+	if (name.length <= 18) return name;
+	for (const separator of name.matchAll(/[-_. ]+/g)) {
+		const tail = name.slice(separator.index + separator[0].length);
+		if (
+			tail &&
+			tail.length <= 18 &&
+			!peers.some((peer) => peer.endsWith(tail))
+		) {
+			return `…${tail}`;
+		}
+	}
+	return name;
+}
+
+// The first different ancestor identifies the checkout. A leading slash
+// distinguishes /services/api from /work/services/api at the root.
+const parentLabels = $derived.by(() => {
+	const groups = new Map<string, Map<string, string[]>>();
+	for (const { repoName, repoPath } of tabs) {
+		if (!repoPath) continue;
+		let paths = groups.get(repoName);
+		if (!paths) {
+			paths = new Map();
+			groups.set(repoName, paths);
+		}
+		paths.set(repoPath, repoPath.replace(/\/+$/, "").split("/").slice(0, -1));
+	}
+	const labels = new Map<string, { ancestor: string; tail: string }>();
+	for (const paths of groups.values()) {
+		if (paths.size < 2) continue;
+		for (const [path, parents] of paths) {
+			const others = [...paths].filter(([other]) => other !== path);
+			let depth = 1;
+			let suffix = parents.slice(-depth).join("/");
+			while (
+				depth < parents.length &&
+				others.some(([, parts]) => parts.slice(-depth).join("/") === suffix)
+			) {
+				depth++;
+				suffix = parents.slice(-depth).join("/");
+			}
+			const [name, ...tail] = parents.slice(-depth);
+			const peers = others.map(([, parts]) => parts.slice(-depth)[0]);
+			labels.set(path, {
+				ancestor: compactAncestor(name || "/", peers),
+				tail: tail.length ? (name ? "/" : "") + tail.join("/") : "",
+			});
+		}
+	}
+	return labels;
+});
+
 function reveal(item: Element) {
 	item.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
@@ -218,11 +273,13 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 		onwheel={scrollSideways}
 	>
 		{#each tabs as tab (tab.id)}
+			{@const parent = tab.repoPath && parentLabels.get(tab.repoPath)}
 			{@const title = tab.repoPath
 				? (resolvedPaths[tab.repoPath] ?? tab.repoPath)
 				: tab.repoName || "New Tab"}
 			<div
 				class="tab-item"
+				class:qualified={!!parent}
 				class:active={tab.id === activeTabId}
 				role="presentation"
 				data-tab-id={tab.id}
@@ -230,6 +287,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 			>
 				<Tab
 					variant="framed"
+					aria-label={parent ? `${tab.repoName}, ${tab.repoPath}` : undefined}
 					selected={tab.id === activeTabId}
 					{title}
 					onmousedown={(e) => activateOnPrimary(e, tab.id)}
@@ -242,9 +300,17 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 					{#if tab.dirty}
 						<span class="dirty-dot"></span>
 					{/if}
-					<span class="truncate tab-label flex-1"
-						>{tab.repoName || "New Tab"}</span
-					>
+					<span class="tab-label flex-1 min-w-0 flex items-baseline gap-1">
+						<span class="truncate">{tab.repoName || "New Tab"}</span>
+						{#if parent}
+							<span
+								class="tab-parent inline-flex text-small font-regular text-text-muted"
+							>
+								<span>{parent.ancestor}</span
+								><span class="truncate">{parent.tail}</span>
+							</span>
+						{/if}
+					</span>
 					{#snippet trailing()}
 						{#if shown[tab.id] !== "cut"}
 							<Button
@@ -327,6 +393,26 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	box-shadow: inset 0 0 0 1px transparent;
 }
 
+.tab-label {
+	max-width: calc(50 * var(--u));
+}
+
+.tab-item.qualified {
+	flex: none;
+}
+
+.tab-item.qualified .tab-label {
+	max-width: none;
+}
+
+.tab-item.qualified .tab-label > :first-child {
+	max-width: 16ch;
+}
+
+.tab-parent > :last-child {
+	max-width: 12ch;
+}
+
 .tab-item:hover {
 	color: var(--color-text);
 	background: var(--color-hover);
@@ -361,8 +447,5 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 
 :global(.tab-drag) {
 	opacity: 0;
-}
-.tab-label {
-	max-width: calc(50 * var(--u));
 }
 </style>

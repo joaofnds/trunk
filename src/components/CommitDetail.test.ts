@@ -1,6 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
@@ -644,6 +645,35 @@ describe("CommitDetail", () => {
 				},
 			});
 		}
+
+		it("folds a wrapped paragraph at narrow widths and unfolds it when it fits", async () => {
+			const paragraph = "Review the queued changes before proceeding. "
+				.repeat(12)
+				.trim();
+			const layout = reportWidthOf(
+				(target) => target.textContent === paragraph,
+				600,
+			);
+			onTestFinished(() => {
+				vi.unstubAllGlobals();
+			});
+			renderWithBody(paragraph);
+			screen.getByText(paragraph).style.lineHeight = "18px";
+
+			layout.resize(176, 24 * 18);
+			expect(
+				await screen.findByRole("button", { name: "Show more" }),
+			).toBeVisible();
+
+			layout.resize(600, 7 * 18);
+			await waitFor(() => {
+				expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+				expect(screen.getByTestId("commit-body")).toHaveAttribute(
+					"data-clamped",
+					"false",
+				);
+			});
+		});
 
 		it("clamps a body past the limit and offers to show the rest", () => {
 			renderWithBody(longBody);

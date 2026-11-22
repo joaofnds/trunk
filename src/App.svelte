@@ -1637,7 +1637,6 @@ $effect(() => {
 					{/if}
 				{:else}
 					<WelcomeScreen
-						{isFullscreen}
 						opening={pendingOpens.has(tab.id)}
 						error={getTabState(tab.id).welcome.error}
 						onopen={(choice) => openRepository(tab.id, choice)}

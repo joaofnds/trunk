@@ -11,9 +11,11 @@ async function getHome(): Promise<string> {
 
 export async function displayPath(path: string): Promise<string> {
 	const h = await getHome();
-	if (!h || !path.startsWith(h)) return path;
-	const rest = path.slice(h.length).replace(/^\//, "");
-	return `~/${rest}`;
+	if (!h) return path;
+	const homePath = h.replace(/\/$/, "");
+	if (path === homePath) return "~/";
+	const prefix = `${homePath}/`;
+	return path.startsWith(prefix) ? `~/${path.slice(prefix.length)}` : path;
 }
 
 /** The name a repository goes by in a tab, a list or a message: its folder's name. */

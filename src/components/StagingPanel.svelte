@@ -27,6 +27,7 @@ import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
+import { tooltip } from "../lib/tooltip.js";
 import type {
 	FileStatus,
 	FileStatusType,
@@ -95,6 +96,10 @@ let {
 	commentTallies,
 }: Props = $props();
 const scheduler = getScheduler();
+
+let panelWidth = $state(0);
+// At narrower widths the tree buttons squeeze even a short branch out of its chip.
+const compactHeader = $derived(panelWidth > 0 && panelWidth < 280);
 
 let status = $state<WorkingTreeStatus | null>(null);
 
@@ -440,6 +445,14 @@ async function handleDiscardDirectory(dirPath: string) {
 	});
 }
 
+function chooseTreeOption(select: HTMLSelectElement) {
+	const action = select.value;
+	select.value = "";
+	if (action === "list") ontreeviewtoggle?.();
+	if (action === "expand") expandAllSignal++;
+	if (action === "collapse") collapseAllSignal++;
+}
+
 async function showUnstagedContextMenu(
 	_e: MouseEvent,
 	filePath: string,
@@ -598,6 +611,7 @@ async function resolveConflictedFile(
 				: takeAllIncoming(sides.regions);
 		const content = computeOutput(sides.regions, taken);
 		await safeInvoke("save_merge_result", {
+			expectedRevision: sides.revision,
 			path: repoPath,
 			filePath,
 			content,
@@ -878,7 +892,10 @@ registerUpdateBlocker(() => {
 	</span>
 {/snippet}
 
-<div class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface">
+<div
+	bind:clientWidth={panelWidth}
+	class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface"
+>
 	{#if bare}
 		<p class="m-auto px-4 text-body text-center text-text-muted">
 			This is a bare repository. It has no working tree, so there are no changes
@@ -887,66 +904,103 @@ registerUpdateBlocker(() => {
 	{:else}
 		<!-- Panel header -->
 		<div
-			class="h-bar bg-surface-raised shadow-hairline py-0 px-3 flex items-center justify-center gap-2 shrink-0"
+			class={[
+				"h-bar bg-surface-raised shadow-hairline py-0 flex items-center justify-center shrink-0",
+				compactHeader ? "gap-1 px-2" : "gap-2 px-3",
+			]}
 		>
-			<span class="flex-1 flex items-center justify-center gap-2 min-w-0">
-				<span class="text-callout text-text">
-					{`${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
+			<span
+				class={[
+					"flex-1 flex items-center min-w-0",
+					compactHeader ? "gap-1" : "gap-2 justify-center",
+				]}
+			>
+				<span class="shrink-0 text-callout text-text">
+					{compactHeader
+						? `${totalCount} changed`
+						: `${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
 				</span>
 				{#if currentBranch}
-					<span class="text-small text-text-muted">on</span>
+					<span class={compactHeader ? "sr-only" : "text-small text-text-muted"}
+						>on</span
+					>
 					<BranchChip name={currentBranch} />
 				{/if}
 			</span>
-			{#if treeViewEnabled}
+			{#if compactHeader && treeViewEnabled}
+				<div
+					class="inline-grid w-control-lg shrink-0 grid-cols-1 rounded h-control-sm text-text-muted hover:bg-hover hover:text-text has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-accent"
+				>
+					<span
+						class="col-start-1 row-start-1 inline-flex items-center justify-center gap-1"
+						aria-hidden="true"
+					>
+						<FolderTree size={14} />
+						<ChevronDown size={10} />
+					</span>
+					<select
+						class="col-start-1 row-start-1 w-0 min-w-full opacity-0 cursor-pointer"
+						aria-label="Tree view options"
+						use:tooltip={"Tree view options"}
+						onchange={(event) => chooseTreeOption(event.currentTarget)}
+					>
+						<option value="" hidden>Tree view options</option>
+						<option value="list">Switch to list view</option>
+						<option value="expand">Expand all directories</option>
+						<option value="collapse">Collapse all directories</option>
+					</select>
+				</div>
+			{:else}
+				{#if treeViewEnabled}
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
+						aria-label="Expand all directories"
+						title="Expand All"
+						onclick={(e) => {
+							e.stopPropagation();
+							expandAllSignal++;
+						}}
+					>
+						<ChevronsUpDown size={14} />
+					</Button>
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
+						aria-label="Collapse all directories"
+						title="Collapse All"
+						onclick={(e) => {
+							e.stopPropagation();
+							collapseAllSignal++;
+						}}
+					>
+						<ChevronsDownUp size={14} />
+					</Button>
+				{/if}
 				<Button
 					icon
 					size="sm"
 					variant="ghost"
-					aria-label="Expand all directories"
-					title="Expand All"
+					role="switch"
+					aria-checked={treeViewEnabled}
+					aria-label={treeViewEnabled
+						? "Switch to list view"
+						: "Switch to tree view"}
+					title={treeViewEnabled ? "List view" : "Tree view"}
 					onclick={(e) => {
 						e.stopPropagation();
-						expandAllSignal++;
+						ontreeviewtoggle?.();
 					}}
 				>
-					<ChevronsUpDown size={14} />
-				</Button>
-				<Button
-					icon
-					size="sm"
-					variant="ghost"
-					aria-label="Collapse all directories"
-					title="Collapse All"
-					onclick={(e) => {
-						e.stopPropagation();
-						collapseAllSignal++;
-					}}
-				>
-					<ChevronsDownUp size={14} />
+					{#if treeViewEnabled}
+						<FolderTree size={14} />
+					{:else}
+						<List size={14} />
+					{/if}
 				</Button>
 			{/if}
-			<Button
-				icon
-				size="sm"
-				variant="ghost"
-				role="switch"
-				aria-checked={treeViewEnabled}
-				aria-label={treeViewEnabled
-					? "Switch to list view"
-					: "Switch to tree view"}
-				title={treeViewEnabled ? "List view" : "Tree view"}
-				onclick={(e) => {
-					e.stopPropagation();
-					ontreeviewtoggle?.();
-				}}
-			>
-				{#if treeViewEnabled}
-					<FolderTree size={14} />
-				{:else}
-					<List size={14} />
-				{/if}
-			</Button>
 		</div>
 
 		<!-- Operation banners -->
@@ -1011,10 +1065,19 @@ registerUpdateBlocker(() => {
 								<ChevronRight size={12} />
 							{/if}
 						</span>
-						{@render sectionTitle(
-							"Conflicted Files",
-							status?.conflicted.length ?? 0,
-						)}
+						{#if compactHeader}
+							{@const count = status?.conflicted.length ?? 0}
+							<span
+								class="flex-1 min-w-0 truncate text-caption font-semibold text-text-muted"
+							>
+								{count} {count === 1 ? "conflict" : "conflicts"}
+							</span>
+						{:else}
+							{@render sectionTitle(
+								"Conflicted Files",
+								status?.conflicted.length ?? 0,
+							)}
+						{/if}
 						{#snippet actions()}
 							{#if (status?.conflicted.length ?? 0) > 0}
 								<Button size="sm" variant="success" onclick={markAllResolved}>

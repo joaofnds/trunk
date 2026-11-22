@@ -900,12 +900,22 @@ fn merge_regions_serialize_tagged_by_type_in_camel_case() {
         },
     ];
 
-    let json =
-        serde_json::to_value(MergeSides { regions }).expect("MergeSides serialization failed");
+    let json = serde_json::to_value(MergeSides {
+        regions,
+        revision: "snapshot".to_owned(),
+        base_oid: None,
+        current_label: Some("main".to_owned()),
+        incoming_label: None,
+    })
+    .expect("MergeSides serialization failed");
 
     assert_eq!(
         json,
         serde_json::json!({
+            "revision": "snapshot",
+            "base_oid": null,
+            "current_label": "main",
+            "incoming_label": null,
             "regions": [
                 { "type": "merged", "oursLines": ["a"], "theirsLines": ["b"], "mergedLines": ["b"] },
                 { "type": "conflict", "oursLines": ["x"], "theirsLines": ["y"] },

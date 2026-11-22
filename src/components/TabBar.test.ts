@@ -96,6 +96,60 @@ describe("TabBar", () => {
 		expect(screen.getByText("other")).toBeInTheDocument();
 	});
 
+	it("shows the shortest parent context that distinguishes each same-name tab", async () => {
+		const paths = [
+			"/services/api",
+			"/work/services/api",
+			"/personal/services/api",
+			"/build/api",
+		];
+		const view = render(TabBar, {
+			props: {
+				...defaultProps,
+				tabs: paths.map((repoPath) => ({
+					...tabs[0],
+					id: repoPath,
+					repoName: "api",
+					repoPath,
+				})),
+			},
+		});
+
+		expect(
+			screen
+				.getAllByRole("tab")
+				.map((tab) => tab.textContent?.trim().replace(/\s+/g, " ")),
+		).toEqual([
+			"api /services",
+			"api work/services",
+			"api personal/services",
+			"api build",
+		]);
+		expect(screen.getAllByRole("tab")[1]).toHaveAccessibleName(
+			/\/work\/services\/api/,
+		);
+
+		await view.rerender({ tabs: [{ ...tabs[0], repoName: "api" }] });
+		expect(screen.getByRole("tab")).toHaveTextContent(/^api$/);
+	});
+
+	it("keeps the difference visible when checkout names and their shared parents are long", () => {
+		const name = "server-components-development";
+		const repos = ["production", "prototype"].map((environment) => {
+			const root = `continuous-integration-environment-${environment}`;
+			const path = `/${root}/shared-organization-services/${name}`;
+			return { ...tabs[0], id: path, repoPath: path, repoName: name };
+		});
+		render(TabBar, { props: { ...defaultProps, tabs: repos } });
+
+		for (const [i, environment] of ["production", "prototype"].entries()) {
+			const tab = screen.getByRole("tab", {
+				name: `${name}, ${repos[i].repoPath}`,
+			});
+			expect(within(tab).getByText(`…${environment}`)).toBeVisible();
+		}
+	});
+
 	it("highlights active tab", () => {
 		render(TabBar, { props: defaultProps });
 		const activeTab = screen.getByText("trunk").closest(".tab-item");

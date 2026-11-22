@@ -128,7 +128,7 @@ describe("a current-file comment under the thread filter", () => {
 
 		expect(app.review.finderBadge()).toEqual({
 			count: 1,
-			background: "var(--color-thread-done)",
+			tone: "done",
 		});
 	});
 });

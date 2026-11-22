@@ -385,3 +385,11 @@ Changed baselines:
 
     tests/visual/baselines/staging-footer__merge__detail-200px.png
     tests/visual/baselines/staging-footer__rebase__detail-200px.png
+
+## 2026-11-22
+
+The approved amber Unstage action adds a warning-tone row to the component catalog.
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

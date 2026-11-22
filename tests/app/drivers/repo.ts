@@ -10,7 +10,7 @@ import {
 	openContextMenu,
 } from "./dom.js";
 
-const RECENT_ENTRY = "button";
+const RECENT_ENTRY = "li button[title]";
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
 const COMMIT_SHA = '[title="Copy SHA"]';
@@ -415,7 +415,11 @@ export class RepoDriver {
 }
 
 function recentEntry(path: string): HTMLElement | null {
-	return firstMatching(RECENT_ENTRY, (text) => text.includes(path));
+	return (
+		[...document.querySelectorAll<HTMLButtonElement>(RECENT_ENTRY)].find(
+			(button) => button.title === path,
+		) ?? null
+	);
 }
 
 function commitRow(summary: string): HTMLElement | null {

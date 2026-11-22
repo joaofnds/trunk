@@ -2191,7 +2191,11 @@ describe("RepoView", () => {
 			}
 
 			async function takeAllCurrentFromMenu(path: string) {
-				await fireEvent.contextMenu(screen.getByText(path));
+				const row = screen
+					.getAllByTestId("staging-file")
+					.find((file) => file.dataset.path === path);
+				if (!row) throw new Error(`Conflicted file missing: ${path}`);
+				await fireEvent.contextMenu(row);
 				await vi.waitFor(() => getMenuAction("Take All Current"));
 				await getMenuAction("Take All Current")();
 				await vi.waitFor(() =>
@@ -4139,7 +4143,7 @@ describe("RepoView", () => {
 			const readsWithEditorOpen = graphReads();
 
 			await fireEvent.click(
-				screen.getByRole("button", { name: "Cancel Rebase" }),
+				screen.getByRole("button", { name: "Cancel rebase preview" }),
 			);
 			await flush();
 
@@ -4173,7 +4177,7 @@ describe("RepoView", () => {
 			await fireEvent.keyDown(window, { key: "j" });
 			await flush();
 			await fireEvent.click(
-				screen.getByRole("button", { name: "Cancel Rebase" }),
+				screen.getByRole("button", { name: "Cancel rebase preview" }),
 			);
 			await flush();
 
@@ -4421,7 +4425,7 @@ describe("RepoView", () => {
 				screen.getByRole("button", { name: "Start Rebase" }),
 			).toBeEnabled();
 			expect(
-				screen.getByRole("button", { name: "Cancel Rebase" }),
+				screen.getByRole("button", { name: "Cancel rebase preview" }),
 			).toBeEnabled();
 		});
 

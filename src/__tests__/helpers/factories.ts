@@ -100,6 +100,10 @@ export function makeMergeSides(
 	theirs = "their change",
 ): MergeSides {
 	return {
+		revision: "snapshot",
+		base_oid: null,
+		current_label: null,
+		incoming_label: null,
 		regions: [
 			mergedRegion("line 1"),
 			conflictRegion([ours], [theirs]),

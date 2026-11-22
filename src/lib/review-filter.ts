@@ -189,6 +189,15 @@ export function tallyEntries(
 	});
 }
 
+/** The spoken breakdown of a badge that displays more than one state. */
+export function tallyBreakdown(
+	entries: ReturnType<typeof tallyEntries>,
+): string {
+	if (entries.length < 2) return "";
+	const counts = entries.map(({ count, tone }) => `${count} ${tone}`);
+	return `${counts.slice(0, -1).join(", ")} and ${counts.at(-1)}`;
+}
+
 /** The state a gutter draws for several threads at once: the most urgent. */
 export function mostUrgentTone(threads: Thread[]): ReviewTone | null {
 	let tone: ReviewTone | null = null;

@@ -26,6 +26,7 @@ const TONES: RowActionTone[] = [
 	"muted",
 	"text",
 	"success",
+	"warning",
 	"danger",
 	"destructive",
 ];

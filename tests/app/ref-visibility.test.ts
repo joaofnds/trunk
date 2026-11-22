@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { firstMatching } from "./drivers/dom.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -270,13 +269,8 @@ describe("ref visibility", () => {
 		});
 
 		const release = app.holdPrefsGet("ref_visibility");
-		// Click the recent entry directly, without RepoDriver.open()'s own wait for
-		// commits to appear -- that wait would deadlock against the held gate,
-		// since the fix this test pins means no commits appear until release().
-		const entry = await waitFor(`the recent entry for ${app.repo.path}`, () =>
-			firstMatching("button", (text) => text.includes(app.repo.path)),
-		);
-		entry.click();
+		// Pick without waiting for commits because their first paint is held below.
+		await app.repo.pick();
 
 		// The gated read is recorded the instant BranchSidebar's mount effect issues
 		// it, before this promise blocks -- so by the time it shows up here,

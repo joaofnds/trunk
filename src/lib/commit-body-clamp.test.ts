@@ -23,13 +23,10 @@ describe("bodyOverflows", () => {
 		expect(bodyOverflows(body)).toBe(true);
 	});
 
-	// The body renders with `white-space: pre-wrap`, so a single long paragraph
-	// wraps into several rendered lines even though it holds one newline-free
-	// string. Counting newlines alone would call this body short and drop the
-	// control the reader needs.
-	it("counts a wrapped long paragraph as more than one line", () => {
-		const body = "word ".repeat(400).trim();
-		expect(bodyOverflows(body)).toBe(true);
+	it("uses the rendered height when the same paragraph wraps at a narrower width", () => {
+		const paragraph = "Review the queued changes. ".repeat(12);
+		expect(bodyOverflows(paragraph, 12)).toBe(true);
+		expect(bodyOverflows(paragraph, 7)).toBe(false);
 	});
 
 	it("is false for a short single-line body", () => {

@@ -25,6 +25,7 @@ import {
 	EVERYTHING_VISIBLE,
 	groupState,
 	hidesNothing,
+	isHideable,
 	isRefHidden,
 	isStashHidden,
 	type RefVisibility,
@@ -829,7 +830,8 @@ registerUpdateBlocker(() =>
 		{#if loading || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
 			<BranchSection
 				label="Local"
-				count={refs?.local.length ?? 0}
+				count={filteredLocal.length}
+				filteredFrom={search ? (refs?.local.length ?? 0) : undefined}
 				expanded={localExpanded}
 				ontoggle={() => (localExpanded = !localExpanded)}
 				showCreateButton={true}
@@ -839,7 +841,9 @@ registerUpdateBlocker(() =>
 					createInput?.focus();
 				}}
 				groupState={groupState(visibility, localMembers)}
-				ontogglevisibility={() => toggleGroupVisibility(localMembers)}
+				ontogglevisibility={localMembers.some(isHideable)
+					? () => toggleGroupVisibility(localMembers)
+					: undefined}
 			>
 				{#if showCreateInput}
 					<div class="py-1 px-2">
@@ -899,7 +903,8 @@ registerUpdateBlocker(() =>
 		{#if (refs?.remote.length ?? 0) > 0}
 			<BranchSection
 				label="Remote"
-				count={refs?.remote.length ?? 0}
+				count={filteredRemote.length}
+				filteredFrom={search ? (refs?.remote.length ?? 0) : undefined}
 				expanded={remoteExpanded}
 				ontoggle={() => (remoteExpanded = !remoteExpanded)}
 				groupState={groupState(visibility, allRemoteMembers)}
@@ -908,6 +913,7 @@ registerUpdateBlocker(() =>
 				{#each remoteGroups as [prefix, { branches, members }] (prefix)}
 					<RemoteGroup
 						remoteName={prefix || "unknown"}
+						filtered={Boolean(search)}
 						{branches}
 						checkingOut={checkingOutBranch?.kind === "remote"
 							? checkingOutBranch.name
@@ -939,7 +945,8 @@ registerUpdateBlocker(() =>
 		{#if (refs?.tags.length ?? 0) > 0}
 			<BranchSection
 				label="Tags"
-				count={refs?.tags.length ?? 0}
+				count={filteredTags.length}
+				filteredFrom={search ? (refs?.tags.length ?? 0) : undefined}
 				expanded={tagsExpanded}
 				ontoggle={() => (tagsExpanded = !tagsExpanded)}
 				groupState={groupState(visibility, tagMembers)}
@@ -966,6 +973,7 @@ registerUpdateBlocker(() =>
 		<BranchSection
 			label="Stashes"
 			count={filteredStashes.length}
+			filteredFrom={search ? (refs?.stashes.length ?? 0) : undefined}
 			expanded={stashesExpanded}
 			ontoggle={() => (stashesExpanded = !stashesExpanded)}
 			groupState={stashGroupState(visibility, filteredStashes)}
@@ -1028,11 +1036,24 @@ registerUpdateBlocker(() =>
 				</Row>
 			{/each}
 		</BranchSection>
+		{#if search &&
+			refs &&
+			!loading &&
+			filteredLocal.length +
+				filteredRemote.length +
+				filteredTags.length +
+				filteredStashes.length ===
+				0}
+			<p class="px-3 py-2 text-callout text-text-muted" role="status"
+				>No matching refs or stashes</p
+			>
+		{/if}
 	</div>
 
 	{#if dialogConfig}
 		<InputDialog
 			title={dialogConfig.title}
+			confirmLabel="Rename branch"
 			fields={dialogConfig.fields}
 			onsubmit={dialogConfig.onsubmit}
 			oncancel={closeDialog}

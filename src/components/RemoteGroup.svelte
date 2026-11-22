@@ -13,6 +13,7 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	remoteName: string;
+	filtered?: boolean;
 	branches: RemoteGroupBranch[];
 	checkingOut: string | null;
 	oncheckout: (fullName: string) => void;
@@ -31,6 +32,7 @@ interface Props {
 
 let {
 	remoteName,
+	filtered = false,
 	branches,
 	checkingOut,
 	oncheckout,
@@ -58,7 +60,9 @@ let allHidden = $derived(groupState === "all");
 			<RowAction
 				data-testid="remote-group-visibility-btn"
 				onclick={() => ontogglevisibility?.()}
-				aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
+				aria-label="{visibilityVerb(allHidden)} {filtered
+					? "matching"
+					: "all"} {remoteName} branches"
 				data-group-state={groupState}
 			>
 				<VisibilityIcon hidden={allHidden} />

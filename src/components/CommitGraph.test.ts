@@ -4491,7 +4491,9 @@ describe("CommitGraph", () => {
 			await fireEvent.input(screen.getByLabelText(/Branch name/), {
 				target: { value: name },
 			});
-			await fireEvent.click(screen.getByRole("button", { name: "OK" }));
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Create branch" }),
+			);
 			await flush();
 		}
 

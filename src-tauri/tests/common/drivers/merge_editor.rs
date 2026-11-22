@@ -9,7 +9,26 @@ impl TestContext {
     }
 
     pub fn save_merge_result(&self, file: &str, content: &str) -> Result<(), TrunkError> {
-        merge_editor::save_merge_result_inner(self.path(), file, content, self.state_map())
+        let expected = self
+            .get_merge_sides(file)
+            .map(|sides| sides.revision)
+            .unwrap_or_default();
+        self.save_merge_draft(file, content, &expected)
+    }
+
+    pub fn save_merge_draft(
+        &self,
+        file: &str,
+        content: &str,
+        revision: &str,
+    ) -> Result<(), TrunkError> {
+        merge_editor::save_merge_result_inner(
+            self.path(),
+            file,
+            content,
+            revision,
+            self.state_map(),
+        )
     }
 
     pub fn conflict_marker_files(&self, files: &[&str]) -> Result<Vec<String>, TrunkError> {

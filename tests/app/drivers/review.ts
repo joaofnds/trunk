@@ -4,7 +4,12 @@ import {
 	type ThreadPreset,
 } from "../../../src/lib/review-filter.js";
 import { waitFor } from "../harness/wait.js";
-import { enabledButton, firstMatching } from "./dom.js";
+import {
+	type CommentBadge,
+	commentBadgeIn,
+	enabledButton,
+	firstMatching,
+} from "./dom.js";
 
 const PRESETS =
 	'section[aria-label="Review threads"] > header fieldset button[aria-pressed]';
@@ -559,14 +564,8 @@ export class ReviewDriver {
 		);
 	}
 
-	finderBadge(): { count: number; background: string } | null {
-		const badge = document.querySelector<HTMLElement>(".finder-comment-count");
-		if (!badge) return null;
-
-		return {
-			count: Number(badge.textContent?.trim()),
-			background: badge.style.background,
-		};
+	finderBadge(): CommentBadge | null {
+		return commentBadgeIn(document.querySelector(FINDER_LIST));
 	}
 
 	/** Opens the finder's topmost row, which is the one enter would take. */

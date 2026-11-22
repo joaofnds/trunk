@@ -77,6 +77,119 @@ fn sides_with_text<'a>(
     Ok((our, their))
 }
 
+/// Only name a revision when its tree supplies this side's actual index blob.
+/// A stashed local change, a rename or a missing operation ref can leave the
+/// side perfectly readable without a corresponding revision to display.
+fn supplies(commit: &git2::Commit<'_>, side: &git2::IndexEntry) -> bool {
+    let Ok(path) = std::str::from_utf8(&side.path) else {
+        return false;
+    };
+    commit
+        .tree()
+        .and_then(|tree| tree.get_path(Path::new(path)))
+        .is_ok_and(|entry| entry.id() == side.id)
+}
+
+fn current_label(repo: &git2::Repository, side: &git2::IndexEntry) -> Option<String> {
+    let head = repo.head().ok()?;
+    let commit = head.peel_to_commit().ok()?;
+    if !supplies(&commit, side) {
+        return None;
+    }
+    if head.is_branch() {
+        return head.shorthand().ok().map(str::to_owned);
+    }
+    Some(
+        commit
+            .as_object()
+            .short_id()
+            .ok()?
+            .as_str()
+            .ok()?
+            .to_owned(),
+    )
+}
+
+fn incoming_label(repo: &git2::Repository, side: &git2::IndexEntry) -> Option<String> {
+    use git2::RepositoryState;
+    let state = repo.state();
+    let head = match state {
+        RepositoryState::Merge => "MERGE_HEAD",
+        RepositoryState::CherryPick | RepositoryState::CherryPickSequence => "CHERRY_PICK_HEAD",
+        RepositoryState::Rebase
+        | RepositoryState::RebaseInteractive
+        | RepositoryState::RebaseMerge => "REBASE_HEAD",
+        _ => return None,
+    };
+    // A merge can have multiple heads. The index does not identify which of
+    // them provided this side, so only accept a single recorded commit.
+    let contents = std::fs::read_to_string(repo.path().join(head)).ok()?;
+    let oid = git2::Oid::from_str(contents.trim()).ok()?;
+    let commit = repo.find_commit(oid).ok()?;
+    if !supplies(&commit, side) {
+        return None;
+    }
+    if state == RepositoryState::Merge {
+        let message = repo.message().ok();
+        if let Some(name) = super::operation_state::extract_merge_source(message.as_deref())
+            && repo
+                .resolve_reference_from_short_name(&name)
+                .and_then(|reference| reference.peel_to_commit())
+                .is_ok_and(|named| named.id() == oid)
+        {
+            return Some(name);
+        }
+    }
+    let short = commit.as_object().short_id().ok()?;
+    let id = short.as_str().ok()?;
+    Some(if head == "REBASE_HEAD" {
+        format!("Replaying {id}")
+    } else {
+        id.to_owned()
+    })
+}
+
+/// Tie a draft to the working bytes and all three index stages it was built from.
+fn merge_revision(working: &[u8], conflict: &git2::IndexConflict) -> Result<String, git2::Error> {
+    let mut stages = Vec::new();
+    for entry in [&conflict.ancestor, &conflict.our, &conflict.their] {
+        if let Some(entry) = entry {
+            stages.extend(entry.mode.to_be_bytes());
+            stages.extend(entry.id.as_bytes());
+            stages.extend(&entry.path);
+        }
+        stages.push(0);
+    }
+    let stage_id = git2::Oid::hash_object(git2::ObjectType::Blob, &stages)?;
+    let working_id = git2::Oid::hash_object(git2::ObjectType::Blob, working)?;
+    Ok(format!("{stage_id}:{working_id}"))
+}
+
+fn matches_side(regions: &[conflicted_file::MergeRegion], text: &str, current: bool) -> bool {
+    use conflicted_file::MergeRegion;
+    regions
+        .iter()
+        .flat_map(|region| match region {
+            MergeRegion::Merged {
+                ours_lines,
+                theirs_lines,
+                ..
+            }
+            | MergeRegion::Conflict {
+                ours_lines,
+                theirs_lines,
+            } => {
+                if current {
+                    ours_lines
+                } else {
+                    theirs_lines
+                }
+            }
+        })
+        .map(String::as_str)
+        .eq(text.split('\n'))
+}
+
 /// The regions of a conflicted file as git left it in the working tree, beside the
 /// two sides the index holds.
 ///
@@ -137,7 +250,89 @@ pub fn get_merge_sides_inner(
                 ReadError::Git(error) => error.into(),
             })?
     };
-    Ok(MergeSides { regions })
+    Ok(MergeSides {
+        revision: merge_revision(working.as_bytes(), &conflict)?,
+        base_oid: conflict
+            .ancestor
+            .as_ref()
+            .filter(|entry| entry.mode & 0o170_000 == 0o100_000)
+            .map(|entry| entry.id.to_string()),
+        current_label: matches_side(&regions, &ours, true)
+            .then(|| current_label(&repo, our))
+            .flatten(),
+        incoming_label: matches_side(&regions, &theirs, false)
+            .then(|| incoming_label(&repo, their))
+            .flatten(),
+        regions,
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeBaseSelection {
+    pub ordinal: usize,
+    pub ours: Vec<String>,
+    pub theirs: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "scope", content = "text", rename_all = "lowercase")]
+pub enum MergeBaseView {
+    Conflict(String),
+    File(String),
+}
+
+/// Read the indexed ancestor on demand. The displayed sides identify the marked
+/// block. Git can omit its base markers, in which case the full file is exact.
+///
+/// # Errors
+///
+/// Returns the repository or conflict lookup error, or a refusal when the base
+/// changed, is missing, is a link, or cannot be displayed as text.
+pub fn get_merge_base_inner(
+    path: &str,
+    file_path: &str,
+    base_oid: &str,
+    selection: Option<&MergeBaseSelection>,
+    state_map: &OpenRepos,
+) -> Result<MergeBaseView, TrunkError> {
+    let repo = state_map.open(path)?;
+    let conflict = conflict_entry(&repo, file_path)?;
+    let entry = conflict
+        .ancestor
+        .filter(|entry| entry.mode & 0o170_000 == 0o100_000 && entry.id.to_string() == base_oid)
+        .ok_or_else(|| {
+            TrunkError::new(
+                "base_unavailable",
+                "The merge base for this file is no longer available.",
+            )
+        })?;
+    let blob = repo.find_blob(entry.id)?;
+    let unsupported = || {
+        TrunkError::new(
+            "binary_conflict",
+            "The merge base cannot be displayed as text.",
+        )
+    };
+    if blob.is_binary() {
+        return Err(unsupported());
+    }
+    let base = std::str::from_utf8(blob.content()).map_err(|_| unsupported())?;
+    if let Some(selected) = selection
+        && let Ok(WorkingTreeFile::Text(bytes)) = read_working_file(&repo, file_path)
+        && let Ok(working) = std::str::from_utf8(&bytes)
+        && let Some(excerpt) = conflicted_file::marked_ancestor(
+            working,
+            conflict_marker_size(&repo, file_path)?,
+            selected.ordinal,
+            &selected.ours,
+            &selected.theirs,
+            base,
+        )
+    {
+        return Ok(MergeBaseView::Conflict(excerpt));
+    }
+    Ok(MergeBaseView::File(base.to_owned()))
 }
 
 /// The working-tree file at `file_path`, read without following a link, so a link
@@ -202,6 +397,7 @@ pub fn save_merge_result_inner(
     path: &str,
     file_path: &str,
     content: &str,
+    expected_revision: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     state_map.hold_for_writing(path, |repo| {
@@ -213,14 +409,28 @@ pub fn save_merge_result_inner(
         // ended would otherwise overwrite the restored content and stage it, and
         // nothing committed it, so the repository could not give it back. A side that
         // deleted the file is refused for the reason the read path gives.
-        sides_with_text(&conflict_entry(repo, file_path)?, file_path)?;
-
-        write_working_file(repo_path, file_path, content)?;
-
-        // Stage the file (clears conflict entry from index)
-        let mut index = repo.index()?;
-        index.add_path(std::path::Path::new(file_path))?;
-        index.write()?;
+        let conflict = conflict_entry(repo, file_path)?;
+        sides_with_text(&conflict, file_path)?;
+        let changed = || TrunkError::new("conflict_changed",
+            "This conflict changed after the editor opened. Copy your draft and reopen the file to review it before staging.");
+        let Ok(WorkingTreeFile::Text(working)) = read_working_file(repo, file_path) else {
+            return Err(changed());
+        };
+        let revision = merge_revision(&working, &conflict)?;
+        let unchanged_stages = expected_revision.split_once(':')
+            .is_some_and(|(stages, _)| revision.starts_with(&format!("{stages}:")));
+        let already_written = working == content.as_bytes();
+        if revision != expected_revision && !(unchanged_stages && already_written) {
+            return Err(changed());
+        }
+        if !already_written {
+            write_working_file(repo_path, file_path, content)?;
+        }
+        let stage_error = |error: git2::Error| TrunkError::new("stage_failed",
+            format!("The resolution is saved in the working tree. Retry to stage it. {}", error.message()));
+        let mut index = repo.index().map_err(stage_error)?;
+        index.add_path(Path::new(file_path)).map_err(stage_error)?;
+        index.write().map_err(stage_error)?;
 
         Ok(())
     })
@@ -321,6 +531,30 @@ pub async fn get_merge_sides(
         .map_err(|e| e.to_json())
 }
 
+/// Read the selected conflict's merge base.
+///
+/// # Errors
+///
+/// Returns the read error as JSON, or `spawn_error` when the worker cannot join.
+#[tauri::command]
+pub async fn get_merge_base(
+    activity: crate::activity::Activity,
+    path: String,
+    file_path: String,
+    base_oid: String,
+    selection: Option<MergeBaseSelection>,
+    state: State<'_, RepoState>,
+) -> Result<MergeBaseView, String> {
+    let state_map = state.snapshot();
+    activity
+        .spawn_blocking(move || {
+            get_merge_base_inner(&path, &file_path, &base_oid, selection.as_ref(), &state_map)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
 /// # Errors
 ///
 /// Returns the inner error as JSON, and `spawn_error` when the blocking task
@@ -335,6 +569,7 @@ pub async fn save_merge_result<R: Runtime>(
     path: String,
     file_path: String,
     content: String,
+    expected_revision: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     app: AppHandle<R>,
@@ -343,7 +578,13 @@ pub async fn save_merge_result<R: Runtime>(
     let path_clone = path.clone();
     activity
         .spawn_blocking(move || {
-            save_merge_result_inner(&path_clone, &file_path, &content, &state_map)
+            save_merge_result_inner(
+                &path_clone,
+                &file_path,
+                &content,
+                &expected_revision,
+                &state_map,
+            )
         })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

@@ -26,7 +26,23 @@ $effect(() => {
 	oid;
 	bodyExpanded = false;
 });
-let bodyExpandable = $derived(bodyOverflows(body));
+let renderedLines = $state<number>();
+function measureBody(node: HTMLElement) {
+	const observer = new ResizeObserver(([entry]) => {
+		const lineHeight = Number.parseFloat(getComputedStyle(node).lineHeight);
+		if (lineHeight > 0 && entry.contentRect.height > 0) {
+			renderedLines = Math.round(entry.contentRect.height / lineHeight);
+		}
+	});
+	observer.observe(node);
+	return {
+		destroy: () => {
+			observer.disconnect();
+			renderedLines = undefined;
+		},
+	};
+}
+let bodyExpandable = $derived(bodyOverflows(body, renderedLines));
 let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 </script>
 
@@ -36,13 +52,14 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	</div>
 	{#if body}
 		<div
-			class="select-text commit-body"
+			class="commit-body"
 			class:clamped={bodyClamped}
 			data-testid="commit-body"
 			data-clamped={bodyClamped}
 			style:--body-clamp-lines={BODY_CLAMP_LINES}
-			>{body}</div
 		>
+			<div class="select-text" use:measureBody>{body}</div>
+		</div>
 		{#if bodyExpandable}
 			<div class="mt-1">
 				<Button
@@ -98,10 +115,11 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 	overflow-wrap: break-word;
 }
 .commit-body.clamped {
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: var(--body-clamp-lines);
-	line-clamp: var(--body-clamp-lines);
+	max-height: calc(
+		var(--body-clamp-lines) *
+		var(--leading-normal) *
+		var(--text-callout)
+	);
 	overflow: hidden;
 	/* Fade the cut so the clamp reads as text continuing rather than as a
        paragraph that happens to end mid-sentence. */

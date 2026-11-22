@@ -1,5 +1,6 @@
 <script lang="ts">
 import X from "@lucide/svelte/icons/x";
+import { splitFilePath } from "../lib/file-path.js";
 import { displayPath, repositoryName } from "../lib/path.js";
 import {
 	getRecentRepos,
@@ -14,15 +15,9 @@ interface Props {
 	onopen: (choice?: RecentRepo) => void;
 	opening?: boolean;
 	error?: string | null;
-	isFullscreen?: boolean;
 }
 
-let {
-	onopen,
-	opening = false,
-	error = null,
-	isFullscreen = false,
-}: Props = $props();
+let { onopen, opening = false, error = null }: Props = $props();
 
 let recentRepos = $state<RecentRepo[]>([]);
 let resolvedPaths: Record<string, string> = $state({});
@@ -54,15 +49,13 @@ async function handleRemoveRecent(path: string) {
 }
 </script>
 
-<div class="flex flex-col h-screen bg-bg">
-	<!-- LAYOUT-02: drag region for window movement on welcome screen -->
+<div class="h-full min-h-0 overflow-y-auto bg-bg">
 	<div
-		data-tauri-drag-region
-		class="flex-shrink-0 h-topbar"
-		style:padding-left="{isFullscreen ? 0 : 78}px"
-	></div>
-	<div class="flex-1 flex flex-col items-center justify-center gap-6">
-		<div class="flex flex-col items-center gap-4 w-full max-w-welcome px-4">
+		class="flex h-full min-h-min flex-col items-center justify-center gap-4 py-4"
+	>
+		<div
+			class="flex shrink-0 flex-col items-center gap-4 w-full max-w-welcome px-4"
+		>
 			<h1 class="text-display font-semibold text-text">Trunk</h1>
 			<p class="text-body text-text-muted"
 				>Git history, beautifully visualized</p
@@ -87,27 +80,40 @@ async function handleRemoveRecent(path: string) {
 		</div>
 
 		{#if displayedRepos.length > 0}
-			<div class="w-full max-w-welcome px-4">
+			<div class="flex flex-col min-h-0 w-full max-w-welcome px-4">
 				<p
 					class="text-callout font-medium mb-2 uppercase tracking-widest text-text-muted"
 					>Recent</p
 				>
-				<ul class="flex flex-col gap-1">
+				<ul class="flex flex-col gap-1 overflow-y-auto">
 					{#each displayedRepos as repo (repo.path)}
-						{@const dp = resolvedPaths[repo.path] ?? repo.path}
+						{@const name = repositoryName(repo.path)}
+						{@const path = (resolvedPaths[repo.path] ?? repo.path).replace(
+							/\/+$/,
+							"",
+						)}
+						{@const parent =
+							splitFilePath(path).directory ||
+							(path.startsWith("/") ? "/" : "")}
 						<li>
 							<Row
 								variant="entry"
 								reveal="fade"
-								onclick={() =>
-									onopen({ path: repo.path, name: repositoryName(repo.path) })}
+								title={repo.path}
+								aria-label={`${name}, ${repo.path}`}
+								onclick={() => onopen({ path: repo.path, name })}
 							>
-								<span class="text-body truncate min-w-0 flex-1">
-									<span class="text-text-muted"
-										>{dp.substring(0, dp.lastIndexOf("/"))}/</span
-									><span class="font-semibold text-text"
-										>{dp.split("/").at(-1)}</span
+								<span class="flex flex-1 items-baseline min-w-0 gap-2">
+									<span class="truncate font-medium text-text text-body"
+										><bdi>{name}</bdi></span
 									>
+									{#if parent}
+										<span
+											dir="rtl"
+											class="min-w-0 flex-1 truncate text-left text-callout text-text-muted"
+											><bdi>{parent}</bdi></span
+										>
+									{/if}
 								</span>
 								{#snippet actions()}
 									<Button

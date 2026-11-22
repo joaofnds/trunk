@@ -357,6 +357,24 @@ describe("TreeFileList", () => {
 			expect(directory).toHaveAttribute("aria-expanded", "true");
 		});
 
+		it("opens the child under the cursor after navigating from a focused directory", async () => {
+			const onfileclick = vi.fn();
+			render(TreeFileList, { props: { ...props, onfileclick } });
+			const directory = screen.getByRole("treeitem", { name: /src/ });
+			await fireEvent.click(directory);
+			await fireEvent.keyDown(directory, { key: "ArrowRight" });
+			expect(
+				screen.getByRole("treeitem", { selected: true }),
+			).toHaveTextContent("a.ts");
+
+			await fireEvent.keyDown(document.activeElement ?? document.body, {
+				key: "Enter",
+			});
+
+			expect(onfileclick).toHaveBeenCalledExactlyOnceWith("src/a.ts");
+			expect(directory).toHaveAttribute("aria-expanded", "true");
+		});
+
 		// Its button answers both keys with a click of its own, so the list
 		// acting on them too would fold it straight back.
 		it.each(["Enter", " "])(

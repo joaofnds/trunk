@@ -83,6 +83,30 @@ describe("Toast", () => {
 		expect(screen.getByRole("status")).toHaveClass("pointer-events-auto");
 	});
 
+	it("brings the clipped earlier notification into focus without dismissing it", async () => {
+		showToast("Earlier", "error");
+		showToast("Latest", "error");
+		render(Toast);
+		const firstCard = screen.getAllByRole("status")[0];
+		const viewport = firstCard.parentElement?.parentElement;
+		if (!viewport) throw new Error("Missing notification viewport");
+		Object.defineProperty(viewport, "scrollHeight", { value: 180 });
+		Object.defineProperty(viewport, "clientHeight", { value: 120 });
+		vi.spyOn(firstCard, "getBoundingClientRect").mockReturnValue(
+			new DOMRect(0, -60, 100, 90),
+		);
+		firstCard.scrollIntoView = vi.fn();
+		await fireEvent.scroll(viewport);
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "1 earlier notification" }),
+		);
+
+		expect(screen.getByRole("button", { name: "Earlier" })).toHaveFocus();
+		expect(firstCard.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+		expect(screen.getAllByRole("status")).toHaveLength(2);
+	});
+
 	it("renders multiple toasts", () => {
 		showToast("First", "success");
 		showToast("Second", "error");

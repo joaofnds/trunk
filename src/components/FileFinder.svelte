@@ -8,9 +8,11 @@
 
 import { onMount } from "svelte";
 import { rankFiles } from "../lib/file-finder.js";
-import { tallyEntries } from "../lib/review-filter.js";
+import { tallyBreakdown, tallyEntries } from "../lib/review-filter.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
+import Dialog, { paletteInputClass } from "../lib/ui/Dialog.svelte";
 import ListOption from "../lib/ui/ListOption.svelte";
+import CommentBadge from "./CommentBadge.svelte";
 import FilePathLabel from "./FilePathLabel.svelte";
 
 interface Props {
@@ -38,18 +40,15 @@ let selectedIndex = $state(0);
 let rowHeight = $state(0);
 let viewportHeight = $state(0);
 let scrollTop = $state(0);
-let dialogEl: HTMLDialogElement | undefined;
 let inputEl: HTMLInputElement | undefined;
 let listEl: HTMLDivElement | undefined;
 let rowProbe: HTMLDivElement | undefined;
 
 onMount(() => {
-	const dialog = dialogEl;
 	const list = listEl;
 	const probe = rowProbe;
-	if (!dialog || !inputEl || !list || !probe) return;
+	if (!inputEl || !list || !probe) return;
 
-	dialog.showModal();
 	inputEl.focus({ preventScroll: true });
 
 	const measure = () => {
@@ -66,7 +65,6 @@ onMount(() => {
 
 	return () => {
 		observer.disconnect();
-		if (dialog.open) dialog.close();
 	};
 });
 
@@ -111,12 +109,12 @@ function handleInput(e: Event) {
 
 function cancel(e: Event) {
 	e.preventDefault();
-	dialogEl?.close();
+	inputEl?.closest("dialog")?.close();
 	onclose();
 }
 
 function choose(path: string) {
-	dialogEl?.close();
+	inputEl?.closest("dialog")?.close();
 	onselect(path);
 }
 
@@ -209,126 +207,108 @@ function rowLabel(file: TrackedFile): string {
 	if (file.changed) parts.push("changed");
 
 	const count = commentCounts.get(file.path) ?? 0;
-	if (count > 0) parts.push(`${count} comment${count === 1 ? "" : "s"}`);
+	if (count > 0) {
+		parts.push(`${count} comment${count === 1 ? "" : "s"}`);
+		const breakdown = tallyBreakdown(
+			tallyEntries(commentTallies.get(file.path)),
+		);
+		if (breakdown) parts.push(breakdown);
+	}
 
 	return parts.join(", ");
 }
 </script>
 
-<!-- The dialog element fills the viewport as a transparent layer so the
-     palette can sit a little above centre, where the eye already is. The
-     spacer takes that share of the free height so the box needs no offset of
-     its own, which is what keeps this a flex layout rather than a padding
-     hack. The UA's fit-content size and margins would centre the box instead. -->
-<dialog
-	bind:this={dialogEl}
-	class="fixed inset-0 flex flex-col items-center backdrop:bg-backdrop w-auto h-auto max-w-none max-h-none m-0 p-0 border-none bg-transparent"
-	aria-label="Comment on a file"
-	oncancel={cancel}
->
-	<div class="flex-1" aria-hidden="true"></div>
-	<div
-		class="flex flex-col rounded bg-surface-raised border border-border shadow-lg finder-box overflow-hidden relative flex-initial"
+<Dialog variant="palette" title="Comment on a file" oncancel={cancel}>
+	<input
+		bind:this={inputEl}
+		type="text"
+		role="combobox"
+		aria-expanded={matches.length > 0}
+		aria-controls={listId}
+		aria-autocomplete="list"
+		aria-activedescendant={activeOption}
+		aria-describedby={matches.length === 0 ? statusId : undefined}
+		aria-label="Find a tracked file to comment on"
+		placeholder="Comment on a file…"
+		value={query}
+		oninput={handleInput}
+		onkeydown={handleKeydown}
+		class={paletteInputClass}
 	>
-		<input
-			bind:this={inputEl}
-			type="text"
-			role="combobox"
-			aria-expanded={matches.length > 0}
-			aria-controls={listId}
-			aria-autocomplete="list"
-			aria-activedescendant={activeOption}
-			aria-describedby={matches.length === 0 ? statusId : undefined}
-			aria-label="Find a tracked file to comment on"
-			placeholder="Comment on a file…"
-			value={query}
-			oninput={handleInput}
-			onkeydown={handleKeydown}
-			class="shrink-0 bg-bg border-none border-b border-border text-text p-3 text-body leading-normal focus:outline-2 focus:-outline-offset-2 focus:outline-accent"
-		>
 
-		<div
-			bind:this={rowProbe}
-			class="finder-row-probe absolute invisible"
-			aria-hidden="true"
-		></div>
-		<div
-			bind:this={listEl}
-			id={listId}
-			role="listbox"
-			aria-label="Tracked files"
-			hidden={matches.length === 0}
-			tabindex={-1}
-			onscroll={handleScroll}
-			class="finder-list flex-1 min-h-0 overflow-y-auto text-callout leading-normal"
-		>
-			<div
-				aria-hidden="true"
-				style:height={`${shown.start * rowHeight}px`}
-			></div>
-			{#each visible as file, offset (file.path)}
-				{@const index = shown.start + offset}
-				<ListOption
-					id={optionId(index)}
-					data-path={file.path}
-					tabindex={-1}
-					selected={index === selectedIndex}
-					aria-label={rowLabel(file)}
-					aria-posinset={index + 1}
-					aria-setsize={matches.length}
-					onclick={() => choose(file.path)}
-				>
-					{#if file.changed}
-						<span
-							aria-hidden="true"
-							class="dot-slot dot rounded-full shrink-0 bg-accent"
-						></span>
-					{:else}
-						<span aria-hidden="true" class="dot-slot shrink-0"></span>
-					{/if}
-					<FilePathLabel path={file.path} />
-					{#if (commentCounts.get(file.path) ?? 0) > 0}
-						<span
-							class="finder-comment-count ml-auto shrink-0 py-0 px-1 rounded text-on-accent text-small"
-							role="img"
-							aria-label="{commentCounts.get(file.path)} review comments"
-							style:background="var(--color-thread-{tallyEntries(
-								commentTallies.get(file.path),
-							)[0]?.tone ?? "open"})"
-							>{commentCounts.get(file.path)}</span
-						>
-					{/if}
-				</ListOption>
-			{/each}
-			<div
-				aria-hidden="true"
-				style:height={`${(matches.length - shown.end) * rowHeight}px`}
-			></div>
-		</div>
-		{#if matches.length === 0}
-			<div
-				id={statusId}
-				role="status"
-				class="p-3 text-callout leading-normal text-text-muted"
+	<div
+		bind:this={rowProbe}
+		class="finder-row-probe absolute invisible"
+		aria-hidden="true"
+	></div>
+	<div
+		bind:this={listEl}
+		id={listId}
+		role="listbox"
+		aria-label="Tracked files"
+		hidden={matches.length === 0}
+		tabindex={-1}
+		onscroll={handleScroll}
+		class="finder-list flex-auto min-h-0 my-1 overflow-y-auto text-callout leading-normal"
+	>
+		<div aria-hidden="true" style:height={`${shown.start * rowHeight}px`}></div>
+		{#each visible as file, offset (file.path)}
+			{@const index = shown.start + offset}
+			<ListOption
+				id={optionId(index)}
+				data-path={file.path}
+				tabindex={-1}
+				selected={index === selectedIndex}
+				aria-label={rowLabel(file)}
+				aria-posinset={index + 1}
+				aria-setsize={matches.length}
+				onclick={() => choose(file.path)}
 			>
-				{files === null ? "Loading tracked files…" : "No tracked file matches"}
-			</div>
-		{/if}
+				{#if file.changed}
+					<span
+						aria-hidden="true"
+						class="dot-slot dot rounded-full shrink-0 bg-accent"
+					></span>
+				{:else}
+					<span aria-hidden="true" class="dot-slot shrink-0"></span>
+				{/if}
+				<FilePathLabel path={file.path} />
+				{#if (commentCounts.get(file.path) ?? 0) > 0}
+					<span class="ml-auto shrink-0">
+						<CommentBadge
+							count={commentCounts.get(file.path) ?? 0}
+							tally={commentTallies.get(file.path)}
+						/>
+					</span>
+				{/if}
+			</ListOption>
+		{/each}
+		<div
+			aria-hidden="true"
+			style:height={`${(matches.length - shown.end) * rowHeight}px`}
+		></div>
 	</div>
-	<div class="flex-3" aria-hidden="true"></div>
-</dialog>
+	{#if matches.length === 0}
+		<div
+			id={statusId}
+			role="status"
+			class="p-3 text-callout leading-normal text-text-muted"
+		>
+			{files === null ? "Loading tracked files…" : "No tracked file matches"}
+		</div>
+	{/if}
+</Dialog>
 
 <style>
-.finder-box {
+.finder-row-probe,
+.finder-list {
 	--finder-row-height: calc(
 		var(--text-callout) *
 		var(--leading-normal) +
 		4 *
 		var(--u)
 	);
-	width: calc(130 * var(--u));
-	max-width: 100%;
-	max-height: 60vh;
 }
 
 .finder-row-probe,
