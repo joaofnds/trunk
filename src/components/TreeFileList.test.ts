@@ -36,6 +36,20 @@ describe("TreeFileList", () => {
 		expect(screen.getByText("b.ts")).toBeInTheDocument();
 	});
 
+	it("can open the tree when a filename looks like a directory key", async () => {
+		const { rerender } = render(TreeFileList, {
+			props: {
+				files: [makeFile("docs/a.ts"), makeFile("dir:docs")],
+				treeMode: false,
+				actionLabel: "+",
+				onfileaction: vi.fn(),
+			},
+		});
+		await rerender({ treeMode: true });
+		expect(screen.getByRole("treeitem", { name: /^docs/ })).toBeVisible();
+		expect(screen.getByTitle("dir:docs")).toBeVisible();
+	});
+
 	it("renders tree structure in tree mode", () => {
 		const files = [
 			makeFile("src/lib/utils.ts"),

@@ -362,9 +362,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 {#snippet rows()}
 	<div aria-hidden="true" style:height="{shown.offsetTop}px"></div>
-	{#each shownRows as row, shownIndex (row.type === "file"
-		? row.node.path
-		: `dir:${row.node.path}`)}
+	{#each shownRows as row, shownIndex (`${row.type}:${row.node.path}`)}
 		{@const i = shown.start + shownIndex}
 		{#if row.type === "directory"}
 			<DirectoryRow
