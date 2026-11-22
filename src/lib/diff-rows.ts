@@ -36,7 +36,12 @@ export interface LineMarker {
 }
 
 export type DiffRow =
-	| { kind: "file-header"; path: string; collapsed: boolean }
+	| {
+			kind: "file-header";
+			path: string;
+			oldPath: string | null;
+			collapsed: boolean;
+	  }
 	| { kind: "binary"; path: string; text: string }
 	| { kind: "hunk-header"; path: string; hunkIdx: number; header: string }
 	| {
@@ -167,7 +172,12 @@ export function buildInlineRows(
 		const collapsed = opts.collapsed.has(fd.path);
 
 		if (opts.fileHeaders) {
-			rows.push({ kind: "file-header", path: fd.path, collapsed });
+			rows.push({
+				kind: "file-header",
+				path: fd.path,
+				oldPath: fd.old_path,
+				collapsed,
+			});
 		}
 		if (collapsed) continue;
 
@@ -281,7 +291,12 @@ export function buildSplitRows(
 		const collapsed = opts.collapsed.has(fd.path);
 
 		if (opts.fileHeaders) {
-			rows.push({ kind: "file-header", path: fd.path, collapsed });
+			rows.push({
+				kind: "file-header",
+				path: fd.path,
+				oldPath: fd.old_path,
+				collapsed,
+			});
 		}
 		if (collapsed) continue;
 

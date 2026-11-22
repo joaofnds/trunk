@@ -37,11 +37,11 @@
     : displayedPath(element);
   const diffPath = element => element?.dataset.path === undefined
     ? element?.textContent.trim() : displayedPath(element);
+  const showsFile = (row, path) => row.dataset.path === undefined
+    ? [...row.querySelectorAll("span")].some(span => span.textContent.trim() === path)
+    : displayedPath(row) === path;
   const file = (section, path) => {
-    const matches = all(`${section} [data-testid="staging-file"]`).filter(element =>
-      element.dataset.path === undefined
-        ? [...element.querySelectorAll("span")].some(span => span.textContent.trim() === path)
-        : displayedPath(element) === path);
+    const matches = all(`${section} [data-testid="staging-file"]`).filter(row => showsFile(row, path));
     if (matches.length !== 1) throw new Error(`file unavailable: ${section} ${path} (${matches.length})`);
 
     return matches[0];
@@ -501,8 +501,10 @@
       case "finder-search":
         action = () => setInput(one('[aria-label="Find a tracked file to comment on"]'), spec.path);
         feedback = () => one('[aria-label="Find a tracked file to comment on"]').value === spec.path;
-        ready = () => all('#file-finder-list [role="option"]').length === 1 &&
-          one('#file-finder-list [role="option"]').textContent.includes(spec.path);
+        ready = () => {
+          const rows = all('#file-finder-list [role="option"]');
+          return rows.length === 1 && showsFile(rows[0], spec.path);
+        };
         break;
       case "finder-pick":
         action = () => one('#file-finder-list [role="option"]').click();

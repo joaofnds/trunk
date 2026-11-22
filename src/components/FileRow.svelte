@@ -84,6 +84,7 @@ function openMenu(e: MouseEvent) {
 	indent={treeIndent(depth)}
 	tabindex={-1}
 	aria-level={role === "treeitem" ? depth + 1 : undefined}
+	aria-description={role === "treeitem" ? file.path : undefined}
 	onclick={() => onclick?.()}
 	onfocus={() => onfocus?.()}
 	oncontextmenu={openMenu}

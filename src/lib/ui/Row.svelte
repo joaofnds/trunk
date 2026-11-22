@@ -20,6 +20,7 @@ import type { Snippet } from "svelte";
 import type { HTMLButtonAttributes } from "svelte/elements";
 
 interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
+	"aria-description"?: string;
 	/** `inset` is a rounded row held off the list's edges and `flush` one that
 	 *  runs to them with the arrow cursor, both taking the hover color; `header`
 	 *  is the bar over a section, edge to edge, which does not, and `band` the

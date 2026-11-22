@@ -84,6 +84,7 @@ import LinkButton from "../lib/ui/LinkButton.svelte";
 import Radio from "../lib/ui/Radio.svelte";
 import { isUnread, unseenAgentReplies } from "../lib/unread.js";
 import BranchChip from "./BranchChip.svelte";
+import FilePathLabel from "./FilePathLabel.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import FoldBar from "./review/FoldBar.svelte";
 import ReviewEmpty from "./review/ReviewEmpty.svelte";
@@ -366,11 +367,6 @@ function groupLabel(group: ReviewGroup): string {
 function openFile(group: ReviewGroup, file: ReviewFile) {
 	if (group.kind === "current") onopenfile?.(file.path);
 	else jump(file.threads[0]);
-}
-
-function splitPath(path: string): { dir: string; name: string } {
-	const slash = path.lastIndexOf("/");
-	return { dir: path.slice(0, slash + 1), name: path.slice(slash + 1) };
 }
 
 const hasAnyComment = $derived(comments.length > 0);
@@ -1403,7 +1399,6 @@ registerUpdateBlocker(() =>
 								{/if}
 
 								{#each group.files as file (file.path)}
-									{@const path = splitPath(file.path)}
 									{@const fileFolded = isFolded(
 										fileKey(group, file),
 										file.threads,
@@ -1424,11 +1419,10 @@ registerUpdateBlocker(() =>
 											>
 												<File size={12} class="shrink-0" aria-hidden="true" />
 												<span
-													class="pointer-events-auto flex min-w-0 text-small"
+													class="pointer-events-auto flex min-w-0 text-text"
 												>
 													<LinkButton
-														tone="muted"
-														mono
+														truncate
 														aria-label="Open {file.path}"
 														title={group.kind === "gone"
 															? "Commit was garbage-collected"
@@ -1436,12 +1430,7 @@ registerUpdateBlocker(() =>
 														disabled={group.kind === "gone"}
 														onclick={() => openFile(group, file)}
 													>
-														<span class="flex min-w-0">
-															<span class="review-path-dir"
-																><bdi>{path.dir}</bdi></span
-															>
-															<span class="review-path-name">{path.name}</span>
-														</span>
+														<FilePathLabel path={file.path} />
 													</LinkButton>
 												</span>
 												<span class="flex-1"></span>
@@ -1596,21 +1585,6 @@ registerUpdateBlocker(() =>
 .review-group-list > :first-child:not(.review-file) {
 	margin-top: var(--space-2);
 }
-.review-path-dir {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	direction: rtl;
-	text-align: left;
-}
-.review-path-name {
-	flex-shrink: 0;
-	white-space: nowrap;
-	color: var(--color-text-strong);
-	font-weight: var(--weight-medium);
-}
-
 .review-title-field {
 	width: calc(70 * var(--u));
 }

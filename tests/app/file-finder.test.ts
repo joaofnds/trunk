@@ -35,9 +35,7 @@ describe("reaching a file no pending change touches", () => {
 			const listed = app.review.finderRows();
 			return listed.length > 0 ? listed : null;
 		});
-		expect(rows[0]).toBe(EDITED);
-		expect(rows).toContain(UNTOUCHED);
-		expect(rows).not.toContain(UNTRACKED);
+		expect(rows).toEqual([`${EDITED}, changed`, UNTOUCHED]);
 
 		await app.review.findFile("untouched");
 		await waitFor("the narrowed list", () =>

@@ -6,6 +6,7 @@ import {
 	setLayout,
 	stubLayout,
 } from "../__tests__/helpers/layout-stub.js";
+import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import FileFinder from "./FileFinder.svelte";
 
@@ -50,7 +51,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-function rowPaths(): string[] {
+function rowLabels(): string[] {
 	return screen
 		.getAllByRole("option")
 		.map((el) => el.textContent?.trim() ?? "");
@@ -87,9 +88,9 @@ describe("FileFinder", () => {
 			commentTallies: new Map([["src/alpha.ts", { done: 2 }]]),
 		});
 
-		const alpha = screen
-			.getAllByRole("option")
-			.find((el) => el.textContent?.includes("src/alpha.ts"));
+		const alpha = screen.getByRole("option", {
+			name: "src/alpha.ts, 2 comments",
+		});
 
 		expect(alpha?.textContent).toContain("2");
 		expect(alpha?.getAttribute("aria-label")).toBe("src/alpha.ts, 2 comments");
@@ -103,24 +104,39 @@ describe("FileFinder", () => {
 	it("shows no count on a file nothing is pinned to", () => {
 		open({ commentCounts: new Map([["src/alpha.ts", 2]]) });
 
-		const beta = screen
-			.getAllByRole("option")
-			.find((el) => el.textContent?.includes("src/beta.ts"));
+		const beta = screen.getByRole("option", { name: "src/beta.ts, changed" });
 
 		expect(beta?.querySelector(".finder-comment-count")).toBeNull();
 	});
 
-	it("lists changed files before unchanged ones", () => {
+	it("shows filenames before their directory by default", () => {
 		open();
 
-		expect(rowPaths()).toEqual(["src/beta.ts", "src/alpha.ts", "src/gamma.ts"]);
+		expect(rowLabels()).toEqual([
+			"beta.ts src",
+			"alpha.ts src",
+			"gamma.ts src",
+		]);
+	});
+
+	it("shows repository-relative paths when Full Path is selected", () => {
+		render(FileFinder, {
+			context: new Map([[FILE_LABEL_STYLE, { current: "full-path" }]]),
+			props: { files: FILES, onselect: vi.fn(), onclose: vi.fn() },
+		});
+
+		expect(rowLabels()).toEqual([
+			"src/beta.ts",
+			"src/alpha.ts",
+			"src/gamma.ts",
+		]);
 	});
 
 	it("mounts only a viewport-sized window while keeping the last result clickable", async () => {
 		const { onselect } = open({ files: LARGE_LIST });
 		const list = screen.getByRole("listbox");
 		const lastPath = LARGE_LIST[LARGE_LIST.length - 1].path;
-		const mountedRows = rowPaths().length;
+		const mountedRows = rowLabels().length;
 
 		list.scrollTop = LARGE_LIST.length * ROW_HEIGHT - VIEWPORT_HEIGHT;
 		await fireEvent.scroll(list);
@@ -144,13 +160,13 @@ describe("FileFinder", () => {
 		);
 		open({ files: LARGE_LIST });
 		const list = screen.getByRole("listbox");
-		const mountedRows = rowPaths().length;
+		const mountedRows = rowLabels().length;
 
 		setLayout(list, { height: 2 * VIEWPORT_HEIGHT });
 		resize();
 		await tick();
 
-		expect(rowPaths().length).toBeGreaterThan(mountedRows);
+		expect(rowLabels().length).toBeGreaterThan(mountedRows);
 	});
 
 	it("narrows the list as the query is typed", async () => {
@@ -160,14 +176,16 @@ describe("FileFinder", () => {
 			target: { value: "alpha" },
 		});
 
-		expect(rowPaths()).toEqual(["src/alpha.ts"]);
+		const rows = screen.getAllByRole("option");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toHaveAccessibleName("src/alpha.ts");
 	});
 
 	it("selects the first row when it opens", () => {
 		open();
 
-		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
-			"src/beta.ts",
+		expect(screen.getByRole("option", { selected: true })).toHaveAccessibleName(
+			"src/beta.ts, changed",
 		);
 	});
 
@@ -178,7 +196,7 @@ describe("FileFinder", () => {
 			key: "ArrowDown",
 		});
 
-		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+		expect(screen.getByRole("option", { selected: true })).toHaveAccessibleName(
 			"src/alpha.ts",
 		);
 	});
@@ -211,7 +229,7 @@ describe("FileFinder", () => {
 		await fireEvent.keyDown(input, { key: "PageDown" });
 
 		const selected = screen.getByRole("option", { selected: true });
-		expect(selected).toHaveTextContent(files[8].path);
+		expect(selected).toHaveAccessibleName(files[8].path);
 		expect(screen.getByRole("listbox").scrollTop).toBe(
 			files.length * ROW_HEIGHT - VIEWPORT_HEIGHT,
 		);
@@ -239,8 +257,8 @@ describe("FileFinder", () => {
 
 		await fireEvent.keyDown(input, { key: "ArrowUp" });
 
-		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
-			"src/beta.ts",
+		expect(screen.getByRole("option", { selected: true })).toHaveAccessibleName(
+			"src/beta.ts, changed",
 		);
 	});
 
@@ -252,7 +270,7 @@ describe("FileFinder", () => {
 			await fireEvent.keyDown(input, { key: "ArrowDown" });
 		}
 
-		expect(screen.getByRole("option", { selected: true })).toHaveTextContent(
+		expect(screen.getByRole("option", { selected: true })).toHaveAccessibleName(
 			"src/gamma.ts",
 		);
 	});
@@ -268,7 +286,7 @@ describe("FileFinder", () => {
 	it("reports the clicked path", async () => {
 		const { onselect } = open();
 
-		await fireEvent.click(screen.getByText("src/gamma.ts"));
+		await fireEvent.click(screen.getByRole("option", { name: "src/gamma.ts" }));
 
 		expect(onselect).toHaveBeenCalledWith("src/gamma.ts");
 	});

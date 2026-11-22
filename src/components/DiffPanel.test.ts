@@ -24,6 +24,7 @@ import {
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../lib/diff-utils.js";
+import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { DiffRow as MarkdownRow } from "../lib/markdown.js";
 import { createRemoteState } from "../lib/remote-state.svelte.js";
@@ -395,20 +396,53 @@ describe("DiffPanel", () => {
 		expect(bodyText).toContain("export { x };");
 	});
 
-	it("renders file path in multi-file view", async () => {
-		render(DiffPanel, {
-			props: {
-				...commentingDiff,
-				fileDiffs: [testDiff],
-				commitDetail: null,
-				selectedPath: null,
-				onclose: vi.fn(),
-			},
-		});
-		await flushPrefs();
-		// When selectedPath is null, file header bar shows the path
-		expect(screen.getByText("src/main.ts")).toBeInTheDocument();
-	});
+	it.each([
+		["inline", "filename-first", "before.ts → main.ts src"],
+		["split", "filename-first", "before.ts → main.ts src"],
+		["inline", "full-path", "src/before.ts → src/main.ts"],
+		["split", "full-path", "src/before.ts → src/main.ts"],
+	] as const)(
+		"shows %s multi-file diff headings in %s style",
+		async (layout, style, label) => {
+			const diffPreferences = new DiffPreferences({
+				layoutMode: layout,
+				renderMode: "source",
+				contextLines: 3,
+				ignoreWhitespace: false,
+				showInvisibles: false,
+				wordWrap: false,
+			});
+			render(DiffPanel, {
+				context: new Map([[FILE_LABEL_STYLE, { current: style }]]),
+				props: {
+					...commentingDiff,
+					diffPreferences,
+					fileDiffs: [
+						{ ...testDiff, status: "Renamed", old_path: "src/before.ts" },
+						{ ...testDiff, path: "docs/guide.md", hunks: [] },
+					],
+					commitDetail: null,
+					selectedPath: null,
+					onclose: vi.fn(),
+				},
+			});
+			await flushPrefs();
+			expect(
+				screen.getByRole("button", { name: "docs/guide.md" }),
+			).toHaveTextContent(
+				style === "full-path" ? "docs/guide.md" : "guide.md docs",
+			);
+			const path = screen.getByTitle("src/before.ts → src/main.ts");
+			expect(path.textContent?.trim()).toBe(label);
+			const header = screen.getByRole("button", {
+				name: "src/before.ts → src/main.ts",
+				expanded: true,
+			});
+			await fireEvent.click(header);
+			expect(header).toHaveAttribute("aria-expanded", "false");
+			expect(screen.queryByText("@@ -1,3 +1,4 @@")).toBeNull();
+		},
+	);
 
 	it("shows a binary file's size on each side", async () => {
 		render(DiffPanel, {

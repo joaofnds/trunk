@@ -535,10 +535,10 @@ export class ReviewDriver {
 		field.dispatchEvent(new Event("input", { bubbles: true }));
 	}
 
-	/** The paths the finder currently lists, best match first. */
+	/** Accessible option names, best match first, including change and comment indicators. */
 	finderRows(): string[] {
 		return [...document.querySelectorAll<HTMLElement>(FINDER_ROW)].map(
-			collapse,
+			(row) => row.getAttribute("aria-label") ?? "",
 		);
 	}
 

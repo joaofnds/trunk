@@ -31,13 +31,13 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
-import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
 	type DiffListHandle,
 	type ReadingAnchor,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
+import DiffFileHeader from "./DiffFileHeader.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
 import InlineThread from "./InlineThread.svelte";
@@ -470,13 +470,8 @@ function originClass(origin: string): string {
 	{:else if item.kind === "composer" && composer}
 		<div class="split-composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "file-header"}
-		<div class="split-file-header pan-pinned">
-			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
-				<span class="split-file-header-caret"
-					>{item.collapsed ? "▶" : "▼"}</span
-				>
-				{item.path}
-			</Row>
+		<div class="pan-pinned">
+			<DiffFileHeader {item} ontoggle={onfilecollapsetoggle} />
 		</div>
 	{:else if item.kind === "binary"}
 		<div class="binary-row pan-pinned">{item.text}</div>
@@ -639,17 +634,6 @@ function originClass(origin: string): string {
 	font-family: var(--font-mono);
 }
 
-/* Multi-file view only. Vertical stickiness does not survive the list — a row
-     inside a translated container has no scrollport-relative flow position. */
-.split-file-header {
-	height: var(--diff-file-header-height);
-}
-.split-file-header-caret {
-	font-size: var(--text-caption);
-	color: var(--color-text-muted);
-	width: calc(5 * var(--u) / 2);
-	display: inline-block;
-}
 .binary-row {
 	height: var(--diff-binary-row-height);
 	box-sizing: border-box;

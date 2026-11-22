@@ -11,6 +11,7 @@ import { rankFiles } from "../lib/file-finder.js";
 import { tallyEntries } from "../lib/review-filter.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import ListOption from "../lib/ui/ListOption.svelte";
+import FilePathLabel from "./FilePathLabel.svelte";
 
 interface Props {
 	files: TrackedFile[] | null;
@@ -269,6 +270,7 @@ function rowLabel(file: TrackedFile): string {
 				{@const index = shown.start + offset}
 				<ListOption
 					id={optionId(index)}
+					data-path={file.path}
 					tabindex={-1}
 					selected={index === selectedIndex}
 					aria-label={rowLabel(file)}
@@ -284,9 +286,7 @@ function rowLabel(file: TrackedFile): string {
 					{:else}
 						<span aria-hidden="true" class="dot-slot shrink-0"></span>
 					{/if}
-					<span class="overflow-hidden text-ellipsis whitespace-nowrap">
-						{file.path}
-					</span>
+					<FilePathLabel path={file.path} />
 					{#if (commentCounts.get(file.path) ?? 0) > 0}
 						<span
 							class="finder-comment-count ml-auto shrink-0 py-0 px-1 rounded text-on-accent text-small"

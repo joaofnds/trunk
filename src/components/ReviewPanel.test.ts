@@ -22,6 +22,7 @@ import {
 	FIXTURE_REVIEW_ID,
 } from "../__tests__/helpers/review-fixture.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { ReviewReadState } from "../lib/review-comments.svelte.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
@@ -2446,11 +2447,28 @@ describe("ReviewPanel branch sections", () => {
 		renderPanel({ onJump });
 		await flush();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: "Open src/main.ts" }),
-		);
+		const heading = screen.getByRole("button", { name: "Open src/main.ts" });
+		expect(heading).toHaveTextContent("main.ts src");
+		await fireEvent.click(heading);
 
 		expect(onJump).toHaveBeenCalledWith(earlier);
+	});
+
+	it("labels the file group with its repository-relative path in Full Path", async () => {
+		installReads({
+			commits: [aSessionCommit({ oid: COMMIT_A, lane_ref: main })],
+			comments: [lineAnchoredComment("c1", COMMIT_A, "one")],
+		});
+
+		render(ReviewPanel, {
+			context: new Map([[FILE_LABEL_STYLE, { current: "full-path" }]]),
+			props: panelProps(),
+		});
+		await flush();
+
+		expect(
+			screen.getByRole("button", { name: "Open src/main.ts" }),
+		).toHaveTextContent("src/main.ts");
 	});
 
 	it("names the lines each card covers in a tag", async () => {

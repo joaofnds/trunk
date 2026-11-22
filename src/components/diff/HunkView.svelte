@@ -26,13 +26,13 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import GutterGrip from "../../lib/ui/GutterGrip.svelte";
-import Row from "../../lib/ui/Row.svelte";
 import {
 	createVirtualizedDiff,
 	type DiffListHandle,
 	type ReadingAnchor,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
+import DiffFileHeader from "./DiffFileHeader.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
 import InlineThread from "./InlineThread.svelte";
@@ -361,11 +361,8 @@ export const step = vd.step;
 	{:else if item.kind === "composer" && composer}
 		<div class="inline-composer-row pan-pinned">{@render composer.card()}</div>
 	{:else if item.kind === "file-header"}
-		<div class="file-header pan-pinned">
-			<Row variant="title" onclick={() => onfilecollapsetoggle(item.path)}>
-				<span class="file-header-caret">{item.collapsed ? "▶" : "▼"}</span>
-				{item.path}
-			</Row>
+		<div class="pan-pinned">
+			<DiffFileHeader {item} ontoggle={onfilecollapsetoggle} />
 		</div>
 	{:else if item.kind === "binary"}
 		<div class="binary-row">{item.text}</div>
@@ -456,18 +453,6 @@ export const step = vd.step;
 	color: color-mix(in oklch, var(--color-info) 70%, var(--color-text-subtle));
 	font-size: var(--text-small);
 	font-family: var(--font-mono);
-}
-/* Multi-file view only. Vertical stickiness does not survive the list — a row
-     inside a translated container has no scrollport-relative flow position — and
-     is not restored here. */
-.file-header {
-	height: var(--diff-file-header-height);
-}
-.file-header-caret {
-	font-size: var(--text-caption);
-	color: var(--color-text-muted);
-	width: calc(5 * var(--u) / 2);
-	display: inline-block;
 }
 .binary-row {
 	height: var(--diff-binary-row-height);

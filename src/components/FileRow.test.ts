@@ -52,6 +52,9 @@ describe("FileRow", () => {
 			const title = oldPath ? `${oldPath} → ${path}` : path;
 			expect(screen.getByTitle(title).textContent?.trim()).toBe(label);
 			expect(screen.getByRole(role)).toHaveAttribute("data-path", path);
+			if (role === "treeitem") {
+				expect(screen.getByRole(role)).toHaveAccessibleDescription(path);
+			}
 		},
 	);
 

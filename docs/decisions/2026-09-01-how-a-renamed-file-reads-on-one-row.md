@@ -1,6 +1,6 @@
 # A renamed file names both paths in full
 
-Status: **View → File Labels** controls flat changed-file lists and the diff header across repositories. **Filename First** is the default. It shows a shared directory once, distinguishes both directories on a move, and exposes both full paths on hover. **Full Path** shows both repository-relative paths. In a narrow pane, the destination filename stays visible as its directory is clipped. In either style, tree rows get their destination from their parent and name the source directory on a move.
+Status: **View → File Labels** controls flat changed-file lists, diff file headers, tracked-file finder results, and file group headings in Review across repositories. **Filename First** is the default. It shows a shared directory once, distinguishes both directories on a move, and exposes both full paths on hover. **Full Path** shows both repository-relative paths. In a narrow pane, the destination filename stays visible as its directory is clipped. In either style, tree rows get their destination from their parent and name the source directory on a move.
 
 Original decision: accepted, 2026-09-01 (João). Follows the rename detection in
 `2026-09-01-rename-detection-and-the-pathspec-trap.md`.
@@ -41,5 +41,6 @@ for whenever shortening is picked up again.
 
 ## Tree mode
 
-The tree's nesting already says where the file is, so the row shows the new
-basename and the old side shortens to its own basename.
+The parent directory gives the destination. A rename within it reads
+`util.ts → math-util.ts`. A move that keeps the filename reads
+`index.ts from drafts/` under the destination directory.
