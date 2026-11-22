@@ -4,6 +4,7 @@ import FileRow from "./FileRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeFile } from "../__tests__/helpers/factories";
 import { treeIndent } from "../lib/chrome-heights.js";
+import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 
 describe("FileRow", () => {
 	it("renders file path", () => {
@@ -17,6 +18,42 @@ describe("FileRow", () => {
 		});
 		expect(screen.getByText("README.md")).toBeInTheDocument();
 	});
+
+	it.each([
+		["option", "src/comments/index.ts", null, "src/comments/index.ts"],
+		[
+			"option",
+			"published/index.ts",
+			"drafts/index.ts",
+			"drafts/index.ts → published/index.ts",
+		],
+		["treeitem", "src/comments/index.ts", null, "index.ts"],
+		[
+			"treeitem",
+			"published/index.ts",
+			"drafts/index.ts",
+			"index.ts from drafts/",
+		],
+	] as const)(
+		"labels the %s for %s with Full Path selected",
+		(role, path, oldPath, label) => {
+			render(FileRow, {
+				context: new Map([[FILE_LABEL_STYLE, { current: "full-path" }]]),
+				props: {
+					file: {
+						...makeFile(path, oldPath ? "Renamed" : "Modified"),
+						old_path: oldPath,
+					},
+					role,
+					actionLabel: "+",
+					onaction: vi.fn(),
+				},
+			});
+			const title = oldPath ? `${oldPath} → ${path}` : path;
+			expect(screen.getByTitle(title).textContent?.trim()).toBe(label);
+			expect(screen.getByRole(role)).toHaveAttribute("data-path", path);
+		},
+	);
 
 	it.each([
 		["option", "vendor/ tools"],

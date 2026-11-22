@@ -9,6 +9,7 @@ compile_error!("the drive route reaches into AppKit and builds on macOS only");
 #[cfg(any(feature = "drive", all(test, unix)))]
 mod drive_socket;
 pub mod fetch_worker;
+mod file_labels;
 pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
@@ -164,7 +165,7 @@ fn run_gui() {
         // The native macOS menu can end the loop without ExitRequested.
         tauri::RunEvent::Exit => app
             .state::<activity::ActivityState>()
-            .finish_tab_saves_at_exit(),
+            .finish_preference_saves_at_exit(),
         _ => {}
     });
 }
@@ -311,6 +312,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         set_traffic_light_zoom,
         commands::perf::perf_append,
         commands::perf::perf_reset,
+        file_labels::get_file_label_style,
         commands::prefs::prefs_get,
         commands::prefs::prefs_set,
         commands::prefs::prefs_open_tabs,
@@ -564,7 +566,9 @@ fn build_menu<R: tauri::Runtime>(
         .item(&find)
         .build()?;
 
+    let file_labels = file_labels::submenu(app)?;
     let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&file_labels)
         .item(&review_item)
         .fullscreen()
         .build()?;
@@ -621,6 +625,7 @@ fn register_state<R: tauri::Runtime>(
         .manage(crate::state::RefVisibilityState::default())
         .manage(commands::branches::Deletions::default())
         .manage(commands::prefs::PrefsState::default())
+        .manage(file_labels::FileLabels::default())
         .manage(commands::markdown::MarkdownDiffCache(Mutex::default()))
         .manage(commands::diff::CurrentSourceCache::default())
 }

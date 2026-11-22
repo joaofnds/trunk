@@ -44,6 +44,7 @@ struct Admission {
     phase: Phase,
     active: usize,
     active_tab_saves: usize,
+    active_menu_saves: usize,
     generation: u64,
     #[cfg(any(test, feature = "test-util"))]
     parked: usize,
@@ -90,6 +91,21 @@ impl ActivityState {
         command: &str,
         permit: Option<&str>,
     ) -> Result<Activity, ActivityError> {
+        let save = (command == "prefs_set_tabs").then_some(PreferenceSave::Tabs);
+        self.admit(command, permit, save)
+    }
+
+    /// Native settings gestures own their write until it reaches disk, even on quit.
+    pub(crate) fn acquire_preference_save(&self) -> Result<Activity, ActivityError> {
+        self.admit("", None, Some(PreferenceSave::Menu))
+    }
+
+    fn admit(
+        &self,
+        command: &str,
+        permit: Option<&str>,
+        preference_save: Option<PreferenceSave>,
+    ) -> Result<Activity, ActivityError> {
         let mut state = self.0.admission.lock().unwrap();
         let allowed = match &state.phase {
             Phase::Open => true,
@@ -110,16 +126,17 @@ impl ActivityState {
         if !allowed {
             return Err(ActivityError::busy());
         }
-        let tab_save = command == "prefs_set_tabs";
         state.active += 1;
-        if tab_save {
-            state.active_tab_saves += 1;
+        match preference_save {
+            Some(PreferenceSave::Tabs) => state.active_tab_saves += 1,
+            Some(PreferenceSave::Menu) => state.active_menu_saves += 1,
+            None => {}
         }
         drop(state);
 
         Ok(Activity(Arc::new(Lease {
             state: self.clone(),
-            tab_save,
+            preference_save,
         })))
     }
 
@@ -139,14 +156,16 @@ impl ActivityState {
         true
     }
 
-    /// Finish accepted tab saves before the desktop runtime exits.
-    pub(crate) fn finish_tab_saves_at_exit(&self) {
+    /// Finish admitted preference writes before the desktop runtime exits.
+    pub(crate) fn finish_preference_saves_at_exit(&self) {
         self.0.admission.lock().unwrap().phase = Phase::Exiting;
         self.0.changed.notify_all();
         drop(Self::unparked(
             self.0
                 .changed
-                .wait_while(self.parked_lock(), |state| state.active_tab_saves != 0)
+                .wait_while(self.parked_lock(), |state| {
+                    state.active_tab_saves != 0 || state.active_menu_saves != 0
+                })
                 .unwrap(),
         ));
     }
@@ -324,24 +343,36 @@ impl ActivityState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreferenceSave {
+    Tabs,
+    Menu,
+}
+
 #[derive(Debug)]
 struct Lease {
     state: ActivityState,
-    tab_save: bool,
+    preference_save: Option<PreferenceSave>,
 }
 
 impl Drop for Lease {
     fn drop(&mut self) {
         let mut state = self.state.0.admission.lock().unwrap();
         state.active -= 1;
-        if self.tab_save {
-            state.active_tab_saves -= 1;
+        match self.preference_save {
+            Some(PreferenceSave::Tabs) => state.active_tab_saves -= 1,
+            Some(PreferenceSave::Menu) => state.active_menu_saves -= 1,
+            None => {}
         }
         state.settle_drain();
         let activity_finished = state.active == 0;
-        let tab_saves_finished = self.tab_save && state.active_tab_saves == 0;
+        let tab_saves_finished =
+            self.preference_save == Some(PreferenceSave::Tabs) && state.active_tab_saves == 0;
+        let preference_saves_finished = self.preference_save.is_some()
+            && state.active_tab_saves == 0
+            && state.active_menu_saves == 0;
         drop(state);
-        if activity_finished || tab_saves_finished {
+        if activity_finished || preference_saves_finished {
             self.state.0.changed.notify_all();
         }
         if tab_saves_finished {
@@ -461,12 +492,29 @@ mod tests {
 
         let exiting = std::thread::spawn({
             let state = state.clone();
-            move || state.finish_tab_saves_at_exit()
+            move || state.finish_preference_saves_at_exit()
         });
         state.wait_until_parked();
 
         assert!(!exiting.is_finished());
         assert!(state.acquire_command("prefs_set_tabs", None).is_err());
+        drop(save);
+        exiting.join().unwrap();
+    }
+
+    #[test]
+    fn exit_drains_a_native_menu_save_even_when_no_tabs_are_being_saved() {
+        let state = ActivityState::default();
+        let save = state.acquire_preference_save().unwrap();
+        let _unrelated = state.acquire().unwrap();
+
+        let exiting = std::thread::spawn({
+            let state = state.clone();
+            move || state.finish_preference_saves_at_exit()
+        });
+        state.wait_until_parked();
+
+        assert!(state.acquire_preference_save().is_err());
         drop(save);
         exiting.join().unwrap();
     }
@@ -479,6 +527,7 @@ mod tests {
         let state = ActivityState::default();
         let first_save = state.acquire_command("prefs_set_tabs", None).unwrap();
         let second_save = state.acquire_command("prefs_set_tabs", None).unwrap();
+        let _pending_menu_save = state.acquire_preference_save().unwrap();
         let _unrelated = state.acquire().unwrap();
         let mut first_restore = pin!(state.wait_for_tab_saves());
         let mut second_restore = pin!(state.wait_for_tab_saves());

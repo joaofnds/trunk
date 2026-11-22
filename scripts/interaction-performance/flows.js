@@ -17,13 +17,14 @@
 
     return matches[0];
   };
-  // File rows and diff headers now render the name first. A retained build
-  // exposes the full path in text. In either case, wait for the name to render.
+  // Read the visible destination in either label style. Older builds
+  // without data-path expose the whole path as text.
   const displayedPath = element => {
     const path = element.dataset.path;
+    const leaf = element.querySelector(".leaf:not(.former) bdi");
+    if (leaf?.textContent === path && !element.querySelector(".context")) return path;
     const end = path.endsWith("/") ? path.length - 1 : path.length;
     const slash = path.lastIndexOf("/", end - 1);
-    const leaf = element.querySelector(".leaf:not(.former) bdi");
     if (leaf?.textContent !== path.slice(slash + 1)) return undefined;
     if (element.getAttribute("role") === "treeitem") return path;
 

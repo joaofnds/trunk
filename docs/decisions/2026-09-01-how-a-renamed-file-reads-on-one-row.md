@@ -1,11 +1,11 @@
 # A renamed file names both paths in full
 
-Status: superseded for file lists and diff headers on 2026-11-22. Those surfaces now lead with the filenames. They show a shared directory once, distinguish both directories on a move, and expose the original and destination paths in full on hover. Tree rows name the source directory on a move because their parent supplies the destination.
+Status: **View → File Labels** controls flat changed-file lists and the diff header across repositories. **Filename First** is the default. It shows a shared directory once, distinguishes both directories on a move, and exposes both full paths on hover. **Full Path** shows both repository-relative paths. In a narrow pane, the destination filename stays visible as its directory is clipped. In either style, tree rows get their destination from their parent and name the source directory on a move.
 
 Original decision: accepted, 2026-09-01 (João). Follows the rename detection in
 `2026-09-01-rename-detection-and-the-pathspec-trap.md`.
 
-## What it does
+## Original layout
 
 A renamed row writes both paths, whole, whether or not the file changed
 directory:

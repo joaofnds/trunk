@@ -1,4 +1,5 @@
 <script lang="ts">
+import { getFileLabelStyle } from "../lib/file-label-style.svelte.js";
 import { splitFilePath } from "../lib/file-path.js";
 
 interface Props {
@@ -9,12 +10,15 @@ interface Props {
 
 let { path, oldPath = null, tree = false }: Props = $props();
 
+const style = getFileLabelStyle();
+let fullPath = $derived(!tree && style.current === "full-path");
 let current = $derived(splitFilePath(path));
 let previous = $derived(oldPath === null ? null : splitFilePath(oldPath));
-let renamed = $derived(previous !== null && previous.name !== current.name);
 let moved = $derived(
-	previous !== null && previous.directory !== current.directory,
+	!fullPath && previous !== null && previous.directory !== current.directory,
 );
+let from = $derived(fullPath ? oldPath : previous?.name);
+let to = $derived(fullPath ? path : current.name);
 let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 </script>
 
@@ -24,11 +28,11 @@ let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 
 <span class="file-label text-small" {title}>
 	<span class="names text-callout">
-		{#if previous && renamed}
-			<span class="leaf former"><bdi>{previous.name}</bdi></span>
+		{#if from && from !== to}
+			<span class="leaf former"><bdi>{from}</bdi></span>
 			<span class="arrow">→</span>
 		{/if}
-		<span class="leaf font-semibold"><bdi>{current.name}</bdi></span>
+		<span class="leaf" class:font-semibold={!fullPath}><bdi>{to}</bdi></span>
 	</span>
 	{#if previous && moved}
 		<span class="context">
@@ -41,7 +45,7 @@ let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
 				{@render directory(current.directory ? `${current.directory}/` : "./")}
 			{/if}
 		</span>
-	{:else if !tree && current.directory}
+	{:else if !tree && !fullPath && current.directory}
 		<span class="context">{@render directory(current.directory)}</span>
 	{/if}
 </span>

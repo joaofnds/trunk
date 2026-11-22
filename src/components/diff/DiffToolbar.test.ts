@@ -3,6 +3,7 @@ import { type ComponentProps, tick } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportWidthOf } from "../../__tests__/helpers/fake-resize-observer.js";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import { FILE_LABEL_STYLE } from "../../lib/file-label-style.svelte.js";
 import DiffToolbar from "./DiffToolbar.svelte";
 
 const baseProps = {
@@ -485,6 +486,24 @@ describe("DiffToolbar rendered markdown", () => {
 });
 
 describe("DiffToolbar file header", () => {
+	it("shows both full paths for a rename with Full Path selected", () => {
+		render(DiffToolbar, {
+			context: new Map([[FILE_LABEL_STYLE, { current: "full-path" }]]),
+			props: {
+				...baseProps,
+				selectedPath: "review/new.ts",
+				selectedOldPath: "review/old.ts",
+				selectedStatus: "Renamed",
+			},
+		});
+		const title = "review/old.ts → review/new.ts";
+		expect(screen.getByTitle(title).textContent?.trim()).toBe(title);
+		expect(screen.getByTestId("diff-path")).toHaveAttribute(
+			"data-path",
+			"review/new.ts",
+		);
+	});
+
 	it("marks the file with its status letter", () => {
 		render(DiffToolbar, {
 			props: {

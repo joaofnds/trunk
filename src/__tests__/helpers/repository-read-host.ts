@@ -206,6 +206,8 @@ export class RepositoryReadHost implements HostChannel {
 				return this.nextListener++;
 			case "plugin:event|unlisten":
 				return null;
+			case "get_file_label_style":
+				return this.preferences.get("file_label_style") ?? "filename-first";
 			case "prefs_get":
 				return this.preferences.get(String(args.key)) ?? null;
 			case "prefs_set":

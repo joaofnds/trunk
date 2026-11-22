@@ -23,6 +23,7 @@ import {
 import { open } from "./lib/dialog.js";
 import { DiffPreferences } from "./lib/diff-preferences.svelte.js";
 import { errorMessage } from "./lib/error-report.js";
+import { provideFileLabelStyle } from "./lib/file-label-style.svelte.js";
 import { invokesSettled, safeInvoke, trackPending } from "./lib/invoke.js";
 import { focusInEditable, keyChord, onMac } from "./lib/keyboard.js";
 import { nativeMenu } from "./lib/native-menu.js";
@@ -85,6 +86,8 @@ import { releaseUrl, type UpdateStatus, updates } from "./lib/updates.js";
 import { provideUpdatePreparation } from "./lib/updates-context.js";
 import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
 import { UpdateCheckScheduler } from "./lib/updates-scheduler.js";
+
+provideFileLabelStyle();
 
 let updateStatus = $state<UpdateStatus | null>(null);
 let updateOpen = $state(false);
