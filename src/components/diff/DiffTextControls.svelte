@@ -4,8 +4,6 @@ import TextWrap from "@lucide/svelte/icons/text-wrap";
 import Button from "../../lib/ui/Button.svelte";
 
 interface Props {
-	joined?: boolean;
-	showLabels?: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;
 	fixedPitch: boolean;
@@ -15,8 +13,6 @@ interface Props {
 }
 
 let {
-	joined = false,
-	showLabels = false,
 	showInvisibles,
 	wordWrap,
 	fixedPitch,
@@ -27,10 +23,9 @@ let {
 </script>
 
 <Button
-	{joined}
-	icon={!showLabels}
-	size={joined ? "base" : "sm"}
-	variant={joined ? "secondary" : "ghost"}
+	icon
+	size="sm"
+	variant="ghost"
 	aria-label="Show invisible characters"
 	aria-pressed={showInvisibles}
 	disabled={renderedActive}
@@ -38,16 +33,12 @@ let {
 		? "Invisible characters aren't rendered in preview"
 		: "Show invisible characters"}
 	onclick={() => onshowinvisibleschange(!showInvisibles)}
-	><Pilcrow size={14} />
-	{#if showLabels}
-		Invisible characters
-	{/if}</Button
+	><Pilcrow size={14} /></Button
 >
 <Button
-	{joined}
-	icon={!showLabels}
-	size={joined ? "base" : "sm"}
-	variant={joined ? "secondary" : "ghost"}
+	icon
+	size="sm"
+	variant="ghost"
 	aria-label="Toggle word wrap"
 	aria-pressed={wordWrap && fixedPitch}
 	disabled={!fixedPitch}
@@ -55,8 +46,5 @@ let {
 		? "Toggle word wrap"
 		: "Word wrap needs a fixed-pitch diff font"}
 	onclick={() => onwordwrapchange(!wordWrap)}
-	><TextWrap size={14} />
-	{#if showLabels}
-		Word wrap
-	{/if}</Button
+	><TextWrap size={14} /></Button
 >

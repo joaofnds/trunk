@@ -46,7 +46,6 @@ import {
 import { measureRowMetrics, type RowMetrics } from "../lib/row-metrics.js";
 import type { MergedSpan, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
-import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
@@ -78,9 +77,6 @@ let {
 }: Props = $props();
 
 let fullFile = $state(true);
-let fileBarWidth = $state(0);
-// Leave room for the filename alongside the three worded controls.
-const showViewLabels = $derived(fileBarWidth >= 440);
 const contextToggleLabel = $derived(
 	fullFile ? "Show conflicts with context" : "Show full file",
 );
@@ -91,7 +87,7 @@ function handleMergeKeydown(event: KeyboardEvent) {
 		event.defaultPrevented ||
 		event.isComposing ||
 		loading ||
-		error ||
+		!displayed ||
 		saving
 	)
 		return;
@@ -109,15 +105,18 @@ function handleMergeKeydown(event: KeyboardEvent) {
 
 function openPathMenu(event: MouseEvent) {
 	event.preventDefault();
+	if (!displayed || loading) return;
 	const anchor =
 		event.type === "click" &&
 		event.detail === 0 &&
 		event.currentTarget instanceof HTMLElement
 			? event.currentTarget.getBoundingClientRect()
 			: undefined;
-	void showFilePathMenu({ repoPath, path: filePath, anchor }).catch((e) =>
-		reportErrorToast(e, "Could not open path menu"),
-	);
+	void showFilePathMenu({
+		repoPath: displayed.repo,
+		path: displayed.path,
+		anchor,
+	}).catch((e) => reportErrorToast(e, "Could not open path menu"));
 }
 
 // ---------- Constants ----------
@@ -127,7 +126,14 @@ const SIDE_LABEL = {
 } as const;
 
 // ---------- State ----------
-let sources = $state.raw<MergeSides | null>(null);
+// The displayed path, sides and drafts change together when the selected file is ready.
+type FileView = { repo: string; path: string } & (
+	| { kind: "ready"; sides: MergeSides; signature: string }
+	| { kind: "error"; message: string; retryable: boolean }
+);
+let view = $state.raw<FileView | null>(null);
+let displayed = $derived(view?.kind === "ready" ? view : null);
+let sources = $derived(displayed?.sides);
 let regions = $derived(sources?.regions ?? []);
 let loadVersion = 0;
 onDestroy(() => {
@@ -136,11 +142,7 @@ onDestroy(() => {
 let takenLines = $state<Set<string>>(new Set());
 let manualEdit = $state(false);
 let manualText = $state("");
-// The file and sides the picks on screen were made against.
-let pickedIn = $state.raw<{ path: string; sides: string } | null>(null);
 let loading = $state(true);
-let error = $state<string | null>(null);
-let retryable = $state(true);
 // A binary, deleted or linked side is a fact about the file, so loading it again
 // gets the same refusal, and a Retry button there would only promise otherwise.
 const UNRESOLVABLE_HERE: ReadonlySet<string> = new Set([
@@ -161,13 +163,13 @@ let baseView = $state.raw<{
 async function showBase(row: FlatRow, opener: HTMLElement) {
 	const region = regions[row.regionIdx];
 	const baseOid = sources?.base_oid;
-	if (!baseOid || region?.type !== "conflict") return;
+	if (loading || !displayed || !baseOid || region?.type !== "conflict") return;
 	const request = { number: row.conflictNum, opener };
 	baseView = request;
 	try {
 		const content = await safeInvoke<BaseView>("get_merge_base", {
-			path: repoPath,
-			filePath,
+			path: displayed.repo,
+			filePath: displayed.path,
 			baseOid,
 			selection: {
 				ordinal: row.conflictNum - 1,
@@ -323,7 +325,8 @@ $effect(() => {
 
 $effect(() => {
 	const picked = { taken: takenLines, typed: manualEdit ? manualText : null };
-	if (pickedIn) picks.set(repoPath, pickedIn.path, pickedIn.sides, picked);
+	if (displayed)
+		picks.set(displayed.repo, displayed.path, displayed.signature, picked);
 });
 
 // A reply for a file the editor has since moved off is dropped. A file that is
@@ -333,22 +336,20 @@ function loadSides({ repo, path }: { repo: string; path: string }) {
 	const version = ++loadVersion;
 	baseView = null;
 	loading = true;
-	error = null;
-	pickedIn = null;
+	if (view?.repo !== repo) view = null;
 
 	safeInvoke<MergeSides>("get_merge_sides", { path: repo, filePath: path })
 		.then((result) => {
 			if (version !== loadVersion || path !== filePath || repo !== repoPath)
 				return;
 
-			const sides = JSON.stringify([result.revision, result.regions]);
-			const kept = picks.get(repo, path, sides);
-			sources = result;
+			const signature = JSON.stringify([result.revision, result.regions]);
+			const kept = picks.get(repo, path, signature);
+			view = { kind: "ready", repo, path, sides: result, signature };
 			takenLines = new Set(kept?.taken);
 			lastClickedKey = null;
 			manualEdit = kept?.typed != null;
 			manualText = kept?.typed ?? "";
-			pickedIn = { path, sides };
 			focusedConflictIdx = 0;
 			panelScrollTop = 0;
 			loading = false;
@@ -363,8 +364,13 @@ function loadSides({ repo, path }: { repo: string; path: string }) {
 				return;
 			}
 
-			error = errorMessage(e, "Could not load this conflict");
-			retryable = !(isTrunkError(e) && UNRESOLVABLE_HERE.has(e.code));
+			view = {
+				kind: "error",
+				path,
+				repo,
+				message: errorMessage(e, "Could not load this conflict"),
+				retryable: !(isTrunkError(e) && UNRESOLVABLE_HERE.has(e.code)),
+			};
 			loading = false;
 		});
 }
@@ -503,7 +509,7 @@ function holdScrollEvents() {
 
 // ---------- Event handlers ----------
 function afterDiscardingTypedOutput(action: () => void) {
-	if (saving) return;
+	if (loading || saving) return;
 	if (!manualEdit) {
 		action();
 		return;
@@ -580,7 +586,7 @@ function toggleLineFrom(key: string, extending: boolean) {
 }
 
 function handleOutputEdit(e: Event) {
-	if (saving) return;
+	if (loading || saving) return;
 	manualEdit = true;
 	manualText = (e.target as HTMLTextAreaElement).value;
 }
@@ -606,8 +612,7 @@ function handleNextConflict() {
 
 function scrollToConflict(idx: number) {
 	const centre = headerCentres[idx];
-	if (centre == null) return;
-	const scrollTo = Math.max(0, centre - panelViewportHeight / 2);
+	const scrollTo = Math.max(0, (centre ?? 0) - panelViewportHeight / 2);
 	cancelAnimationFrame(scrollRaf);
 	holdScrollEvents();
 	scrollPanels(scrollTo);
@@ -615,12 +620,12 @@ function scrollToConflict(idx: number) {
 }
 
 async function handleSaveAndResolve() {
-	if (!sources || saving || (!manualEdit && unresolved > 0)) return;
+	if (!displayed || loading || saving || (!manualEdit && unresolved > 0))
+		return;
 	const version = loadVersion;
-	const path = filePath;
-	const repo = repoPath;
+	const { path, repo } = displayed;
 	const edited = manualText;
-	const expectedRevision = sources.revision;
+	const expectedRevision = displayed.sides.revision;
 	saving = true;
 	try {
 		if (needsReview) {
@@ -891,21 +896,25 @@ registerUpdateBlocker(
 	></div>
 {/snippet}
 
-<div class="h-full flex flex-col bg-bg">
-	{#if loading}
+<div
+	class="h-full flex flex-col bg-bg"
+	aria-busy={loading}
+	inert={loading && !!view}
+>
+	{#if !view}
 		<!-- Loading state -->
 		<div
 			class="flex-1 flex items-center justify-center text-text-muted text-body"
 		>
 			Loading merge editor...
 		</div>
-	{:else if error}
+	{:else if view.kind === "error"}
 		<!-- Error state -->
 		<div
 			class="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
-			<span class="text-diff-delete">{error}</span>
-			{#if retryable}
+			<span class="text-diff-delete">{view.message}</span>
+			{#if view.retryable}
 				<Button
 					size="sm"
 					onclick={() => loadSides({ repo: repoPath, path: filePath })}
@@ -913,52 +922,44 @@ registerUpdateBlocker(
 				>
 			{/if}
 		</div>
-	{:else}
+	{:else if displayed}
 		<section
 			aria-label="Merge file controls"
-			class="h-bar bg-surface shadow-hairline flex items-center gap-2 px-2 shrink-0"
-			bind:clientWidth={fileBarWidth}
+			class="h-bar bg-surface shadow-hairline flex items-center gap-1 px-2 shrink-0"
 		>
 			<span class="flex-1 min-w-0">
 				<LinkButton
 					truncate
-					aria-label={`Path actions for ${filePath}`}
+					aria-label={`Path actions for ${displayed.path}`}
 					aria-haspopup="menu"
 					onclick={openPathMenu}
 					oncontextmenu={openPathMenu}
 				>
-					<FilePathLabel path={filePath} />
+					<FilePathLabel path={displayed.path} />
 				</LinkButton>
 			</span>
-			<ButtonGroup size="base">
-				<Button
-					joined
-					icon={!showViewLabels}
-					size="base"
-					aria-label={contextToggleLabel}
-					title={contextToggleLabel}
-					onclick={() => (fullFile = !fullFile)}
-				>
-					{#if fullFile}
-						<FoldVertical size={14} />
-					{:else}
-						<UnfoldVertical size={14} />
-					{/if}
-					{#if showViewLabels}
-						{fullFile ? "Show conflicts" : "Show full file"}
-					{/if}
-				</Button>
-				<DiffTextControls
-					joined
-					showLabels={showViewLabels}
-					showInvisibles={diffPreferences.showInvisibles}
-					wordWrap={diffPreferences.wordWrap}
-					fixedPitch={sideWrapAvailable}
-					onshowinvisibleschange={(show) =>
-						diffPreferences.changeShowInvisibles(show)}
-					onwordwrapchange={(wrap) => diffPreferences.changeWordWrap(wrap)}
-				/>
-			</ButtonGroup>
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
+				aria-label={contextToggleLabel}
+				title={contextToggleLabel}
+				onclick={() => (fullFile = !fullFile)}
+			>
+				{#if fullFile}
+					<FoldVertical size={14} />
+				{:else}
+					<UnfoldVertical size={14} />
+				{/if}
+			</Button>
+			<DiffTextControls
+				showInvisibles={diffPreferences.showInvisibles}
+				wordWrap={diffPreferences.wordWrap}
+				fixedPitch={sideWrapAvailable}
+				onshowinvisibleschange={(show) =>
+					diffPreferences.changeShowInvisibles(show)}
+				onwordwrapchange={(wrap) => diffPreferences.changeWordWrap(wrap)}
+			/>
 		</section>
 		<!-- Top row: Current + Incoming side by side (50% height) -->
 		<div class="flex-1 flex min-h-0">
@@ -981,7 +982,9 @@ registerUpdateBlocker(
 					class="flex-1 overflow-y-auto font-mono text-callout"
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					{@render sideRows("ours", sources?.ours_spans)}
+					{#key displayed}
+						{@render sideRows("ours", sources?.ours_spans)}
+					{/key}
 				</div>
 			</section>
 
@@ -1003,7 +1006,9 @@ registerUpdateBlocker(
 					class="flex-1 overflow-y-auto font-mono text-callout"
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					{@render sideRows("theirs", sources?.theirs_spans)}
+					{#key displayed}
+						{@render sideRows("theirs", sources?.theirs_spans)}
+					{/key}
 				</div>
 			</section>
 		</div>
@@ -1093,18 +1098,20 @@ registerUpdateBlocker(
 				</div>
 			</div>
 
-			<MergeOutput
-				{filePath}
-				text={outputText}
-				readonly={saving}
-				lineHeight={LINE_HEIGHT}
-				wordWrap={sideWrap}
-				showInvisibles={diffPreferences.showInvisibles}
-				bind:element={panelRefs[OUTPUT_PANEL]}
-				bind:wrapColumns={outputColumns}
-				oninput={handleOutputEdit}
-				onscroll={() => handleScroll(OUTPUT_PANEL)}
-			/>
+			{#key displayed}
+				<MergeOutput
+					filePath={displayed.path}
+					text={outputText}
+					readonly={saving || loading}
+					lineHeight={LINE_HEIGHT}
+					wordWrap={sideWrap}
+					showInvisibles={diffPreferences.showInvisibles}
+					bind:element={panelRefs[OUTPUT_PANEL]}
+					bind:wrapColumns={outputColumns}
+					oninput={handleOutputEdit}
+					onscroll={() => handleScroll(OUTPUT_PANEL)}
+				/>
+			{/key}
 		</div>
 	{/if}
 </div>

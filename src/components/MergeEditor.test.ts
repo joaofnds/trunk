@@ -15,6 +15,7 @@ import {
 	onTestFinished,
 	vi,
 } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import {
 	conflictRegion as conflict,
 	gitMergedRegion,
@@ -24,6 +25,7 @@ import {
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createMergePicks } from "../lib/merge-picks.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
 import MergeEditor from "./MergeEditor.svelte";
 
@@ -143,15 +145,9 @@ describe("MergeEditor", () => {
 		expect(output).toHaveValue("[] local draft");
 	});
 
-	it.each([
-		{
-			width: 865,
-			labels: ["Show conflicts", "Invisible characters", "Word wrap"],
-		},
-		{ width: 320, labels: ["", "", ""] },
-	])(
-		"shows the file view controls above the source panes at $width pixels",
-		async ({ width, labels }) => {
+	it.each([865, 320])(
+		"shows icon-only file view controls above the source panes at %i pixels",
+		async (width) => {
 			stubLayout({ width, height: 480 });
 			onTestFinished(restoreLayout);
 			render(MergeEditor, {
@@ -182,10 +178,16 @@ describe("MergeEditor", () => {
 				controls.getByRole("button", { name: "Show invisible characters" }),
 				controls.getByRole("button", { name: "Toggle word wrap" }),
 			];
-			expect(buttons.map((button) => button.textContent?.trim())).toEqual(
-				labels,
-			);
-			expect(buttons.every((button) => button.querySelector("svg"))).toBe(true);
+			for (const button of buttons) {
+				expect(button, button.title).toHaveClass(
+					"h-control-sm",
+					"w-control-sm",
+					"border-transparent",
+				);
+				expect(button.textContent?.trim(), button.title).toBe("");
+				expect(button.querySelector("svg")).toBeVisible();
+				expect(button).toHaveAccessibleName(button.title);
+			}
 		},
 	);
 
@@ -765,8 +767,9 @@ describe("MergeEditor", () => {
 			await output();
 			await fireEvent.click(line("theirs one"));
 			await view.rerender({ filePath: "src/other.ts" });
+			await screen.findByLabelText("Path actions for src/other.ts");
 			const result = await output();
-			await waitFor(() => expect(result.value).not.toContain("theirs one"));
+			expect(result.value).not.toContain("theirs one");
 
 			await fireEvent.click(line("theirs three"), {
 				shiftKey: true,
@@ -1352,6 +1355,111 @@ describe("MergeEditor", () => {
 	});
 
 	describe("when the file changes before its sides arrive", () => {
+		it("keeps the displayed conflict intact until the selected file is ready", async () => {
+			const clock = new FakeScheduler();
+			const next = Promise.withResolvers<MergeSides>();
+			mockInvoke.mockImplementation(async (cmd, args) => {
+				if (cmd === "get_merge_sides")
+					return args && "filePath" in args && args.filePath === "new.ts"
+						? next.promise
+						: sidesOf(merged("first file"));
+			});
+			const view = render(MergeEditor, {
+				context: new Map([[SCHEDULER, clock]]),
+				props: {
+					repoPath: "/repo",
+					filePath: "old.ts",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			const output = await screen.findByDisplayValue("first file");
+			await fireEvent.input(output, { target: { value: "draft for old.ts" } });
+
+			await view.rerender({ filePath: "new.ts" });
+
+			expect(screen.queryByText("Loading merge editor...")).toBeNull();
+			expect(output).toBeVisible();
+			expect(output).toHaveValue("draft for old.ts");
+			const mirror = output.parentElement?.querySelector("pre");
+			expect(mirror).toBeVisible();
+			expect(mirror).toHaveTextContent("draft for old.ts");
+			expect(output).toHaveAttribute("readonly");
+			expect(output.closest<HTMLElement>('[aria-busy="true"]')?.inert).toBe(
+				true,
+			);
+			expect(screen.getByLabelText("Path actions for old.ts")).toBeVisible();
+			expect(screen.getAllByText("first file")).toHaveLength(2);
+			await waitFor(() => expect(clock.pending).toBe(1));
+			clock.flush();
+			expect(mockInvoke).toHaveBeenLastCalledWith("highlight_merge_output", {
+				filePath: "old.ts",
+				text: "draft for old.ts",
+			});
+
+			next.resolve(sidesOf(merged("second file")));
+			expect(
+				await screen.findByDisplayValue("second file"),
+			).not.toHaveAttribute("readonly");
+			expect(screen.getByLabelText("Path actions for new.ts")).toBeVisible();
+		});
+
+		it("keeps the refusal visible until the next conflict opens", async () => {
+			const next = Promise.withResolvers<MergeSides>();
+			mockInvoke.mockImplementation(async (cmd, args) => {
+				if (cmd !== "get_merge_sides") return;
+				if (args && "filePath" in args && args.filePath === "binary.png")
+					throw { code: "binary_conflict", message: "binary.png is binary" };
+				return next.promise;
+			});
+			const view = render(MergeEditor, {
+				props: {
+					repoPath: "/repo",
+					filePath: "binary.png",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			const refusal = await screen.findByText("binary.png is binary");
+			await view.rerender({ filePath: "new.ts" });
+			expect(refusal).toBeVisible();
+			expect(screen.queryByText("Loading merge editor...")).toBeNull();
+
+			next.resolve(sidesOf(merged("second file")));
+			expect(await screen.findByDisplayValue("second file")).toBeVisible();
+			expect(refusal).not.toBeInTheDocument();
+		});
+
+		it("opens a different file at the beginning of horizontally scrolled source lines", async () => {
+			const longLine = "x".repeat(300);
+			mockInvoke.mockImplementation(async (cmd, args) => {
+				if (cmd === "get_merge_sides" && args && "filePath" in args)
+					return sidesOf(merged(longLine + args.filePath));
+			});
+			const view = render(MergeEditor, {
+				props: {
+					repoPath: "/repo",
+					filePath: "a.ts",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			const current = within(
+				await screen.findByRole("region", { name: "Current (Ours)" }),
+			);
+			current.getByText(longLine + "a.ts", {
+				selector: ".syntax-highlight",
+			}).scrollLeft = 120;
+			await view.rerender({ filePath: "b.ts" });
+			expect(
+				(
+					await current.findByText(longLine + "b.ts", {
+						selector: ".syntax-highlight",
+					})
+				).scrollLeft,
+			).toBe(0);
+		});
+
 		it("ignores the earlier file's refusal", async () => {
 			const refusals = new Map<string, (error: unknown) => void>();
 			mockInvoke.mockImplementation((cmd: string, args) => {
