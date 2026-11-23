@@ -41,26 +41,36 @@ export class FakeMenu implements TauriFake {
 	readonly plugin = "menu";
 	private readonly resources = new Map<number, MenuResource>();
 	private nextRid = 1;
-	private showing: number | null = null;
+	private showing: MenuResource[] = [];
+	readonly resourceHandles: TauriFake = {
+		plugin: "resources",
+		answer: (command, args) => {
+			if (command !== "close")
+				throw new UnknownFakeCommand("resources", command);
+			if (!this.resources.delete(Number(args.rid)))
+				throw new Error("Unknown menu resource");
+		},
+		reset: () => this.reset(),
+	};
 
 	constructor(private readonly callbacks: CallbackDispatch) {}
 
 	/** Every item of the menu the application popped up, separators dropped, or
 	 *  an empty list while no menu is showing. */
 	items(): MenuEntry[] {
-		return this.showingItems().map((item) => ({
+		return this.showing.map((item) => ({
 			label: item.text,
 			enabled: item.enabled,
 		}));
 	}
 
 	checked(label: string): boolean | undefined {
-		return this.showingItems().find((item) => item.text === label)?.checked;
+		return this.showing.find((item) => item.text === label)?.checked;
 	}
 
 	/** Picks an item the way a user does: by the label they read on it. */
 	choose(label: string): void {
-		const item = this.showingItems().find((entry) => entry.text === label);
+		const item = this.showing.find((entry) => entry.text === label);
 
 		if (!item) {
 			throw new Error(
@@ -74,7 +84,7 @@ export class FakeMenu implements TauriFake {
 			throw new Error(`the menu item labelled "${label}" carries no action`);
 		}
 
-		this.showing = null;
+		this.showing = [];
 		this.callbacks.runCallback(item.channel, {
 			index: item.fired++,
 			message: item.id,
@@ -84,13 +94,13 @@ export class FakeMenu implements TauriFake {
 	reset(): void {
 		this.resources.clear();
 		this.nextRid = 1;
-		this.showing = null;
+		this.showing = [];
 	}
 
 	answer(command: string, args: Record<string, unknown>): unknown {
 		if (command === "new") return this.create(onTheWire(args));
 		if (command === "popup") {
-			this.showing = args.rid as number;
+			this.showing = this.menuItems(Number(args.rid));
 			return null;
 		}
 
@@ -120,9 +130,8 @@ export class FakeMenu implements TauriFake {
 		return [rid, id];
 	}
 
-	private showingItems(): MenuResource[] {
-		const menu =
-			this.showing === null ? undefined : this.resources.get(this.showing);
+	private menuItems(id: number): MenuResource[] {
+		const menu = this.resources.get(id);
 		if (!menu) return [];
 
 		return menu.items

@@ -6,11 +6,9 @@ import Eye from "@lucide/svelte/icons/eye";
 import FoldVertical from "@lucide/svelte/icons/fold-vertical";
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import Minus from "@lucide/svelte/icons/minus";
-import Pilcrow from "@lucide/svelte/icons/pilcrow";
 import Plus from "@lucide/svelte/icons/plus";
 import Rows2 from "@lucide/svelte/icons/rows-2";
 import Space from "@lucide/svelte/icons/space";
-import TextWrap from "@lucide/svelte/icons/text-wrap";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import X from "@lucide/svelte/icons/x";
@@ -34,6 +32,7 @@ import type {
 import Button from "../../lib/ui/Button.svelte";
 import CommentBadge from "../CommentBadge.svelte";
 import FilePathLabel from "../FilePathLabel.svelte";
+import DiffTextControls from "./DiffTextControls.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -284,32 +283,14 @@ const compact = $derived(
 		>
 			<Space size={14} />
 		</Button>
-		<Button
-			icon
-			size="sm"
-			variant="ghost"
-			aria-pressed={showInvisibles}
-			disabled={renderedActive}
-			title={renderedActive
-				? "Invisible characters aren't rendered in preview"
-				: "Show invisible characters"}
-			onclick={() => onshowinvisibleschange(!showInvisibles)}
-		>
-			<Pilcrow size={14} />
-		</Button>
-		<Button
-			icon
-			size="sm"
-			variant="ghost"
-			aria-pressed={wordWrap}
-			disabled={!fixedPitch}
-			title={fixedPitch
-				? "Toggle word wrap"
-				: "Word wrap needs a fixed-pitch diff font"}
-			onclick={() => onwordwrapchange(!wordWrap)}
-		>
-			<TextWrap size={14} />
-		</Button>
+		<DiffTextControls
+			{showInvisibles}
+			{wordWrap}
+			{fixedPitch}
+			{renderedActive}
+			{onshowinvisibleschange}
+			{onwordwrapchange}
+		/>
 	{/if}
 	<span
 		class="font-probe"

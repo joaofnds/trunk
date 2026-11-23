@@ -2155,7 +2155,7 @@ describe("RepoView", () => {
 		});
 
 		describe("when another conflicted file is resolved from its menu", () => {
-			function stubConflicts(paths: string[]) {
+			function stubConflicts(paths: string[], baseOid: string | null = null) {
 				const base = mockInvoke.getMockImplementation();
 				if (!base) throw new Error("base invoke implementation missing");
 				mockInvoke.mockImplementation((cmd, args) => {
@@ -2172,10 +2172,13 @@ describe("RepoView", () => {
 						});
 					if (cmd === "get_merge_sides") {
 						const name = String(a?.filePath).replace(".txt", "");
-						return Promise.resolve(
-							makeMergeSides(`${name} ours`, `${name} theirs`),
-						);
+						return Promise.resolve({
+							...makeMergeSides(`${name} ours`, `${name} theirs`),
+							base_oid: baseOid,
+						});
 					}
+					if (cmd === "get_merge_base")
+						return Promise.resolve({ scope: "conflict", text: "base text" });
 					if (cmd === "save_merge_result") return Promise.resolve(null);
 					return base(cmd, args);
 				});
@@ -2206,6 +2209,25 @@ describe("RepoView", () => {
 				);
 				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 			}
+
+			it("leaves the merge editor open when Escape dismisses its Base dialog", async () => {
+				stubConflicts(["a.txt"], "base-oid");
+				await openConflict("a.txt");
+				await fireEvent.click(
+					screen.getByRole("button", {
+						name: "Show merge base for conflict 1",
+					}),
+				);
+				const dialog = await screen.findByRole("dialog");
+				const close = within(dialog).getByRole("button", { name: "Close" });
+				close.focus();
+				expect(await fireEvent.keyDown(close, { key: "Escape" })).toBe(true);
+				await fireEvent(dialog, new Event("cancel", { cancelable: true }));
+				expect(screen.queryByRole("dialog")).toBeNull();
+				expect(
+					screen.getByRole("textbox", { name: "Merge output" }),
+				).toBeVisible();
+			});
 
 			it("keeps the picks in a conflicted file after its merge editor closes", async () => {
 				stubConflicts(["a.txt", "b.txt"]);

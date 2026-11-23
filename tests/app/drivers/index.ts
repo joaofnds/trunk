@@ -83,7 +83,7 @@ export class AppDriver {
 		this.toolbar = new ToolbarDriver();
 		this.messageEditor = new MessageEditorDriver();
 		this.diffPane = new DiffPaneDriver();
-		this.mergeEditor = new MergeEditorDriver();
+		this.mergeEditor = new MergeEditorDriver(fakes.menu);
 		this.search = new SearchDriver();
 		this.events = new EventsDriver(host, internals);
 		this.agent = new AgentDriver(host, repoPath);

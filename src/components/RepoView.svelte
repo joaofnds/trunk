@@ -2440,7 +2440,7 @@ $effect(() => {
 		if (!tabActive) return;
 		if (e.key !== "Escape") return;
 		// The diff's own Escape, which clears a line selection, has already run.
-		if (e.defaultPrevented) return;
+		if (e.defaultPrevented || document.querySelector("dialog[open]")) return;
 		// An Escape typed into a field, the merge output included, is the field's.
 		if (focusInEditable(document.activeElement)) return;
 		// The diff or merge editor under the review panel is the one ending the
@@ -2882,6 +2882,10 @@ async function handleRebaseStart(
 						>
 							{#snippet children(MergeEditor)}
 								<MergeEditor
+									{diffPreferences}
+									keysActive={tabActive &&
+										!showRebaseEditor &&
+										!reviewPanelShown}
 									{repoPath}
 									filePath={conflictedFile.path}
 									onclose={handleDiffClose}

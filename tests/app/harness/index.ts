@@ -78,7 +78,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 			clipboard: new FakeClipboard(),
 			opener: new FakeOpener(),
 		};
-		internals.route(Object.values(fakes));
+		internals.route([...Object.values(fakes), fakes.menu.resourceHandles]);
 
 		const scheduler = new FakeScheduler();
 		driveWaitsWith((elapsedMs) => scheduler.advanceBy(elapsedMs));

@@ -9,6 +9,7 @@ import {
 	UNIT,
 } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
+import { CONFLICT_HEADER_HEIGHT } from "./lib/merge-side-rows";
 import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
 /* jsdom renders no scrollbars, so these read the stylesheets as text. They guard
@@ -331,7 +332,7 @@ describe("merge editor conflict header", () => {
 			"utf8",
 		);
 
-		expect(source).toContain("const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;");
+		expect(CONFLICT_HEADER_HEIGHT).toBe(BAR_HEIGHT + 1);
 		expect(source).toContain("height: calc(var(--bar-h) + 1px);");
 	});
 });

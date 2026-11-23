@@ -610,7 +610,13 @@ const DIFF_CONTEXT_LINES_KEY = "diff_context_lines";
 const DIFF_IGNORE_WHITESPACE_KEY = "diff_ignore_whitespace";
 
 export async function getDiffContextLines(): Promise<number> {
-	return (await getPref<number>(DIFF_CONTEXT_LINES_KEY)) ?? 3;
+	const value = await getPref<unknown>(DIFF_CONTEXT_LINES_KEY);
+	return typeof value === "number" &&
+		Number.isInteger(value) &&
+		value >= 0 &&
+		value <= 0xffff_ffff
+		? value
+		: 3;
 }
 
 export async function setDiffContextLines(lines: number): Promise<void> {

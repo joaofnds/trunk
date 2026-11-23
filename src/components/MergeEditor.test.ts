@@ -20,6 +20,7 @@ import {
 	makeMergeSides,
 	mergedRegion as merged,
 } from "../__tests__/helpers/factories.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createMergePicks } from "../lib/merge-picks.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
 import MergeEditor from "./MergeEditor.svelte";
@@ -31,6 +32,9 @@ import "../__tests__/helpers/tauri-mock";
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn().mockResolvedValue(undefined),
 }));
+
+const { copyPath } = vi.hoisted(() => ({ copyPath: vi.fn() }));
+vi.mock("../lib/clipboard.js", () => ({ copyText: copyPath }));
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -56,6 +60,189 @@ describe("MergeEditor", () => {
 			if (cmd === "write_merge_result") return Promise.resolve(undefined);
 			return Promise.resolve(undefined);
 		});
+	});
+
+	it("steps between conflicts with brackets only while reading the active merge", async () => {
+		const sides = sidesOf(
+			conflict(["a"], ["b"]),
+			merged("middle"),
+			conflict(["c"], ["d"]),
+		);
+		mockInvoke.mockResolvedValue(sides);
+		const props = {
+			repoPath: "/repo",
+			filePath: "src/f",
+			onclose: vi.fn(),
+			onresolved: vi.fn(),
+			keysActive: true,
+		};
+		const view = render(MergeEditor, { props });
+		const next = await screen.findByRole("button", { name: "Next conflict" });
+		const previous = screen.getByRole("button", { name: "Previous conflict" });
+		const output = screen.getByRole("textbox", { name: "Merge output" });
+		await fireEvent.keyDown(window, { key: "]" });
+		expect(next).toBeDisabled();
+		expect(previous).toBeEnabled();
+		output.focus();
+		expect(await fireEvent.keyDown(output, { key: "[" })).toBe(true);
+		expect(next).toBeDisabled();
+		previous.focus();
+		await view.rerender({ keysActive: false });
+		expect(await fireEvent.keyDown(previous, { key: "[" })).toBe(true);
+		expect(next).toBeDisabled();
+		await view.rerender({ keysActive: true });
+		expect(await fireEvent.keyDown(window, { key: "[" })).toBe(false);
+		expect(screen.getByRole("button", { name: "Next conflict" })).toBeEnabled();
+		expect(previous).toBeDisabled();
+	});
+
+	it("keeps the draft when toggling shared view settings and wraps the merge base", async () => {
+		const prefs = DiffPreferences.defaults();
+		mockInvoke.mockImplementation(async (cmd) => {
+			if (cmd === "get_merge_sides") return { ...MERGE_SIDES, base_oid: "old" };
+			if (cmd === "get_merge_base")
+				return { scope: "conflict", text: "base text" };
+		});
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "src/f",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+				diffPreferences: prefs,
+			},
+		});
+		const output = await screen.findByRole("textbox", { name: "Merge output" });
+		await fireEvent.input(output, { target: { value: "[] local draft" } });
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Toggle word wrap" }),
+		);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show invisible characters" }),
+		);
+		expect(output).toHaveAttribute("wrap", "soft");
+		expect(
+			output.parentElement?.querySelector("pre [data-glyph]"),
+		).toBeTruthy();
+		expect(prefs.wordWrap).toBe(true);
+		expect(prefs.showInvisibles).toBe(true);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show conflicts with context" }),
+		);
+		expect(
+			screen.getByRole("button", { name: "Show full file" }),
+		).toBeEnabled();
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show merge base for conflict 1" }),
+		);
+		expect(
+			await screen.findByRole("textbox", { name: "Merge base text" }),
+		).toHaveAttribute("wrap", "soft");
+		expect(output).toHaveValue("[] local draft");
+	});
+
+	it("copies the conflicted file's relative and absolute path from the filename menu", async () => {
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "src/theme.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const path = await screen.findByRole("button", {
+			name: "Path actions for src/theme.ts",
+		});
+		const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
+		vi.mocked(MenuItem.new).mockClear();
+		vi.mocked(Menu.new).mockClear();
+		await fireEvent.contextMenu(path);
+		await waitFor(() => expect(Menu.new).toHaveBeenCalledOnce());
+		const entries = vi.mocked(MenuItem.new).mock.calls.map(([item]) => item);
+		expect(entries.map((item) => item?.text)).toEqual([
+			"Copy Relative Path",
+			"Copy Absolute Path",
+		]);
+		for (const [index, expected] of [
+			"src/theme.ts",
+			"/repo/src/theme.ts",
+		].entries()) {
+			entries[index]?.action?.("copy");
+			expect(copyPath).toHaveBeenCalledWith(expected);
+		}
+		const menu = await vi.mocked(Menu.new).mock.results[0].value;
+		await waitFor(() => expect(menu.close).toHaveBeenCalledOnce());
+		vi.spyOn(path, "getBoundingClientRect").mockReturnValue(
+			new DOMRect(120, 60, 80, 20),
+		);
+		await fireEvent.click(path, { detail: 0 });
+		await waitFor(() =>
+			expect(menu.popup).toHaveBeenCalledWith(
+				expect.objectContaining({ x: 120, y: 80 }),
+			),
+		);
+	});
+
+	it("expands one context gap on both sides while keeping the exact picked line and complete output", async () => {
+		const first = ["one", "two", "three", "four", "five", "six"];
+		const middle = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+		const choice = "\tnew value  ";
+		mockInvoke.mockImplementation(async (cmd) =>
+			cmd === "get_merge_sides"
+				? sidesOf(
+						gitMergedRegion({
+							ours: first,
+							theirs: first.slice(2),
+							merged: first,
+						}),
+						conflict([choice], ["incoming"]),
+						merged(...middle),
+						conflict(["last ours"], ["last theirs"]),
+					)
+				: undefined,
+		);
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "note.txt",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const current = within(
+			await screen.findByRole("region", { name: "Current (Ours)" }),
+		);
+		const incoming = within(
+			screen.getByRole("region", { name: "Incoming (Theirs)" }),
+		);
+		const show = (name: string) =>
+			fireEvent.click(screen.getByRole("button", { name }));
+		expect(current.getByText("one")).toBeInTheDocument();
+
+		await show("Show conflicts with context");
+		expect(current.queryByText("one")).toBeNull();
+		expect(incoming.queryByText("three")).toBeNull();
+		await fireEvent.click(
+			incoming.getByRole("button", { name: "Expand 1 hidden line" }),
+		);
+		expect(current.getByText("one")).toBeInTheDocument();
+		expect(incoming.getByText("three")).toBeInTheDocument();
+		expect(current.queryByText("e")).toBeNull();
+		await show("Toggle word wrap");
+		await show("Show invisible characters");
+		const pick = current.getByRole("button", { name: "7 new value" });
+		expect(pick.querySelector("[data-glyph='→']")?.textContent).toBe("\t");
+		await fireEvent.click(pick);
+		await show("Show full file");
+		await show("Show conflicts with context");
+
+		expect(current.queryByText("one")).toBeNull();
+		expect(
+			current.getByRole("button", { name: "7 new value" }),
+		).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("textbox", { name: "Merge output" })).toHaveValue(
+			[...first, choice, ...middle].join("\n"),
+		);
 	});
 
 	it("highlights each side at its own line number and takes the exact source text", async () => {

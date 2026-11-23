@@ -1,0 +1,328 @@
+import { BAR_HEIGHT } from "./chrome-heights.js";
+import { columnsUpTo } from "./display-columns.js";
+import type { MergeRegion } from "./types.js";
+import { buildOffsets, windowFor } from "./virtual-window.js";
+
+export const MERGE_LINE_HEIGHT = 18;
+export const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;
+
+export function mergeLineHeight(text: string, wrapColumns: number) {
+	if (wrapColumns <= 0) return MERGE_LINE_HEIGHT;
+	const content = text.endsWith("\r") ? text.slice(0, -1) : text;
+	if (!/[\t\u0080-\uFFFF]/.test(content))
+		return (
+			Math.max(1, Math.ceil(content.length / wrapColumns)) * MERGE_LINE_HEIGHT
+		);
+
+	let rows = 0;
+	for (let at = 0; at < content.length; rows++) {
+		const remaining = content.slice(at);
+		const units = columnsUpTo(remaining, wrapColumns, 4, false);
+		at += units || String.fromCodePoint(remaining.codePointAt(0) ?? 0).length;
+	}
+	return Math.max(1, rows) * MERGE_LINE_HEIGHT;
+}
+
+export type MergeSide = "ours" | "theirs";
+
+export interface SideLine {
+	text: string;
+	lineNum: number;
+	key: string;
+}
+
+export type MergeSideRow = {
+	regionIdx: number;
+	slot: number;
+	conflictNum: number;
+	ours?: SideLine;
+	theirs?: SideLine;
+	height: number;
+} & (
+	| { type: "gap"; hidden: number; hiddenBySide: Record<MergeSide, number> }
+	| { type: "context" | "conflict-header" | "conflict-line" }
+);
+
+function sourceLine(
+	lines: readonly string[],
+	index: number,
+	firstLine: number,
+	key: string,
+): SideLine | undefined {
+	if (index < 0 || index >= lines.length) return undefined;
+	return { text: lines[index], lineNum: firstLine + index, key };
+}
+
+export function buildMergeSideRows(
+	regions: readonly MergeRegion[],
+	context: number | null,
+	expanded: ReadonlySet<number>,
+	wrapColumns: number,
+	measured?: ReadonlyMap<string, number>,
+) {
+	const rows: MergeSideRow[] = [];
+	const gaps = new Map<number, { row: number; head: number; tail: number }>();
+	const regionTops = [0];
+	const regionRows = [0];
+	let oursFirst = 1;
+	let theirsFirst = 1;
+	let conflictNum = 0;
+
+	for (const [regionIdx, region] of regions.entries()) {
+		const conflict = region.type === "conflict";
+		const ours = region.oursLines;
+		const theirs = region.theirsLines;
+		const slots = Math.max(ours.length, theirs.length);
+		const firstRow = rows.length;
+		if (conflict) {
+			conflictNum++;
+			rows.push({
+				type: "conflict-header",
+				regionIdx,
+				slot: -1,
+				conflictNum,
+				height: CONFLICT_HEADER_HEIGHT,
+			});
+		}
+
+		const folding = !conflict && context !== null && !expanded.has(regionIdx);
+		const head =
+			folding && regions[regionIdx - 1]?.type === "conflict" ? context : 0;
+		const tail =
+			folding && regions[regionIdx + 1]?.type === "conflict" ? context : 0;
+		const hidden = folding ? slots - head - tail : 0;
+		for (let slot = 0; slot < slots; slot++) {
+			if (hidden > 0 && slot === head) {
+				gaps.set(regionIdx, { row: rows.length, head, tail });
+				rows.push({
+					type: "gap",
+					regionIdx,
+					slot,
+					conflictNum,
+					hidden,
+					hiddenBySide: {
+						ours: Math.max(0, ours.length - head - tail),
+						theirs: Math.max(0, theirs.length - head - tail),
+					},
+					height: BAR_HEIGHT,
+				});
+				slot += hidden - 1;
+				continue;
+			}
+
+			// Each side keeps its own last lines before a conflict, even when Git
+			// merged an insertion on only one side of the gap.
+			const suffix = hidden > 0 && slot >= slots - tail;
+			const oursIdx = suffix ? ours.length - (slots - slot) : slot;
+			const theirsIdx = suffix ? theirs.length - (slots - slot) : slot;
+			const left =
+				suffix && oursIdx < head
+					? undefined
+					: sourceLine(
+							ours,
+							oursIdx,
+							oursFirst,
+							`ours-${regionIdx}-${oursIdx}`,
+						);
+			const right =
+				suffix && theirsIdx < head
+					? undefined
+					: sourceLine(
+							theirs,
+							theirsIdx,
+							theirsFirst,
+							`theirs-${regionIdx}-${theirsIdx}`,
+						);
+			rows.push({
+				type: conflict ? "conflict-line" : "context",
+				regionIdx,
+				slot,
+				conflictNum,
+				ours: left,
+				theirs: right,
+				height: Math.max(
+					left
+						? (measured?.get(left.key) ??
+								mergeLineHeight(left.text, wrapColumns))
+						: MERGE_LINE_HEIGHT,
+					right
+						? (measured?.get(right.key) ??
+								mergeLineHeight(right.text, wrapColumns))
+						: MERGE_LINE_HEIGHT,
+				),
+			});
+		}
+
+		oursFirst += ours.length;
+		theirsFirst += theirs.length;
+		let top = regionTops[regionIdx];
+		for (let i = firstRow; i < rows.length; i++) top += rows[i].height;
+		regionTops.push(top);
+		regionRows.push(rows.length);
+	}
+
+	return {
+		rows,
+		regionRows,
+		gaps,
+		regionTops,
+		offsets: buildOffsets(rows.map((row) => row.height)),
+	};
+}
+
+export function reflowedSideTop({
+	before,
+	after,
+	top,
+	viewport,
+	focusedRegion,
+	readingSide = "ours",
+}: {
+	before: ReturnType<typeof buildMergeSideRows>;
+	after: ReturnType<typeof buildMergeSideRows>;
+	top: number;
+	viewport: number;
+	focusedRegion?: number;
+	readingSide?: MergeSide;
+}): number {
+	if (focusedRegion !== undefined) {
+		const header = before.regionTops[focusedRegion];
+		if (header >= top && header < top + viewport)
+			return Math.max(0, after.regionTops[focusedRegion] - (header - top));
+	}
+
+	const first = windowFor(before.offsets, top, 0, 0).start;
+	const anchor = before.rows[first];
+	if (!anchor) return 0;
+
+	const sourceSide = anchor[readingSide]
+		? readingSide
+		: readingSide === "ours"
+			? "theirs"
+			: "ours";
+	const sourceKey = anchor[sourceSide]?.key;
+	let index =
+		sourceKey === undefined
+			? -1
+			: after.rows.findIndex((row) => row[sourceSide]?.key === sourceKey);
+	if (index < 0 && sourceKey !== undefined)
+		index = after.gaps.get(anchor.regionIdx)?.row ?? -1;
+	if (index < 0)
+		index = after.rows.findIndex(
+			(row) => row.regionIdx === anchor.regionIdx && row.slot === anchor.slot,
+		);
+	if (index < 0) return top;
+
+	const within = Math.min(
+		top - before.offsets[first],
+		after.rows[index].height - 1,
+	);
+	return after.offsets[index] + within;
+}
+
+/** In a region Git merged automatically, a visible line can come from either
+ *  side. Match in file order; the lines only one side has may be absent from
+ *  Output or may have moved the matching line to another aligned row. */
+function anchorContext(
+	model: ReturnType<typeof buildMergeSideRows>,
+	startRow: number,
+	endRow: number,
+	lines: readonly string[],
+	startLine: number,
+	endLine: number,
+	anchor: (row: number, line: number) => void,
+) {
+	let cursor = startLine;
+	let indices: Map<string, number[]> | undefined;
+	function nextMatch(text: string | undefined) {
+		if (text === undefined) return endLine;
+		if (!indices) {
+			indices = new Map();
+			for (let i = cursor; i < endLine; i++) {
+				const matches = indices.get(lines[i]);
+				if (matches) matches.push(i);
+				else indices.set(lines[i], [i]);
+			}
+		}
+		const matches = indices.get(text);
+		if (!matches) return endLine;
+		let low = 0;
+		let high = matches.length;
+		while (low < high) {
+			const middle = (low + high) >>> 1;
+			if (matches[middle] < cursor) low = middle + 1;
+			else high = middle;
+		}
+		return matches[low] ?? endLine;
+	}
+
+	for (let i = startRow; i < endRow && cursor < endLine; i++) {
+		const { ours, theirs } = model.rows[i];
+		let match = cursor;
+		if (lines[cursor] !== ours?.text && lines[cursor] !== theirs?.text)
+			match = Math.min(nextMatch(ours?.text), nextMatch(theirs?.text));
+		if (match === endLine) continue;
+
+		anchor(i, match);
+		anchor(i + 1, match + 1);
+		cursor = match + 1;
+	}
+}
+
+export function mergeScrollLayouts(
+	model: ReturnType<typeof buildMergeSideRows>,
+	regions: readonly (readonly string[])[],
+	columns: number,
+) {
+	const side: number[] = [];
+	const output: number[] = [];
+	let top = 0;
+
+	// Consecutive short lines share one slope; a long file with the same
+	// geometry in both panes only needs its first and last scroll anchors.
+	function append(x: number, y: number) {
+		const last = side.length - 1;
+		if (side[last] === x && output[last] === y) return;
+		if (
+			last > 0 &&
+			(x - side[last]) * (output[last] - output[last - 1]) ===
+				(y - output[last]) * (side[last] - side[last - 1])
+		) {
+			side[last] = x;
+			output[last] = y;
+		} else {
+			side.push(x);
+			output.push(y);
+		}
+	}
+	append(0, 0);
+
+	for (const [index, lines] of regions.entries()) {
+		const start = model.regionRows[index];
+		const end = model.regionRows[index + 1];
+		const heights =
+			columns > 0
+				? buildOffsets(lines.map((line) => mergeLineHeight(line, columns)))
+				: null;
+		const anchor = (row: number, line: number) =>
+			append(
+				model.offsets[row],
+				top + (heights ? heights[line] : line * MERGE_LINE_HEIGHT),
+			);
+		const gap = model.gaps.get(index);
+		if (gap) {
+			const head = Math.min(gap.head, lines.length);
+			const tail = Math.max(head, lines.length - gap.tail);
+			anchorContext(model, start, gap.row, lines, 0, head, anchor);
+			anchor(gap.row, head);
+			anchor(gap.row + 1, tail);
+			anchorContext(model, gap.row + 1, end, lines, tail, lines.length, anchor);
+		} else if (model.rows[start]?.type === "context") {
+			anchorContext(model, start, end, lines, 0, lines.length, anchor);
+		}
+		anchor(end, lines.length);
+		top += heights ? heights[lines.length] : lines.length * MERGE_LINE_HEIGHT;
+	}
+
+	return { side, output };
+}

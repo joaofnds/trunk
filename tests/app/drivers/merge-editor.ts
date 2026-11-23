@@ -1,7 +1,29 @@
-import { pressButton } from "./dom.js";
+import type { FakeMenu } from "../fakes/menu.js";
+import { waitFor } from "../harness/wait.js";
+import { openContextMenu, pressButton } from "./dom.js";
 
 /** The three-panel conflict editor a conflicted file's row opens onto. */
 export class MergeEditorDriver {
+	constructor(private readonly menu: FakeMenu) {}
+
+	async fileContextMenu(path: string): Promise<void> {
+		const button = await waitFor("the merge filename", () =>
+			document.querySelector<HTMLButtonElement>(
+				`button[aria-label="${CSS.escape(`Path actions for ${path}`)}"]`,
+			),
+		);
+		await openContextMenu(button, this.menu, path);
+	}
+
+	async toggleWordWrap(): Promise<void> {
+		const control = await waitFor("the merge wrap control", () =>
+			document.querySelector<HTMLButtonElement>(
+				'button[aria-label="Toggle word wrap"]:not(:disabled)',
+			),
+		);
+		control.click();
+	}
+
 	/** Takes the incoming side of every conflict. */
 	async takeAllIncoming(): Promise<void> {
 		await pressButton("Take All Incoming");

@@ -1,3 +1,7 @@
+import { LogicalPosition } from "@tauri-apps/api/dpi";
+import { copyText } from "./clipboard.js";
+import { type MenuItem, nativeMenu } from "./native-menu.js";
+
 /** One "copy this path" entry in a file row's context menu. */
 export interface PathMenuEntry {
 	text: string;
@@ -29,4 +33,36 @@ export function pathMenuEntriesOf(
 		{ text: "Copy Old Relative Path", value: oldPath },
 		{ text: "Copy Old Absolute Path", value: `${repoPath}/${oldPath}` },
 	];
+}
+
+export async function showFilePathMenu({
+	repoPath,
+	path,
+	oldPath = null,
+	anchor,
+}: {
+	repoPath: string;
+	path: string;
+	oldPath?: string | null;
+	anchor?: DOMRect;
+}) {
+	const api = await nativeMenu();
+	const items: MenuItem[] = [];
+	try {
+		for (const { text, value } of pathMenuEntriesOf(repoPath, path, oldPath)) {
+			items.push(
+				await api.MenuItem.new({ text, action: () => void copyText(value) }),
+			);
+		}
+		const menu = await api.Menu.new({ items });
+		try {
+			await menu.popup(
+				anchor ? new LogicalPosition(anchor.left, anchor.bottom) : undefined,
+			);
+		} finally {
+			await menu.close();
+		}
+	} finally {
+		await Promise.all(items.map((item) => item.close()));
+	}
 }

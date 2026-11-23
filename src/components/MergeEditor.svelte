@@ -4,16 +4,21 @@ import CheckCheck from "@lucide/svelte/icons/check-check";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import CircleX from "@lucide/svelte/icons/circle-x";
+import FoldVertical from "@lucide/svelte/icons/fold-vertical";
 import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
+import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import X from "@lucide/svelte/icons/x";
-import { onDestroy, tick } from "svelte";
-import { BAR_HEIGHT } from "../lib/chrome-heights.js";
+import { onDestroy, tick, untrack } from "svelte";
 import { ask } from "../lib/dialog.js";
+import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
+import { trailingWhitespaceStart } from "../lib/diff-utils.js";
 import { flattened } from "../lib/display-text.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { showFilePathMenu } from "../lib/file-menu.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	countUnresolved,
 	getConflictIndices,
@@ -26,16 +31,34 @@ import {
 	toggleLine,
 } from "../lib/merge-parser.js";
 import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
-import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
-import type { MergedSpan, MergeRegion, MergeSides } from "../lib/types.js";
+import { conflictNearest, mapOffset } from "../lib/merge-scroll.js";
+import {
+	buildMergeSideRows,
+	CONFLICT_HEADER_HEIGHT,
+	type MergeSideRow as FlatRow,
+	MERGE_LINE_HEIGHT as LINE_HEIGHT,
+	type MergeSide,
+	mergeLineHeight,
+	mergeScrollLayouts,
+	reflowedSideTop,
+	type SideLine,
+} from "../lib/merge-side-rows.js";
+import { measureRowMetrics, type RowMetrics } from "../lib/row-metrics.js";
+import type { MergedSpan, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
+import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
+import { windowFor } from "../lib/virtual-window.js";
+import DiffTextControls from "./diff/DiffTextControls.svelte";
 import FilePathLabel from "./FilePathLabel.svelte";
 import MergeOutput from "./MergeOutput.svelte";
+import MergeText from "./MergeText.svelte";
 
 interface Props {
+	diffPreferences?: DiffPreferences;
+	keysActive?: boolean;
 	repoPath: string;
 	filePath: string;
 	onclose: () => void;
@@ -44,6 +67,8 @@ interface Props {
 }
 
 let {
+	diffPreferences = DiffPreferences.defaults(),
+	keysActive = true,
 	repoPath,
 	filePath,
 	onclose,
@@ -51,14 +76,47 @@ let {
 	picks = createMergePicks(),
 }: Props = $props();
 
-// ---------- Constants ----------
-const LINE_HEIGHT = 18;
+let fullFile = $state(true);
+const contextToggleLabel = $derived(
+	fullFile ? "Show conflicts with context" : "Show full file",
+);
 
-/* A conflict header fences content on both sides, so it draws a rule on each
-   edge. Both rules paint inside the box, so it needs one pixel more than a
-   plain bar to leave the same visible band between them. */
-const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;
-const OVERSCAN = 20;
+function handleMergeKeydown(event: KeyboardEvent) {
+	if (
+		!keysActive ||
+		event.defaultPrevented ||
+		event.isComposing ||
+		loading ||
+		error ||
+		saving
+	)
+		return;
+	const chord = keyChord(event);
+	if (chord !== "[" && chord !== "]") return;
+	if (
+		focusInEditable(document.activeElement) ||
+		document.querySelector("dialog[open]")
+	)
+		return;
+	event.preventDefault();
+	if (chord === "[") handlePrevConflict();
+	else handleNextConflict();
+}
+
+function openPathMenu(event: MouseEvent) {
+	event.preventDefault();
+	const anchor =
+		event.type === "click" &&
+		event.detail === 0 &&
+		event.currentTarget instanceof HTMLElement
+			? event.currentTarget.getBoundingClientRect()
+			: undefined;
+	void showFilePathMenu({ repoPath, path: filePath, anchor }).catch((e) =>
+		reportErrorToast(e, "Could not open path menu"),
+	);
+}
+
+// ---------- Constants ----------
 const SIDE_LABEL = {
 	ours: "Current (Ours)",
 	theirs: "Incoming (Theirs)",
@@ -131,186 +189,85 @@ function closeBase() {
 	});
 }
 
-let panelRefs: HTMLElement[] = [];
+let panelRefs = $state<HTMLElement[]>([]);
 let panelScrollTop = $state(0);
 let panelViewportHeight = $state(400);
 
-// ---------- Flat row types for virtualization ----------
-interface FlatRow {
-	type: "context" | "conflict-header" | "conflict-line" | "padding";
-	regionIdx: number;
-	lineIdx: number;
-	text: string;
-	key: string;
-	lineNum: number;
-	conflictNum: number;
-	height: number;
-}
-
-/** Flatten both panels together so conflict regions are padded to equal height (aligned headers). */
-function flattenAligned(regions: readonly MergeRegion[]): {
-	ours: FlatRow[];
-	theirs: FlatRow[];
-} {
-	const ours: FlatRow[] = [];
-	const theirs: FlatRow[] = [];
-	let oursLineNum = 1,
-		theirsLineNum = 1;
-	let conflictCount = 0;
-
-	for (let i = 0; i < regions.length; i++) {
-		const region = regions[i];
-		if (region.type !== "conflict") {
-			for (let j = 0; j < region.oursLines.length; j++) {
-				ours.push({
-					type: "context",
-					regionIdx: i,
-					lineIdx: j,
-					text: region.oursLines[j],
-					key: "",
-					lineNum: oursLineNum + j,
-					conflictNum: 0,
-					height: LINE_HEIGHT,
-				});
+let probe = $state<HTMLElement>();
+let oursWidth = $state(0);
+let theirsWidth = $state(0);
+let metrics = $state.raw<RowMetrics>();
+$effect(() => {
+	if (probe) metrics = measureRowMetrics(probe);
+});
+let sideWrapAvailable = $derived(metrics?.monospace ?? true);
+let sideWrap = $derived(diffPreferences.wordWrap && sideWrapAvailable);
+let sideColumns = $derived(
+	sideWrap && metrics?.charWidthPx && oursWidth > 0 && theirsWidth > 0
+		? Math.max(
+				1,
+				Math.floor(Math.min(oursWidth, theirsWidth) / metrics.charWidthPx),
+			)
+		: 0,
+);
+// Only visible lines are measured. Keep offscreen estimates until a font's
+// glyph widths or inline syntax boundaries give a different browser height.
+let measured = $derived.by(() => {
+	void regions;
+	void oursWidth;
+	void theirsWidth;
+	void sideColumns;
+	void diffPreferences.showInvisibles;
+	return new Map<string, number>();
+});
+let measurementVersion = $state(0);
+const watched = new WeakMap<
+	Element,
+	{ key: string; estimate: number; cache: Map<string, number> }
+>();
+let heightObserver: ResizeObserver | undefined;
+function watchWrap(node: HTMLElement, initialKey: string) {
+	let key = $state(initialKey);
+	$effect(() => {
+		if (!sideColumns) return;
+		watched.set(node, {
+			key,
+			estimate: mergeLineHeight(node.textContent ?? "", sideColumns),
+			cache: measured,
+		});
+		heightObserver ??= new ResizeObserver((entries) => {
+			let changed = false;
+			for (const entry of entries) {
+				const line = watched.get(entry.target);
+				if (!line || !entry.target.isConnected) continue;
+				const height = Math.max(LINE_HEIGHT, entry.contentRect.height);
+				if ((line.cache.get(line.key) ?? line.estimate) === height) continue;
+				if (height === line.estimate) line.cache.delete(line.key);
+				else line.cache.set(line.key, height);
+				changed = true;
 			}
-			for (let j = 0; j < region.theirsLines.length; j++) {
-				theirs.push({
-					type: "context",
-					regionIdx: i,
-					lineIdx: j,
-					text: region.theirsLines[j],
-					key: "",
-					lineNum: theirsLineNum + j,
-					conflictNum: 0,
-					height: LINE_HEIGHT,
-				});
-			}
-			padShorterSide(region, i, ours, theirs);
-			oursLineNum += region.oursLines.length;
-			theirsLineNum += region.theirsLines.length;
-		} else {
-			conflictCount++;
-			// Headers
-			ours.push({
-				type: "conflict-header",
-				regionIdx: i,
-				lineIdx: -1,
-				text: "",
-				key: "",
-				lineNum: 0,
-				conflictNum: conflictCount,
-				height: CONFLICT_HEADER_HEIGHT,
-			});
-			theirs.push({
-				type: "conflict-header",
-				regionIdx: i,
-				lineIdx: -1,
-				text: "",
-				key: "",
-				lineNum: 0,
-				conflictNum: conflictCount,
-				height: CONFLICT_HEADER_HEIGHT,
-			});
-			// Conflict lines
-			for (let j = 0; j < region.oursLines.length; j++) {
-				ours.push({
-					type: "conflict-line",
-					regionIdx: i,
-					lineIdx: j,
-					text: region.oursLines[j],
-					key: `ours-${i}-${j}`,
-					lineNum: oursLineNum + j,
-					conflictNum: 0,
-					height: LINE_HEIGHT,
-				});
-			}
-			for (let j = 0; j < region.theirsLines.length; j++) {
-				theirs.push({
-					type: "conflict-line",
-					regionIdx: i,
-					lineIdx: j,
-					text: region.theirsLines[j],
-					key: `theirs-${i}-${j}`,
-					lineNum: theirsLineNum + j,
-					conflictNum: 0,
-					height: LINE_HEIGHT,
-				});
-			}
-			padShorterSide(region, i, ours, theirs);
-			oursLineNum += region.oursLines.length;
-			theirsLineNum += region.theirsLines.length;
-		}
-	}
-	return { ours, theirs };
-}
-
-/** Pad the shorter side so the next region starts at the same offset in both panes. */
-function padShorterSide(
-	region: MergeRegion,
-	regionIdx: number,
-	ours: FlatRow[],
-	theirs: FlatRow[],
-) {
-	const diff = region.oursLines.length - region.theirsLines.length;
-	if (diff === 0) return;
-
-	const filler: FlatRow = {
-		type: "padding",
-		regionIdx,
-		lineIdx: -2,
-		text: "",
-		key: "",
-		lineNum: 0,
-		conflictNum: 0,
-		height: Math.abs(diff) * LINE_HEIGHT,
+			if (changed) measurementVersion++;
+		});
+		heightObserver.observe(node);
+		return () => {
+			heightObserver?.unobserve(node);
+			watched.delete(node);
+		};
+	});
+	return {
+		update(next: string) {
+			key = next;
+		},
 	};
-	if (diff > 0) theirs.push(filler);
-	else ours.push(filler);
 }
+onDestroy(() => heightObserver?.disconnect());
 
-function computeOffsets(rows: FlatRow[]): number[] {
-	const offsets = new Array(rows.length + 1);
-	offsets[0] = 0;
-	for (let i = 0; i < rows.length; i++) {
-		offsets[i + 1] = offsets[i] + rows[i].height;
-	}
-	return offsets;
-}
-
-function regionHeights(rows: FlatRow[], count: number): number[] {
-	const heights = new Array<number>(count).fill(0);
-	for (const row of rows) heights[row.regionIdx] += row.height;
-	return heights;
-}
-
-function getVisibleRange(
-	scrollTop: number,
-	viewportHeight: number,
-	offsets: number[],
-): [number, number] {
-	const totalRows = offsets.length - 1;
-	if (totalRows === 0) return [0, 0];
-	// Binary search for first visible row
-	let lo = 0,
-		hi = totalRows;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		if (offsets[mid + 1] <= scrollTop) lo = mid + 1;
-		else hi = mid;
-	}
-	const start = Math.max(0, lo - OVERSCAN);
-	// Find last visible row
-	const bottom = scrollTop + viewportHeight;
-	lo = start;
-	hi = totalRows;
-	while (lo < hi) {
-		const mid = (lo + hi) >> 1;
-		if (offsets[mid] < bottom) lo = mid + 1;
-		else hi = mid;
-	}
-	const end = Math.min(totalRows, lo + OVERSCAN);
-	return [start, end];
-}
+let outputColumns = $state(0);
+let expandedGaps = $derived.by(() => {
+	void fullFile;
+	void regions;
+	return new Set<number>();
+});
 
 // ---------- Derived ----------
 let conflictIndices = $derived(getConflictIndices(regions));
@@ -324,36 +281,40 @@ let hasConflicts = $derived(conflictIndices.length > 0);
 let unresolved = $derived(countUnresolved(regions, takenLines));
 let needsReview = $derived(manualEdit && unresolved > 0);
 
-// Virtualization derived state
-let aligned = $derived(flattenAligned(regions));
-let oursFlat = $derived(aligned.ours);
-let theirsFlat = $derived(aligned.theirs);
-let oursOffsets = $derived(computeOffsets(oursFlat));
-let theirsOffsets = $derived(computeOffsets(theirsFlat));
-let oursTotalHeight = $derived(oursOffsets[oursFlat.length] ?? 0);
-let theirsTotalHeight = $derived(theirsOffsets[theirsFlat.length] ?? 0);
-let oursVisible = $derived(
-	getVisibleRange(panelScrollTop, panelViewportHeight, oursOffsets),
+let aligned = $derived.by(() => {
+	void measurementVersion;
+	return buildMergeSideRows(
+		regions,
+		fullFile ? null : diffPreferences.contextLines,
+		expandedGaps,
+		sideColumns,
+		measured,
+	);
+});
+let visible = $derived(
+	windowFor(
+		aligned.offsets,
+		panelScrollTop,
+		panelViewportHeight,
+		20 * LINE_HEIGHT,
+	),
 );
-let theirsVisible = $derived(
-	getVisibleRange(panelScrollTop, panelViewportHeight, theirsOffsets),
-);
-
-// Where each region sits in the side panes and in the output. Typed text has
-// no regions, so a manual edit leaves the output scrolling on its own.
-let sideLayout = $derived(layoutFrom(regionHeights(oursFlat, regions.length)));
-let outputLayout = $derived(
-	manualEdit
-		? null
-		: layoutFrom(outputLines.map((lines) => lines.length * LINE_HEIGHT)),
+let scrollLayouts = $derived(
+	manualEdit ? null : mergeScrollLayouts(aligned, outputLines, outputColumns),
 );
 let headerCentres = $derived(
-	conflictIndices.map((r) => sideLayout[r] + CONFLICT_HEADER_HEIGHT / 2),
+	conflictIndices.map(
+		(r) => aligned.regionTops[r] + CONFLICT_HEADER_HEIGHT / 2,
+	),
 );
 
 // ---------- Data loading ----------
+const sourcePath = $derived(filePath);
+const sourceRepo = $derived(repoPath);
 $effect(() => {
-	loadSides(filePath);
+	const path = sourcePath;
+	const repo = sourceRepo;
+	untrack(() => loadSides({ repo, path }));
 });
 
 $effect(() => {
@@ -364,19 +325,20 @@ $effect(() => {
 // A reply for a file the editor has since moved off is dropped. A file that is
 // no longer conflicted (a reset, or a resolve from elsewhere) closes the editor;
 // any other failure, a binary side among them, stays on screen with its reason.
-function loadSides(path: string) {
+function loadSides({ repo, path }: { repo: string; path: string }) {
 	const version = ++loadVersion;
 	baseView = null;
 	loading = true;
 	error = null;
 	pickedIn = null;
 
-	safeInvoke<MergeSides>("get_merge_sides", { path: repoPath, filePath: path })
+	safeInvoke<MergeSides>("get_merge_sides", { path: repo, filePath: path })
 		.then((result) => {
-			if (version !== loadVersion || path !== filePath) return;
+			if (version !== loadVersion || path !== filePath || repo !== repoPath)
+				return;
 
 			const sides = JSON.stringify([result.revision, result.regions]);
-			const kept = picks.get(repoPath, path, sides);
+			const kept = picks.get(repo, path, sides);
 			sources = result;
 			takenLines = new Set(kept?.taken);
 			lastClickedKey = null;
@@ -389,7 +351,8 @@ function loadSides(path: string) {
 			tick().then(() => scrollToConflict(0));
 		})
 		.catch((e) => {
-			if (version !== loadVersion || path !== filePath) return;
+			if (version !== loadVersion || path !== filePath || repo !== repoPath)
+				return;
 
 			if (isTrunkError(e) && e.code === "not_conflicted") {
 				onclose();
@@ -405,6 +368,7 @@ function loadSides(path: string) {
 // ---------- Synchronized scroll ----------
 const OUTPUT_PANEL = 2;
 let scrolling = false;
+let readingSide: MergeSide = "ours";
 let scrollRaf = 0;
 
 function handleScroll(sourceIdx: number) {
@@ -412,9 +376,15 @@ function handleScroll(sourceIdx: number) {
 	const source = panelRefs[sourceIdx];
 	if (!source) return;
 	let sideTop = source.scrollTop;
+	if (sourceIdx !== OUTPUT_PANEL)
+		readingSide = sourceIdx === 0 ? "ours" : "theirs";
 	if (sourceIdx === OUTPUT_PANEL) {
-		if (!outputLayout) return;
-		sideTop = mapOffset(outputLayout, sideLayout, source.scrollTop);
+		if (!scrollLayouts) return;
+		sideTop = mapOffset(
+			scrollLayouts.output,
+			scrollLayouts.side,
+			source.scrollTop,
+		);
 	}
 	scrolling = true;
 	// Sync other panels immediately (no DOM mutation, so no jitter)
@@ -423,11 +393,11 @@ function handleScroll(sourceIdx: number) {
 	// don't happen mid-scroll (which causes jitter on the source panel)
 	cancelAnimationFrame(scrollRaf);
 	scrollRaf = requestAnimationFrame(() => {
-		panelScrollTop = sideTop;
+		panelScrollTop = panelRefs[0]?.scrollTop ?? sideTop;
 		if (hasConflicts) {
 			focusedConflictIdx = conflictNearest(
 				headerCentres,
-				sideTop + panelViewportHeight / 2,
+				panelScrollTop + panelViewportHeight / 2,
 			);
 		}
 		scrolling = false;
@@ -439,20 +409,84 @@ function scrollPanels(sideTop: number, except = -1) {
 	panelRefs.forEach((el, i) => {
 		if (!el || i === except) return;
 		if (i !== OUTPUT_PANEL) el.scrollTop = sideTop;
-		else if (outputLayout)
-			el.scrollTop = mapOffset(sideLayout, outputLayout, sideTop);
+		else if (scrollLayouts)
+			el.scrollTop = mapOffset(
+				scrollLayouts.side,
+				scrollLayouts.output,
+				sideTop,
+			);
 	});
 }
+
+function expandGap(row: FlatRow, side: MergeSide) {
+	readingSide = side;
+	expandedGaps = new Set([...expandedGaps, row.regionIdx]);
+}
+
+// Read the old scroll position before the browser clamps it to the new layout.
+let previous:
+	| {
+			model: typeof aligned;
+			file: typeof sources;
+			full: boolean;
+			columns: number;
+			measurement: number;
+	  }
+	| undefined;
+$effect.pre(() => {
+	const next = {
+		model: aligned,
+		file: sources,
+		full: fullFile,
+		columns: sideColumns,
+		measurement: measurementVersion,
+	};
+	const old = previous;
+	previous = next;
+	if (!old || old.file !== next.file || !old.model.rows.length) return;
+
+	untrack(() => {
+		const side = panelRefs[0];
+		if (!side) return;
+		const anchor =
+			old.full !== next.full ||
+			old.columns !== next.columns ||
+			old.measurement !== next.measurement
+				? conflictIndices[focusedConflictIdx]
+				: undefined;
+		const top = reflowedSideTop({
+			before: old.model,
+			after: next.model,
+			top: side.scrollTop,
+			viewport: panelViewportHeight,
+			focusedRegion: anchor,
+			readingSide,
+		});
+		cancelAnimationFrame(scrollRaf);
+		holdScrollEvents();
+		panelScrollTop = top;
+		tick().then(() => {
+			if (previous !== next) return;
+			side.scrollTop = top;
+			scrollPanels(side.scrollTop);
+			panelScrollTop = side.scrollTop;
+		});
+	});
+});
 
 // A take grows or shrinks the output above the place on screen, so the output
 // is lined up again with what the sides show.
 $effect(() => {
-	if (!outputLayout) return;
+	if (!scrollLayouts) return;
 	const output = panelRefs[OUTPUT_PANEL];
 	const side = panelRefs[0];
 	if (!output || !side) return;
 	holdScrollEvents();
-	output.scrollTop = mapOffset(sideLayout, outputLayout, side.scrollTop);
+	output.scrollTop = mapOffset(
+		scrollLayouts.side,
+		scrollLayouts.output,
+		side.scrollTop,
+	);
 });
 
 /** Ignore the scroll events a programmatic scroll raises until the next frame. */
@@ -573,7 +607,7 @@ function scrollToConflict(idx: number) {
 	cancelAnimationFrame(scrollRaf);
 	holdScrollEvents();
 	scrollPanels(scrollTo);
-	panelScrollTop = scrollTo;
+	panelScrollTop = panelRefs[0]?.scrollTop ?? scrollTo;
 }
 
 async function handleSaveAndResolve() {
@@ -639,6 +673,8 @@ registerUpdateBlocker(
 );
 </script>
 
+<svelte:window onkeydown={handleMergeKeydown} />
+
 {#snippet conflictHeader(side: "ours" | "theirs", row: FlatRow)}
 	{@const taken = sideTaken(side, row.regionIdx)}
 	<div class="w-full conflict-header shrink-0">
@@ -675,40 +711,70 @@ registerUpdateBlocker(
 	</div>
 {/snippet}
 
-{#snippet sourceText(text: string, spans: readonly MergedSpan[] | undefined)}
+{#snippet sourceText(line: SideLine, spans: readonly MergedSpan[] | undefined)}
+	{@const text = line.text.endsWith("\r") ? line.text.slice(0, -1) : line.text}
+	{@const trailing = diffPreferences.showInvisibles
+		? trailingWhitespaceStart(text)
+		: text.length}
 	<span
-		class="syntax-highlight pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-diff-text"
+		class="syntax-highlight pl-1 flex-1 min-w-0 text-diff-text"
+		class:whitespace-pre={!sideWrap}
+		class:overflow-x-auto={!sideWrap}
+		class:whitespace-break-spaces={sideWrap}
+		class:self-start={sideWrap}
+		use:watchWrap={line.key}
+		class:break-all={sideWrap}
 		>{#if spans?.length}
 			{#each spans as span}
 				{@const token = text.slice(span.start, span.end)}
 				{#if span.emphasized}
-					<mark class="merge-word">{token}</mark>
+					<mark class="merge-word"
+						><MergeText
+							text={token}
+							showInvisibles={diffPreferences.showInvisibles}
+							trailingStart={trailing - span.start}
+						/></mark
+					>
 				{:else}
-					<span class={span.syntax_class}>{token}</span>
+					<span class={span.syntax_class}
+						><MergeText
+							text={token}
+							showInvisibles={diffPreferences.showInvisibles}
+							trailingStart={trailing - span.start}
+						/></span
+					>
 				{/if}
 			{/each}
 		{:else}
-			{text}
+			<MergeText
+				{text}
+				showInvisibles={diffPreferences.showInvisibles}
+				trailingStart={trailing}
+			/>
 		{/if}</span
 	>
 {/snippet}
 
-{#snippet conflictLine(row: FlatRow, spans: readonly MergedSpan[] | undefined)}
-	{@const taken = takenLines.has(row.key)}
-	<div class="merge-line shrink-0" style:height="{LINE_HEIGHT}px">
+{#snippet conflictLine(
+	row: FlatRow,
+	line: SideLine,
+	spans: readonly MergedSpan[] | undefined,
+)}
+	{@const taken = takenLines.has(line.key)}
+	<div class="merge-line shrink-0" style:height="{row.height}px">
 		<Row
 			variant="fill"
 			aria-pressed={taken}
-			aria-label={`${row.lineNum} ${row.text}`}
+			aria-label={`${line.lineNum} ${line.text}`}
 			disabled={saving}
-			onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
+			onclick={(e: MouseEvent) => handleToggleLine(line.key, e)}
 		>
 			<span class="flex-1 self-stretch flex min-w-0">
 				<span
 					class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
-					>{row.lineNum}</span
+					>{line.lineNum}</span
 				>
-				<span class="w-5 shrink-0 flex items-center justify-center">
+				<span class="w-5 shrink-0 flex justify-center">
 					{#if taken}
 						<span class="icon-taken"
 							><Check size={14} class="text-success" /></span
@@ -722,7 +788,7 @@ registerUpdateBlocker(
 						>
 					{/if}
 				</span>
-				{@render sourceText(row.text, spans)}
+				{@render sourceText(line, spans)}
 			</span>
 		</Row>
 	</div>
@@ -763,14 +829,62 @@ registerUpdateBlocker(
 	</div>
 {/snippet}
 
-{#snippet contextLine(row: FlatRow, spans: readonly MergedSpan[] | undefined)}
-	<div class="flex shrink-0 bg-transparent" style:height="{LINE_HEIGHT}px">
-		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
-			>{row.lineNum}</span
-		>
-		<span class="w-5 shrink-0"></span>
-		{@render sourceText(row.text, spans)}
+{#snippet sideRows(side: MergeSide, highlights: MergeSides["ours_spans"])}
+	<div aria-hidden="true" class="flex h-0 overflow-hidden">
+		<span class="line-no shrink-0"></span
+		><span class="w-5 shrink-0 mr-1"></span>
+		{#if side === "ours"}
+			<span
+				class="flex-1 min-w-0"
+				bind:this={probe}
+				bind:clientWidth={oursWidth}
+			></span>
+		{:else}
+			<span class="flex-1 min-w-0" bind:clientWidth={theirsWidth}></span>
+		{/if}
 	</div>
+	<div class="shrink-0" style:height="{visible.offsetTop}px"></div>
+	{#each aligned.rows.slice(visible.start, visible.end) as row (row.regionIdx +
+		":" +
+		row.slot)}
+		{@const line = row[side]}
+		{#if row.type === "conflict-header"}
+			{@render conflictHeader(side, row)}
+		{:else if row.type === "gap"}
+			{@const count = row.hiddenBySide[side]}
+			{@const label = count
+				? `${count} hidden ${count === 1 ? "line" : "lines"}`
+				: "hidden context on other side"}
+			<div style:height="{row.height}px">
+				<Row
+					variant="divider"
+					tone="muted"
+					aria-label="Expand {label}"
+					onclick={() => expandGap(row, side)}
+				>
+					<ChevronDown size={14} />
+					{label}
+				</Row>
+			</div>
+		{:else if !line}
+			<div class="shrink-0" style:height="{row.height}px"></div>
+		{:else if row.type === "conflict-line"}
+			{@render conflictLine(row, line, highlights?.[line.lineNum])}
+		{:else}
+			<div class="flex shrink-0 bg-transparent" style:height="{row.height}px">
+				<span
+					class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
+					>{line.lineNum}</span
+				>
+				<span class="w-5 shrink-0"></span>
+				{@render sourceText(line, highlights?.[line.lineNum])}
+			</div>
+		{/if}
+	{/each}
+	<div
+		class="shrink-0"
+		style:height="{visible.totalHeight - aligned.offsets[visible.end]}px"
+	></div>
 {/snippet}
 
 <div class="h-full flex flex-col bg-bg">
@@ -788,7 +902,11 @@ registerUpdateBlocker(
 		>
 			<span class="text-diff-delete">{error}</span>
 			{#if retryable}
-				<Button size="sm" onclick={() => loadSides(filePath)}>Retry</Button>
+				<Button
+					size="sm"
+					onclick={() => loadSides({ repo: repoPath, path: filePath })}
+					>Retry</Button
+				>
 			{/if}
 		</div>
 	{:else}
@@ -813,29 +931,7 @@ registerUpdateBlocker(
 					class="flex-1 overflow-y-auto font-mono text-callout"
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					<div
-						class="shrink-0"
-						style:height="{oursOffsets[oursVisible[0]]}px"
-					></div>
-					{#each oursFlat.slice(
-						oursVisible[0],
-						oursVisible[1],
-					) as row, idx (oursVisible[0] + idx)}
-						{#if row.type === "padding"}
-							<div class="shrink-0" style:height="{row.height}px"></div>
-						{:else if row.type === "conflict-header"}
-							{@render conflictHeader("ours", row)}
-						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row, sources?.ours_spans?.[row.lineNum])}
-						{:else}
-							{@render contextLine(row, sources?.ours_spans?.[row.lineNum])}
-						{/if}
-					{/each}
-					<div
-						class="shrink-0"
-						style:height="{oursTotalHeight -
-							(oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px"
-					></div>
+					{@render sideRows("ours", sources?.ours_spans)}
 				</div>
 			</section>
 
@@ -857,29 +953,7 @@ registerUpdateBlocker(
 					class="flex-1 overflow-y-auto font-mono text-callout"
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					<div
-						class="shrink-0"
-						style:height="{theirsOffsets[theirsVisible[0]]}px"
-					></div>
-					{#each theirsFlat.slice(
-						theirsVisible[0],
-						theirsVisible[1],
-					) as row, idx (theirsVisible[0] + idx)}
-						{#if row.type === "padding"}
-							<div class="shrink-0" style:height="{row.height}px"></div>
-						{:else if row.type === "conflict-header"}
-							{@render conflictHeader("theirs", row)}
-						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row, sources?.theirs_spans?.[row.lineNum])}
-						{:else}
-							{@render contextLine(row, sources?.theirs_spans?.[row.lineNum])}
-						{/if}
-					{/each}
-					<div
-						class="shrink-0"
-						style:height="{theirsTotalHeight -
-							(theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px"
-					></div>
+					{@render sideRows("theirs", sources?.theirs_spans)}
 				</div>
 			</section>
 		</div>
@@ -892,7 +966,45 @@ registerUpdateBlocker(
 				>
 					<div class="output-file flex items-center min-w-0 gap-2">
 						<span class="text-callout text-text-muted">Output</span>
-						<FilePathLabel path={filePath} />
+						<span class="min-w-0">
+							<LinkButton
+								truncate
+								aria-label={`Path actions for ${filePath}`}
+								aria-haspopup="menu"
+								onclick={openPathMenu}
+								oncontextmenu={openPathMenu}
+							>
+								<FilePathLabel path={filePath} />
+							</LinkButton>
+						</span>
+						<fieldset
+							class="flex shrink-0 items-center gap-1"
+							aria-label="Merge view options"
+						>
+							<Button
+								icon
+								size="sm"
+								variant="ghost"
+								aria-label={contextToggleLabel}
+								title={contextToggleLabel}
+								onclick={() => (fullFile = !fullFile)}
+							>
+								{#if fullFile}
+									<FoldVertical size={14} />
+								{:else}
+									<UnfoldVertical size={14} />
+								{/if}
+							</Button>
+							<DiffTextControls
+								showInvisibles={diffPreferences.showInvisibles}
+								wordWrap={diffPreferences.wordWrap}
+								fixedPitch={sideWrapAvailable}
+								onshowinvisibleschange={(show) =>
+									diffPreferences.changeShowInvisibles(show)}
+								onwordwrapchange={(wrap) =>
+									diffPreferences.changeWordWrap(wrap)}
+							/>
+						</fieldset>
 					</div>
 					<div class="output-progress flex items-center gap-1">
 						{#if needsReview}
@@ -928,6 +1040,8 @@ registerUpdateBlocker(
 								onclick={handlePrevConflict}
 								disabled={!hasPrev}
 								aria-label="Previous conflict"
+								aria-keyshortcuts="["
+								tooltip="Previous conflict ([)"
 								><ChevronUp size={16} /></Button
 							>
 							<span class="text-small text-text-muted whitespace-nowrap"
@@ -940,6 +1054,8 @@ registerUpdateBlocker(
 								onclick={handleNextConflict}
 								disabled={!hasNext}
 								aria-label="Next conflict"
+								aria-keyshortcuts="]"
+								tooltip="Next conflict (])"
 								><ChevronDown size={16} /></Button
 							>
 						{/if}
@@ -973,7 +1089,10 @@ registerUpdateBlocker(
 				text={outputText}
 				readonly={saving}
 				lineHeight={LINE_HEIGHT}
+				wordWrap={sideWrap}
+				showInvisibles={diffPreferences.showInvisibles}
 				bind:element={panelRefs[OUTPUT_PANEL]}
+				bind:wrapColumns={outputColumns}
 				oninput={handleOutputEdit}
 				onscroll={() => handleScroll(OUTPUT_PANEL)}
 			/>
@@ -1001,7 +1120,7 @@ registerUpdateBlocker(
 				{#if baseView.content.text}
 					<textarea
 						readonly
-						wrap="off"
+						wrap={diffPreferences.wordWrap ? "soft" : "off"}
 						class="merge-base-code w-full resize-none bg-bg p-2 text-callout leading-code font-mono text-text"
 						rows={Math.min(
 							24,
@@ -1121,6 +1240,9 @@ registerUpdateBlocker(
 }
 
 .merge-word {
+	--color-invisible: var(--color-diff-text);
+	--color-trailing-ws-fg: var(--color-diff-text);
+	--color-trailing-ws-bg: transparent;
 	color: var(--color-diff-text);
 	background: var(--merge-word-bg);
 }

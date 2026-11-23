@@ -41,10 +41,13 @@ vi.mock("@tauri-apps/api/menu", () => ({
 	Menu: {
 		new: vi.fn().mockResolvedValue({
 			popup: vi.fn().mockResolvedValue(undefined),
+			close: vi.fn().mockResolvedValue(undefined),
 		}),
 	},
 	MenuItem: {
-		new: vi.fn().mockResolvedValue({}),
+		new: vi
+			.fn()
+			.mockResolvedValue({ close: vi.fn().mockResolvedValue(undefined) }),
 	},
 	CheckMenuItem: {
 		new: vi.fn().mockResolvedValue({}),

@@ -18,19 +18,32 @@ const ONE_REWRITTEN_FILE: RepoSpec = {
 	],
 };
 
+async function openConflict() {
+	const app = await setup({ repo: ONE_REWRITTEN_FILE });
+	await app.repo.open();
+	await app.repo.contextMenu("G-two");
+	app.contextMenu.choose("Interactive Rebase...");
+	await app.rebaseEditor.setAction(1, "drop");
+	await app.rebaseEditor.start();
+	await waitFor("the rebase banner", () => app.staging.banner());
+	await app.staging.openConflictedFile("g.txt");
+	return app;
+}
+
 describe("the merge editor", () => {
 	afterEach(teardown);
 
-	it("saves the taken side into the file and marks it resolved", async () => {
-		const app = await setup({ repo: ONE_REWRITTEN_FILE });
-		await app.repo.open();
-		await app.repo.contextMenu("G-two");
-		app.contextMenu.choose("Interactive Rebase...");
-		await app.rebaseEditor.setAction(1, "drop");
-		await app.rebaseEditor.start();
-		await waitFor("the rebase banner", () => app.staging.banner());
+	it("copies the open conflict's path and shares the regular diff's wrap preference", async () => {
+		const app = await openConflict();
+		await app.mergeEditor.fileContextMenu("g.txt");
+		app.contextMenu.choose("Copy Absolute Path");
+		expect(app.clipboard.text).toBe(`${app.repo.path}/g.txt`);
+		await app.mergeEditor.toggleWordWrap();
+		await expect.poll(() => app.readPref("diff_word_wrap")).toBe(true);
+	});
 
-		await app.staging.openConflictedFile("g.txt");
+	it("saves the taken side into the file and marks it resolved", async () => {
+		const app = await openConflict();
 		await app.mergeEditor.takeAllIncoming();
 		await app.mergeEditor.saveAndResolve();
 

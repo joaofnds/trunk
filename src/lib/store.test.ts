@@ -249,6 +249,14 @@ describe("store", () => {
 			expect(lines).toBe(3);
 		});
 
+		it.each([0.5, -1, "5", 2 ** 32])(
+			"falls back to three lines for invalid saved context %s",
+			async (value) => {
+				backingStore.set("diff_context_lines", value);
+				expect(await getDiffContextLines()).toBe(3);
+			},
+		);
+
 		it("setDiffContextLines persists and getDiffContextLines retrieves it", async () => {
 			await setDiffContextLines(5);
 			const lines = await getDiffContextLines();

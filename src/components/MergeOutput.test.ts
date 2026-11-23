@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { expect, it, vi } from "vitest";
+import { assert, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { FakeIntersectionObserver } from "../__tests__/helpers/fake-intersection-observer.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import MergeOutput from "./MergeOutput.svelte";
+import MergeText from "./MergeText.svelte";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
@@ -132,4 +134,160 @@ it("learns that the output grammar is unavailable once for the file", async () =
 	await tick();
 	expect(invoke).toHaveBeenCalledTimes(1);
 	expect(screen.getByRole("textbox")).toHaveValue("first edit");
+});
+
+it("preserves the selected text when toggling soft wrap", async () => {
+	const text = "first line\nsecond line";
+	const view = render(MergeOutput, {
+		filePath: "notes.txt",
+		text,
+		readonly: false,
+		lineHeight: 18,
+		oninput: vi.fn(),
+		onscroll: vi.fn(),
+	});
+	const editor = screen.getByRole<HTMLTextAreaElement>("textbox");
+	editor.setSelectionRange(2, 7, "backward");
+
+	await view.rerender({ wordWrap: true });
+
+	expect(editor.wrap).toBe("soft");
+	expect(editor.value).toBe(text);
+	expect([
+		editor.selectionStart,
+		editor.selectionEnd,
+		editor.selectionDirection,
+	]).toEqual([2, 7, "backward"]);
+});
+
+it("marks whitespace in plain text while retaining its tabs and trailing spaces", async () => {
+	vi.mocked(invoke).mockResolvedValue(null);
+	const text = "a \tb \t\r\n";
+	const view = render(MergeOutput, {
+		filePath: "notes.txt",
+		text,
+		readonly: false,
+		lineHeight: 18,
+		oninput: vi.fn(),
+		onscroll: vi.fn(),
+	});
+
+	await view.rerender({ showInvisibles: true });
+
+	const mirror = view.container.querySelector("pre");
+	expect(mirror?.getAttribute("aria-hidden")).toBe("true");
+	expect(mirror?.textContent).toBe("a \tb \t\n\u200b");
+	expect(
+		Array.from(view.container.querySelectorAll("[data-glyph]"), (el) =>
+			el.getAttribute("data-glyph"),
+		),
+	).toEqual(["·", "→", "·", "→"]);
+	expect(mirror?.querySelectorAll(".trailing-ws")).toHaveLength(2);
+	expect(screen.getByRole("textbox")).toHaveValue("a \tb \t\n");
+});
+
+function firstObserved(parent: Element): Element | undefined {
+	return Array.from(parent.querySelectorAll("span")).find((el) =>
+		FakeIntersectionObserver.observes(el),
+	);
+}
+
+async function revealFirstChunk(parent: Element): Promise<Element> {
+	await tick();
+	const first = firstObserved(parent);
+	assert.isDefined(first);
+
+	let visible: Element | undefined = first;
+	while (visible) {
+		FakeIntersectionObserver.enter(visible);
+		await tick();
+		visible = firstObserved(visible);
+	}
+	return first;
+}
+
+it("decorates the visible part of an oversized line and releases marks that scroll away", async () => {
+	const text = "a ".repeat(66_000);
+	vi.mocked(invoke).mockClear();
+	const view = render(MergeOutput, {
+		filePath: "notes.txt",
+		text,
+		readonly: false,
+		lineHeight: 18,
+		wordWrap: true,
+		showInvisibles: true,
+		oninput: vi.fn(),
+		onscroll: vi.fn(),
+	});
+	const mirror = view.container.querySelector("pre");
+	assert.isNotNull(mirror);
+	const first = await revealFirstChunk(mirror);
+
+	const painted = mirror?.querySelectorAll("[data-glyph]").length ?? 0;
+	expect(painted).toBeGreaterThan(0);
+	expect(painted).toBeLessThan(text.length / 2);
+	expect(mirror?.querySelector(".trailing-ws")).toBeNull();
+	expect(mirror?.textContent).toBe(`${text}\u200b`);
+
+	FakeIntersectionObserver.leave(first);
+	await tick();
+
+	expect(mirror?.querySelector("[data-glyph]")).toBeNull();
+	expect(screen.getByRole("textbox")).toHaveValue(text);
+	expect(invoke).not.toHaveBeenCalled();
+});
+
+it("bounds marker nodes for a long source token with whitespace before more source code", async () => {
+	const text = " \t".repeat(10_000);
+	const view = render(MergeText, {
+		text,
+		showInvisibles: true,
+		trailingStart: text.length,
+	});
+	const markers = () => view.container.querySelectorAll("[data-glyph]");
+
+	expect(markers().length).toBeLessThan(1024);
+	await revealFirstChunk(view.container);
+
+	expect(markers().length).toBeGreaterThan(0);
+	expect(markers().length).toBeLessThan(1024);
+	expect(view.container.querySelector(".trailing-ws")).toBeNull();
+	expect(view.container.textContent).toBe(text);
+});
+
+it("keeps the visible syntax and whitespace in an ordinary multiline output", async () => {
+	const line = "a \t".repeat(50);
+	const text = Array<string>(600).fill(line).join("\n");
+	vi.mocked(invoke).mockResolvedValue({
+		1: [
+			{ start: 0, end: 3, syntax_class: "syn-comment", emphasized: false },
+			{
+				start: 3,
+				end: line.length,
+				syntax_class: "syn-string",
+				emphasized: false,
+			},
+		],
+	});
+	const view = render(MergeOutput, {
+		filePath: "theme.ts",
+		text,
+		readonly: false,
+		lineHeight: 18,
+		showInvisibles: true,
+		oninput: vi.fn(),
+		onscroll: vi.fn(),
+	});
+	const mirror = view.container.querySelector("pre");
+	assert.isNotNull(mirror);
+
+	await revealFirstChunk(mirror);
+	await waitFor(() =>
+		expect(mirror.querySelector(".syn-comment")?.textContent).toBe("a \t"),
+	);
+
+	expect(mirror.querySelectorAll("[data-glyph]")).toHaveLength(100);
+	expect(mirror.querySelectorAll(".trailing-ws")).toHaveLength(2);
+	expect(mirror.querySelector(".syn-string")?.textContent).toBe(line.slice(3));
+	expect(mirror.textContent).toBe(`${text}\u200b`);
 });

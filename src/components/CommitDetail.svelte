@@ -4,13 +4,12 @@ import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import X from "@lucide/svelte/icons/x";
-import { copySha, copyText } from "../lib/clipboard.js";
+import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
 import type { Draft } from "../lib/draft.svelte.js";
-import { pathMenuEntriesOf } from "../lib/file-menu.js";
+import { showFilePathMenu } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
-import { nativeMenu } from "../lib/native-menu.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type {
@@ -99,21 +98,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 
 async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 	e.preventDefault();
-	const { Menu, MenuItem } = await nativeMenu();
-	const menu = await Menu.new({
-		items: await Promise.all(
-			pathMenuEntriesOf(repoPath, file.path, file.old_path ?? null).map(
-				(entry) =>
-					MenuItem.new({
-						text: entry.text,
-						action: () => {
-							copyText(entry.value);
-						},
-					}),
-			),
-		),
-	});
-	await menu.popup();
+	await showFilePathMenu({ repoPath, path: file.path, oldPath: file.old_path });
 }
 
 // j/k step older/newer through the same navigate path as the pager, so review

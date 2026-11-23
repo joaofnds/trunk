@@ -66,6 +66,8 @@ section("Merge comparison and editable Output");
 for (const hue of SYN) check(`context and Output syntax ${hue}`, `var(--color-syn-${hue})`, PAGE);
 check("plain context text", "var(--color-diff-text)", PAGE);
 check("context line number", "var(--color-text-muted)", PAGE);
+check("whitespace in context and Output", "var(--color-invisible)", PAGE);
+check("trailing whitespace in context and Output", "var(--color-trailing-ws-fg)", PAGE, { layers: ["var(--color-trailing-ws-bg)"] });
 check("plain Output text", "var(--color-text)", PAGE);
 // WebKit darkens opaque textarea selection fills. Read the authored pair so
 // an opaque replacement cannot pass solely on its nominal contrast.
@@ -90,6 +92,8 @@ for (const [side, accent] of [["current", "var(--color-accent)"], ["incoming", "
 	check(`${side} line number`, "var(--color-text-muted)", PAGE, { layers: [line] });
 	check(`${side} line rail`, accent, PAGE, { layers: [line], target: 3 });
 	check(`${side} text on word`, "var(--color-diff-text)", PAGE, { layers: [line, word] });
+	check(`${side} whitespace on line`, "var(--color-invisible)", PAGE, { layers: [line] });
+	check(`${side} trailing whitespace on line`, "var(--color-trailing-ws-fg)", PAGE, { layers: [line, "var(--color-trailing-ws-bg)"] });
 	checkSurfaces(`${side} word stands apart from its line`, PAGE, [line], [line, word], 2);
 }
 
