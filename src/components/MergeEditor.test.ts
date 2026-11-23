@@ -58,6 +58,75 @@ describe("MergeEditor", () => {
 		});
 	});
 
+	it("highlights each side at its own line number and takes the exact source text", async () => {
+		const prefix = '\tconst shortcut = "🧭 Ctrl+';
+		const ours = `${prefix}O";`;
+		const theirs = `${prefix}K";`;
+		const spans = [
+			{ start: 0, end: 1, syntax_class: "", emphasized: false },
+			{ start: 1, end: 6, syntax_class: "syn-keyword", emphasized: false },
+			{ start: 6, end: prefix.length, syntax_class: "", emphasized: false },
+			{
+				start: prefix.length,
+				end: prefix.length + 1,
+				syntax_class: "syn-string",
+				emphasized: true,
+			},
+			{
+				start: prefix.length + 1,
+				end: ours.length,
+				syntax_class: "",
+				emphasized: false,
+			},
+		];
+		const sides: MergeSides = {
+			...sidesOf(
+				gitMergedRegion({
+					ours: ["// current"],
+					theirs: [],
+					merged: ["// current"],
+				}),
+				conflict([ours], [theirs]),
+			),
+			ours_spans: {
+				1: [
+					{ start: 0, end: 10, syntax_class: "syn-comment", emphasized: false },
+				],
+				2: spans,
+			},
+			theirs_spans: { 1: spans },
+		};
+		mockInvoke.mockResolvedValue(sides);
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "shortcuts.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const current = await screen.findByRole("region", {
+			name: "Current (Ours)",
+		});
+		const incoming = screen.getByRole("region", { name: "Incoming (Theirs)" });
+		expect(within(current).getByText("// current")).toHaveClass("syn-comment");
+		for (const [pane, key, text] of [
+			[current, "O", ours],
+			[incoming, "K", theirs],
+		] as const) {
+			expect(within(pane).getByText("const")).toHaveClass("syn-keyword");
+			const mark = within(pane).getByRole("mark");
+			expect(mark.textContent).toBe(key);
+			expect(mark.parentElement?.textContent).toBe(text);
+		}
+		const row = within(incoming).getByRole("button", { name: /Ctrl\+K/ });
+		await fireEvent.click(row);
+		expect(row).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("textbox", { name: "Merge output" })).toHaveValue(
+			`// current\n${theirs}`,
+		);
+	});
+
 	it("reads the selected base on request and keeps the draft when the reader closes", async () => {
 		const sides = { ...MERGE_SIDES, base_oid: "base-blob" };
 		mockInvoke.mockImplementation(async (cmd) =>

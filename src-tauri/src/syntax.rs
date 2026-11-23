@@ -1,13 +1,39 @@
 use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Color, ThemeSet};
+use syntect::highlighting::{Color, StyleModifier, Theme, ThemeItem, ThemeSet};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
 use crate::types::{MergedSpan, SyntaxToken, WordSpan};
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
 
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+// The frontend chooses the actual property color. This distinct foreground
+// carries the grammar's property classification through syntect's Style API.
+const PROPERTY_RGB: (u8, u8, u8) = (156, 220, 254);
+
+static THEME: LazyLock<Theme> = LazyLock::new(|| {
+    let mut theme = ThemeSet::load_defaults()
+        .themes
+        .remove("base16-ocean.dark")
+        .expect("bundled base16-ocean.dark theme");
+    // TypeScript also scopes the colon and computed key expressions inside
+    // the object key. Keep their punctuation and expression styling.
+    let selectors = "meta.object-literal.key - punctuation - meta.object-literal.key meta.array.literal,
+        meta.object-literal.key string.quoted - punctuation - meta.object-literal.key meta.array.literal,
+        constant.other.object.key.js string.unquoted.label.js,
+        meta.mapping.key.json string.quoted - punctuation,
+        variable.other.property, variable.other.object.property, variable.object.property,
+        support.variable.property";
+    let (r, g, b) = PROPERTY_RGB;
+    theme.scopes.push(ThemeItem {
+        scope: selectors.parse().expect("valid property scope selectors"),
+        style: StyleModifier {
+            foreground: Some(Color { r, g, b, a: 255 }),
+            ..StyleModifier::default()
+        },
+    });
+    theme
+});
 
 /// Map a syntect foreground Color (from base16-ocean.dark theme) to a CSS class name.
 /// Colors discovered by running `highlight_line()` on sample code and observing
@@ -15,6 +41,7 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 /// Returns empty string for default/plain text colors (no syntax class needed).
 const fn color_to_css_class(color: Color) -> &'static str {
     match (color.r, color.g, color.b) {
+        PROPERTY_RGB => "syn-property",
         // Keywords: fn, let, if, return, class, def, pub, use, mod, etc.
         (180, 142, 173) => "syn-keyword",
         // Strings: "hello", 'world'
@@ -87,8 +114,7 @@ fn is_markdown_grammar(name: &str) -> bool {
 #[must_use]
 pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
     let syntax = syntax_for_extension(extension)?;
-    let theme = &THEME_SET.themes["base16-ocean.dark"];
-    Some(HighlightLines::new(syntax, theme))
+    Some(HighlightLines::new(syntax, &THEME))
 }
 
 /// Create a reusable highlighter for a language *token*.
@@ -109,8 +135,7 @@ pub fn create_highlighter_by_token(token: &str) -> Option<HighlightLines<'static
     if syntax.name == "Plain Text" {
         return None;
     }
-    let theme = &THEME_SET.themes["base16-ocean.dark"];
-    Some(HighlightLines::new(syntax, theme))
+    Some(HighlightLines::new(syntax, &THEME))
 }
 
 /// Highlight a single line using a reusable highlighter instance.
@@ -472,6 +497,47 @@ mod tests {
                 a: 255
             }),
             ""
+        );
+    }
+
+    fn property_names(line: &str, ext: &str) -> Vec<String> {
+        highlight_line_tokens(line, ext)
+            .iter()
+            .filter(|token| token.scope == "syn-property")
+            .map(|token| line[token.start as usize..token.end as usize].to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn javascript_and_typescript_color_object_keys_and_member_names() {
+        let line = r#"const style = { colors: { accent: "accent", fontSize: 15 }, [field]: source.value }; // accent"#;
+        for ext in ["js", "jsx", "ts", "tsx"] {
+            assert_eq!(
+                property_names(line, ext),
+                ["colors", "accent", "fontSize", "value"],
+                "{ext} property names"
+            );
+            let tokens = highlight_line_tokens(line, ext);
+            assert!(
+                tokens.iter().any(|t| t.scope == "syn-string"
+                    && &line[t.start as usize..t.end as usize] == "accent")
+            );
+            assert!(tokens.iter().any(|t| t.scope == "syn-comment"));
+        }
+    }
+
+    #[test]
+    fn json_and_typescript_distinguish_quoted_keys_from_string_values() {
+        assert_eq!(
+            property_names(r#"{"colors": {"accent": "accent"}}"#, "json"),
+            ["colors", "accent"]
+        );
+        assert_eq!(
+            property_names(
+                r#"const obj = { "accent": "accent", ["dynamic"]: value };"#,
+                "ts"
+            ),
+            ["accent"]
         );
     }
 

@@ -393,3 +393,11 @@ The approved amber Unstage action adds a warning-tone row to the component catal
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-11-23
+
+Show the four merge conflict line and word highlight swatches in the design catalog
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

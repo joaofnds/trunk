@@ -54,6 +54,7 @@ const SYN_CLASSES: &[&str] = &[
     "syn-variable",
     "syn-punctuation",
     "syn-attribute",
+    "syn-property",
 ];
 
 /// The tint classes the table/list post-pass injects onto `<tr>`/`<li>` inside a
@@ -7011,6 +7012,18 @@ mod tests {
         assert!(
             html.contains("class=\"syn-keyword\""),
             "fence must emit syn-keyword like the diff path: {html}"
+        );
+    }
+
+    #[test]
+    fn fenced_object_keys_keep_their_class_after_sanitizing() {
+        let html = render_markdown_html(
+            "```typescript\nconst x = { fontSize: 15 };\n```",
+            &no_rewrite,
+        );
+        assert!(
+            html.contains(r#"<span class="syn-property">fontSize</span>"#),
+            "{html}"
         );
     }
 

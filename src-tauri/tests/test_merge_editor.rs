@@ -24,6 +24,60 @@ fn conflicted_file_txt() -> TestContext {
 }
 
 #[test]
+fn merge_sides_highlight_the_displayed_code_and_the_changed_shortcut() {
+    let path = "shortcuts.ts";
+    let ctx = TestContext::builder()
+        .with_file(path, "const shortcut = 'Ctrl+A';")
+        .with_commit("base")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file(path, "const shortcut = 'Ctrl+K';")
+        .with_commit("feature")
+        .checkout("main")
+        .with_file(path, "const shortcut = 'Ctrl+F';")
+        .with_commit("main")
+        .with_conflict("feature")
+        .build();
+    // A user edited both marker sections, including an extra line only on
+    // Current. Span positions must follow that working text.
+    let current = "const shortcut = '🌍 Ctrl+O';";
+    let incoming = "const shortcut = '🌍 Ctrl+K';";
+    let working =
+        format!("<<<<<<< HEAD\n// local edit\n{current}\n=======\n{incoming}\n>>>>>>> feature\n");
+    std::fs::write(ctx.repo_path().join(path), &working).unwrap();
+
+    let sides = ctx.get_merge_sides(path).unwrap();
+    for (line, spans, changed) in [
+        (current, &sides.ours_spans[&2], "O"),
+        (incoming, &sides.theirs_spans[&1], "K"),
+    ] {
+        let units: Vec<_> = line.encode_utf16().collect();
+        let text = |span: &trunk_lib::types::MergedSpan| {
+            String::from_utf16(&units[span.start as usize..span.end as usize]).unwrap()
+        };
+        let emphasis: String = spans.iter().filter(|s| s.emphasized).map(text).collect();
+        assert_eq!(emphasis, changed);
+        assert!(
+            spans
+                .iter()
+                .any(|s| s.emphasized && s.syntax_class == "syn-string")
+        );
+        assert!(spans.iter().any(|s| s.syntax_class == "syn-keyword"));
+        assert_eq!(spans.iter().map(text).collect::<String>(), line);
+    }
+    assert!(
+        sides.ours_spans[&1]
+            .iter()
+            .any(|s| s.syntax_class == "syn-comment")
+    );
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join(path)).unwrap(),
+        working
+    );
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
 fn indexed_ancestor_shows_only_a_verified_diff3_block() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "start\nancestor\nelsewhere\n")

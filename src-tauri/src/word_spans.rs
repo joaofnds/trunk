@@ -30,9 +30,11 @@ const WORD_DIFF_GAP_BRIDGE_MAX: u32 = 2;
 /// A file whose budget runs out finishes with plain coloring on the remaining runs
 /// rather than arriving seconds late: runs bound their own cost per run, so without a
 /// shared budget a many-run file stacks them into seconds.
+pub(crate) const WORD_DIFF_BUDGET: Duration = Duration::from_millis(500);
+
 #[must_use]
 pub fn word_diff_budget() -> Instant {
-    Instant::now() + Duration::from_millis(500)
+    Instant::now() + WORD_DIFF_BUDGET
 }
 
 /// What the run-level word diff learned about a hunk: the emphasized spans
@@ -100,6 +102,42 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Hun
     result
 }
 
+fn run_fits(lengths: impl Iterator<Item = usize>) -> bool {
+    let mut bytes = 0;
+    for len in lengths {
+        if len > WORD_DIFF_LINE_BYTES_MAX || len > WORD_DIFF_RUN_BYTES_MAX - bytes {
+            return false;
+        }
+        bytes += len;
+    }
+    true
+}
+
+/// Refine the two line sequences the merge editor actually displays. No diff
+/// hunk or line-pairing decision is needed for a conflict.
+pub(crate) fn for_conflict(
+    ours: &[String],
+    theirs: &[String],
+    deadline: Instant,
+) -> Vec<Vec<WordSpan>> {
+    if ours.is_empty()
+        || theirs.is_empty()
+        || deadline <= Instant::now()
+        || !run_fits(ours.iter().chain(theirs).map(|line| line.len() + 1))
+    {
+        return Vec::new();
+    }
+    let old: Vec<_> = ours.iter().map(String::as_str).collect();
+    let new: Vec<_> = theirs.iter().map(String::as_str).collect();
+    let mut result = vec![Vec::new(); old.len() + new.len()];
+    refine_words(&old, &new, (0, old.len()), deadline, |_, _, spans| {
+        for (index, words) in spans {
+            result[index] = words;
+        }
+    });
+    result
+}
+
 /// Word-diff one delete run against the add run that follows it and write the
 /// emphasized spans for each line the refinement touched.
 fn emphasize_run(
@@ -109,40 +147,85 @@ fn emphasize_run(
     deadline: Instant,
     result: &mut HunkWordDiff,
 ) {
-    let run_lines = || lines[del.clone()].iter().chain(lines[add.clone()].iter());
-    let run_bytes: usize = run_lines().map(|l| l.content.len()).sum();
-    if deadline <= Instant::now()
-        || run_bytes > WORD_DIFF_RUN_BYTES_MAX
-        || run_lines().any(|l| l.content.len() > WORD_DIFF_LINE_BYTES_MAX)
-    {
+    let lengths = lines[del.clone()]
+        .iter()
+        .chain(&lines[add.clone()])
+        .map(|line| line.content.len());
+    if deadline <= Instant::now() || !run_fits(lengths) {
         return;
     }
 
-    let old_text: String = lines[del.clone()]
+    let old: Vec<_> = lines[del.clone()]
         .iter()
-        .map(|l| l.content.as_str())
+        .map(|line| line.content.as_str())
         .collect();
-    let new_text: String = lines[add.clone()]
+    let new: Vec<_> = lines[add.clone()]
         .iter()
-        .map(|l| l.content.as_str())
+        .map(|line| line.content.as_str())
         .collect();
+    refine_words(
+        &old,
+        &new,
+        (del.start, add.start),
+        deadline,
+        |op, accepted, spans| {
+            for (index, words) in spans {
+                result.spans[index] = words;
+            }
+            pair_op_lines(op, accepted, lines, &del, &add, &mut result.pairing);
+        },
+    );
+
+    // The budget ran out inside this run: whatever verdicts the coarse,
+    // deadline-cut refinement produced depend on machine timing, so the run
+    // falls back to positional pairing rather than seating lines by them.
+    if deadline <= Instant::now() {
+        for pairing in &mut result.pairing[del] {
+            *pairing = LinePairing::Unknown;
+        }
+        for pairing in &mut result.pairing[add] {
+            *pairing = LinePairing::Unknown;
+        }
+    }
+}
+
+/// Diff the actual line boundaries supplied by Git or the merge editor. In
+/// particular a bare carriage return inside a displayed line stays on that
+/// line. Accepted emphasis and pairing share the same refinement verdict.
+fn refine_words(
+    old: &[&str],
+    new: &[&str],
+    starts: (usize, usize),
+    deadline: Instant,
+    mut emit: impl FnMut(&similar::DiffOp, bool, Vec<(usize, Vec<WordSpan>)>),
+) {
     let diff = similar::TextDiffConfig::default()
         .deadline(deadline)
-        .diff_lines(old_text.as_str(), new_text.as_str());
+        .diff_slices(old, new);
     let mut options = similar::InlineChangeOptions::new();
     options.semantic_cleanup(true);
 
     for op in diff.ops() {
         let mut refined = false;
         let mut op_spans: Vec<(usize, Vec<WordSpan>)> = Vec::new();
+        let mut changed_bytes = 0;
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
-            let line_idx = match change.tag() {
-                ChangeTag::Delete => change.old_index().map(|k| del.start + k),
-                ChangeTag::Insert => change.new_index().map(|k| add.start + k),
-                ChangeTag::Equal => None,
+            let (line_idx, line) = match change.tag() {
+                ChangeTag::Delete => {
+                    let Some(index) = change.old_index() else {
+                        continue;
+                    };
+                    (starts.0 + index, old[index])
+                }
+                ChangeTag::Insert => {
+                    let Some(index) = change.new_index() else {
+                        continue;
+                    };
+                    (starts.1 + index, new[index])
+                }
+                ChangeTag::Equal => continue,
             };
-            let Some(line_idx) = line_idx else { continue };
-
+            changed_bytes += line.trim_end_matches(['\n', '\r']).len();
             let mut spans = Vec::new();
             let mut offset: u32 = 0;
             for (emphasized, segment) in change.values() {
@@ -158,36 +241,14 @@ fn emphasize_run(
                 offset += len;
             }
 
-            op_spans.push((line_idx, polish_spans(spans, &lines[line_idx].content)));
+            op_spans.push((line_idx, polish_spans(spans, line)));
         }
 
-        let reads_as_edit = emphasis_within(&op_spans, lines);
-        if reads_as_edit {
-            for (line_idx, spans) in op_spans {
-                result.spans[line_idx] = spans;
-            }
+        let accepted = refined && emphasis_within(&op_spans, changed_bytes);
+        if !accepted {
+            op_spans.clear();
         }
-
-        pair_op_lines(
-            op,
-            refined && reads_as_edit,
-            lines,
-            &del,
-            &add,
-            &mut result.pairing,
-        );
-    }
-
-    // The budget ran out inside this run: whatever verdicts the coarse,
-    // deadline-cut refinement produced depend on machine timing, so the run
-    // falls back to positional pairing rather than seating lines by them.
-    if deadline <= Instant::now() {
-        for pairing in &mut result.pairing[del] {
-            *pairing = LinePairing::Unknown;
-        }
-        for pairing in &mut result.pairing[add] {
-            *pairing = LinePairing::Unknown;
-        }
+        emit(op, accepted, op_spans);
     }
 }
 
@@ -297,11 +358,7 @@ fn word_bytes(words: &std::collections::HashMap<&str, u32>) -> usize {
 /// The edit-vs-rewrite verdict asks this once per op, so a run keeps either
 /// coherent emphasis on every changed region or plain coloring throughout,
 /// never marked lines beside unmarked more-changed ones.
-fn emphasis_within(op_spans: &[(usize, Vec<WordSpan>)], lines: &[DiffLine]) -> bool {
-    let changed: usize = op_spans
-        .iter()
-        .map(|(i, _)| lines[*i].content.trim_end_matches(['\n', '\r']).len())
-        .sum();
+fn emphasis_within(op_spans: &[(usize, Vec<WordSpan>)], changed: usize) -> bool {
     let emphasized: u32 = op_spans
         .iter()
         .flat_map(|(_, spans)| spans)
@@ -407,6 +464,17 @@ mod word_span_tests {
 
         assert_eq!(emphasized(&lines[0], &spans[0]), vec!["64"]);
         assert_eq!(emphasized(&lines[1], &spans[1]), vec!["63"]);
+    }
+
+    #[test]
+    fn a_carriage_return_inside_a_line_keeps_the_visible_word_offsets() {
+        let lines = [
+            del("first\rchange old value\n"),
+            add("first\rchange new value\n"),
+        ];
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
+        assert_eq!(emphasized(&lines[0], &spans[0]), ["old"]);
+        assert_eq!(emphasized(&lines[1], &spans[1]), ["new"]);
     }
 
     #[test]

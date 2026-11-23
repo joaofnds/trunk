@@ -386,7 +386,7 @@ describe("rendered markdown word marks", () => {
 		const markRule = ruleIndex(".markdown-body .md-word-delete,");
 		const synRules = [
 			...css.matchAll(
-				/:is\(\.markdown-body, \.comment-card-diff\) \.syn-[a-z]+ \{/g,
+				/:is\(\.markdown-body, \.comment-card-diff, \.syntax-highlight\) \.syn-[a-z]+ \{/g,
 			),
 		].map((m) => m.index);
 		expect(synRules.length).toBeGreaterThan(0);

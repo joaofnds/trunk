@@ -249,6 +249,9 @@ export interface MergeSides {
 	readonly current_label: string | null;
 	readonly incoming_label: string | null;
 	readonly regions: readonly MergeRegion[];
+	/** Each side numbers its source lines from one. Undecorated lines are absent. */
+	readonly ours_spans?: Readonly<Record<number, readonly MergedSpan[]>>;
+	readonly theirs_spans?: Readonly<Record<number, readonly MergedSpan[]>>;
 }
 
 /**

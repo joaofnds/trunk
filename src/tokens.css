@@ -255,6 +255,26 @@
 	   to --color-diff-text like the source view. Same gate, same record. */
 	--color-md-word-add-bg: color-mix(in oklch, var(--ok) 38%, transparent);
 	--color-md-word-delete-bg: color-mix(in oklch, var(--err) 38%, transparent);
+	--color-merge-current-line: color-mix(
+		in oklch,
+		var(--color-accent) 15%,
+		transparent
+	);
+	--color-merge-current-word: color-mix(
+		in oklch,
+		var(--color-accent) 35%,
+		transparent
+	);
+	--color-merge-incoming-line: color-mix(
+		in oklch,
+		var(--color-accent-alt) 15%,
+		transparent
+	);
+	--color-merge-incoming-word: color-mix(
+		in oklch,
+		var(--color-accent-alt) 35%,
+		transparent
+	);
 	--color-diff-phantom-bg: color-mix(in oklch, var(--fg-3) 5%, transparent);
 
 	/* Syntax highlighting (Phase 61) — VSCode-dark base, lifted for contrast.

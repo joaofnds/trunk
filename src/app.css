@@ -256,49 +256,49 @@ textarea::placeholder {
 .markdown-body del {
 	color: var(--color-text-muted);
 }
-:is(.markdown-body, .comment-card-diff) .syn-keyword {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-keyword {
 	color: var(--color-syn-keyword);
 }
-:is(.markdown-body, .comment-card-diff) .syn-string {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-string {
 	color: var(--color-syn-string);
 }
-:is(.markdown-body, .comment-card-diff) .syn-comment {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-comment {
 	color: var(--color-syn-comment);
 }
-:is(.markdown-body, .comment-card-diff) .syn-number {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-number {
 	color: var(--color-syn-number);
 }
-:is(.markdown-body, .comment-card-diff) .syn-type {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-type {
 	color: var(--color-syn-type);
 }
-:is(.markdown-body, .comment-card-diff) .syn-function {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-function {
 	color: var(--color-syn-function);
 }
-:is(.markdown-body, .comment-card-diff) .syn-variable {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-variable {
 	color: var(--color-syn-variable);
 }
-:is(.markdown-body, .comment-card-diff) .syn-constant {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-constant {
 	color: var(--color-syn-constant);
 }
-:is(.markdown-body, .comment-card-diff) .syn-operator {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-operator {
 	color: var(--color-syn-operator);
 }
-:is(.markdown-body, .comment-card-diff) .syn-punctuation {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-punctuation {
 	color: var(--color-syn-punctuation);
 }
-:is(.markdown-body, .comment-card-diff) .syn-attribute {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-attribute {
 	color: var(--color-syn-attribute);
 }
-:is(.markdown-body, .comment-card-diff) .syn-tag {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-tag {
 	color: var(--color-syn-tag);
 }
-:is(.markdown-body, .comment-card-diff) .syn-property {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-property {
 	color: var(--color-syn-property);
 }
-:is(.markdown-body, .comment-card-diff) .syn-regex {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-regex {
 	color: var(--color-syn-regex);
 }
-:is(.markdown-body, .comment-card-diff) .syn-escape {
+:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-escape {
 	color: var(--color-syn-escape);
 }
 

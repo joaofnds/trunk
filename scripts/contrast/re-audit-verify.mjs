@@ -4,7 +4,8 @@
 // Parses tokens LIVE from src/tokens.css via contrast.mjs, so it tracks the theme.
 // Run: bun scripts/contrast/re-audit-verify.mjs   (exit 1 if any target missed)
 
-import { compose, contrast, ratio, verdict } from "./contrast.mjs";
+import { readFileSync } from "node:fs";
+import { compose, contrast, ratio, resolve, verdict } from "./contrast.mjs";
 
 let fails = 0;
 const rows = [];
@@ -60,6 +61,37 @@ for (const hue of SYN) {
 	}
 }
 record(`worst of ${SYN.length} hues x ${Object.keys(LINE_TINTS).length} tints: ${worstSyn.label}`, worstSyn.r, 7, verdict(worstSyn.r).padEnd(4));
+
+section("Merge comparison and editable Output");
+for (const hue of SYN) check(`context and Output syntax ${hue}`, `var(--color-syn-${hue})`, PAGE);
+check("plain context text", "var(--color-diff-text)", PAGE);
+check("context line number", "var(--color-text-muted)", PAGE);
+check("plain Output text", "var(--color-text)", PAGE);
+// WebKit darkens opaque textarea selection fills. Read the authored pair so
+// an opaque replacement cannot pass solely on its nominal contrast.
+const outputCss = readFileSync(new URL("../../src/components/MergeOutput.svelte", import.meta.url), "utf8");
+const selection = outputCss.match(/textarea::selection\s*\{([^}]+)\}/)?.[1] ?? "";
+const selectionInk = selection.match(/(?:^|;)\s*color:\s*([^;]+)/)?.[1];
+const selectionFill = selection.match(/background-color:\s*([^;]+)/)?.[1];
+if (!selectionInk || !selectionFill || resolve(selectionFill).a === 1) {
+	throw new Error("Merge Output needs explicit selection ink and a translucent fill for WebKit.");
+}
+check("selected Output text", selectionInk, PAGE, { layers: [selectionFill] });
+check("Output caret against the page", "var(--color-text)", PAGE, { target: 3 });
+checkSurfaces("Output selection against the page", PAGE, [], [selectionFill], 3);
+for (const [side, accent] of [["current", "var(--color-accent)"], ["incoming", "var(--color-accent-alt)"]]) {
+	const line = `var(--color-merge-${side}-line)`;
+	const word = `var(--color-merge-${side}-word)`;
+	for (const hue of SYN) check(`${side} syntax ${hue}`, `var(--color-syn-${hue})`, PAGE, { layers: [line] });
+	check(`${side} plain conflict text`, "var(--color-diff-text)", PAGE, { layers: [line] });
+	for (const [action, color] of [["take", "--color-text-muted"], ["taken", "--color-success"], ["remove", "--color-danger"]]) {
+		check(`${side} ${action} icon`, `var(${color})`, PAGE, { layers: [line], target: 3 });
+	}
+	check(`${side} line number`, "var(--color-text-muted)", PAGE, { layers: [line] });
+	check(`${side} line rail`, accent, PAGE, { layers: [line], target: 3 });
+	check(`${side} text on word`, "var(--color-diff-text)", PAGE, { layers: [line, word] });
+	checkSurfaces(`${side} word stands apart from its line`, PAGE, [line], [line, word], 2);
+}
 
 section("Rendered markdown marks (TRUNK-166): same rule, mark sits alone on the page");
 for (const [origin, word, rule] of [

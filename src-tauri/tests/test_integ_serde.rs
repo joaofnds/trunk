@@ -901,6 +901,8 @@ fn merge_regions_serialize_tagged_by_type_in_camel_case() {
     ];
 
     let json = serde_json::to_value(MergeSides {
+        ours_spans: trunk_lib::types::MergeLineSpans::new(),
+        theirs_spans: trunk_lib::types::MergeLineSpans::new(),
         regions,
         revision: "snapshot".to_owned(),
         base_oid: None,

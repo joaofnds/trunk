@@ -1,3 +1,5 @@
+mod highlighting;
+
 use std::path::Path;
 
 use crate::state::{CommitCache, OpenRepos, RepoState};
@@ -250,7 +252,10 @@ pub fn get_merge_sides_inner(
                 ReadError::Git(error) => error.into(),
             })?
     };
+    let (ours_spans, theirs_spans) = highlighting::sides(file_path, &regions);
     Ok(MergeSides {
+        ours_spans,
+        theirs_spans,
         revision: merge_revision(working.as_bytes(), &conflict)?,
         base_oid: conflict
             .ancestor
@@ -529,6 +534,24 @@ pub async fn get_merge_sides(
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
+}
+
+/// Color the current editable result using the same bounded parser as its sources.
+/// The supplied path selects a grammar. This command does not read the file.
+///
+/// # Errors
+///
+/// Returns a spawn error if the highlighting task cannot be joined.
+#[tauri::command]
+pub async fn highlight_merge_output(
+    activity: crate::activity::Activity,
+    file_path: String,
+    text: String,
+) -> Result<Option<crate::types::MergeLineSpans>, String> {
+    activity
+        .spawn_blocking(move || highlighting::syntax_for_text(&file_path, &text))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())
 }
 
 /// Read the selected conflict's merge base.

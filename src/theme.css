@@ -124,6 +124,10 @@
 	--color-diff-word-delete-bg: var(--color-diff-word-delete-bg);
 	--color-md-word-add-bg: var(--color-md-word-add-bg);
 	--color-md-word-delete-bg: var(--color-md-word-delete-bg);
+	--color-merge-current-line: var(--color-merge-current-line);
+	--color-merge-current-word: var(--color-merge-current-word);
+	--color-merge-incoming-line: var(--color-merge-incoming-line);
+	--color-merge-incoming-word: var(--color-merge-incoming-word);
 	--color-diff-phantom-bg: var(--color-diff-phantom-bg);
 	--color-syn-keyword: var(--color-syn-keyword);
 	--color-syn-string: var(--color-syn-string);

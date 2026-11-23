@@ -27,12 +27,13 @@ import {
 } from "../lib/merge-parser.js";
 import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
 import { conflictNearest, layoutFrom, mapOffset } from "../lib/merge-scroll.js";
-import type { MergeRegion, MergeSides } from "../lib/types.js";
+import type { MergedSpan, MergeRegion, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import Row from "../lib/ui/Row.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
 import FilePathLabel from "./FilePathLabel.svelte";
+import MergeOutput from "./MergeOutput.svelte";
 
 interface Props {
 	repoPath: string;
@@ -674,12 +675,31 @@ registerUpdateBlocker(
 	</div>
 {/snippet}
 
-{#snippet conflictLine(row: FlatRow)}
+{#snippet sourceText(text: string, spans: readonly MergedSpan[] | undefined)}
+	<span
+		class="syntax-highlight pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-diff-text"
+		>{#if spans?.length}
+			{#each spans as span}
+				{@const token = text.slice(span.start, span.end)}
+				{#if span.emphasized}
+					<mark class="merge-word">{token}</mark>
+				{:else}
+					<span class={span.syntax_class}>{token}</span>
+				{/if}
+			{/each}
+		{:else}
+			{text}
+		{/if}</span
+	>
+{/snippet}
+
+{#snippet conflictLine(row: FlatRow, spans: readonly MergedSpan[] | undefined)}
 	{@const taken = takenLines.has(row.key)}
 	<div class="merge-line shrink-0" style:height="{LINE_HEIGHT}px">
 		<Row
 			variant="fill"
 			aria-pressed={taken}
+			aria-label={`${row.lineNum} ${row.text}`}
 			disabled={saving}
 			onclick={(e: MouseEvent) => handleToggleLine(row.key, e)}
 		>
@@ -702,10 +722,7 @@ registerUpdateBlocker(
 						>
 					{/if}
 				</span>
-				<span
-					class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
-					>{row.text}</span
-				>
+				{@render sourceText(row.text, spans)}
 			</span>
 		</Row>
 	</div>
@@ -746,15 +763,13 @@ registerUpdateBlocker(
 	</div>
 {/snippet}
 
-{#snippet contextLine(row: FlatRow)}
+{#snippet contextLine(row: FlatRow, spans: readonly MergedSpan[] | undefined)}
 	<div class="flex shrink-0 bg-transparent" style:height="{LINE_HEIGHT}px">
 		<span class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 			>{row.lineNum}</span
 		>
 		<span class="w-5 shrink-0"></span>
-		<span class="pl-1 whitespace-pre overflow-x-auto flex-1 min-w-0 text-text"
-			>{row.text}</span
-		>
+		{@render sourceText(row.text, spans)}
 	</div>
 {/snippet}
 
@@ -811,9 +826,9 @@ registerUpdateBlocker(
 						{:else if row.type === "conflict-header"}
 							{@render conflictHeader("ours", row)}
 						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row)}
+							{@render conflictLine(row, sources?.ours_spans?.[row.lineNum])}
 						{:else}
-							{@render contextLine(row)}
+							{@render contextLine(row, sources?.ours_spans?.[row.lineNum])}
 						{/if}
 					{/each}
 					<div
@@ -855,9 +870,9 @@ registerUpdateBlocker(
 						{:else if row.type === "conflict-header"}
 							{@render conflictHeader("theirs", row)}
 						{:else if row.type === "conflict-line"}
-							{@render conflictLine(row)}
+							{@render conflictLine(row, sources?.theirs_spans?.[row.lineNum])}
 						{:else}
-							{@render contextLine(row)}
+							{@render contextLine(row, sources?.theirs_spans?.[row.lineNum])}
 						{/if}
 					{/each}
 					<div
@@ -953,18 +968,15 @@ registerUpdateBlocker(
 				</div>
 			</div>
 
-			<!-- Editable output textarea -->
-			<textarea
-				aria-label="Merge output"
+			<MergeOutput
+				{filePath}
+				text={outputText}
 				readonly={saving}
-				bind:this={panelRefs[OUTPUT_PANEL]}
-				value={outputText}
-				wrap="off"
+				lineHeight={LINE_HEIGHT}
+				bind:element={panelRefs[OUTPUT_PANEL]}
 				oninput={handleOutputEdit}
 				onscroll={() => handleScroll(OUTPUT_PANEL)}
-				class="flex-1 w-full resize-none border-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-accent bg-bg text-text font-mono text-callout py-1 px-2 box-border"
-				style:line-height="{LINE_HEIGHT}px"
-			></textarea>
+			/>
 		</div>
 	{/if}
 </div>
@@ -1088,10 +1100,14 @@ registerUpdateBlocker(
 
 .current-side {
 	--merge-source: var(--color-accent);
+	--merge-line-bg: var(--color-merge-current-line);
+	--merge-word-bg: var(--color-merge-current-word);
 }
 
 .incoming-side {
 	--merge-source: var(--color-accent-alt);
+	--merge-line-bg: var(--color-merge-incoming-line);
+	--merge-word-bg: var(--color-merge-incoming-word);
 }
 
 .source-label {
@@ -1100,8 +1116,13 @@ registerUpdateBlocker(
 }
 
 .merge-line {
-	background: var(--color-surface-raised);
-	box-shadow: inset 2px 0 var(--merge-source);
+	background: var(--merge-line-bg);
+	box-shadow: inset 4px 0 var(--merge-source);
+}
+
+.merge-word {
+	color: var(--color-diff-text);
+	background: var(--merge-word-bg);
 }
 
 .merge-toolbar {

@@ -350,8 +350,15 @@ pub struct OperationCommit {
     pub summary: String,
 }
 
+/// Decorated merge editor lines, keyed by their one-based number in a pane.
+pub type MergeLineSpans = std::collections::BTreeMap<usize, Vec<MergedSpan>>;
+
 #[derive(Debug, Serialize, Clone)]
 pub struct MergeSides {
+    #[serde(skip_serializing_if = "MergeLineSpans::is_empty")]
+    pub ours_spans: MergeLineSpans,
+    #[serde(skip_serializing_if = "MergeLineSpans::is_empty")]
+    pub theirs_spans: MergeLineSpans,
     pub revision: String,
     pub base_oid: Option<String>,
     pub current_label: Option<String>,
