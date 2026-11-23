@@ -43,6 +43,8 @@ it("keeps the typed result visible when an earlier syntax reply arrives", async 
 			text: "old",
 		}),
 	);
+	const mirror = view.container.querySelector("pre");
+	expect(mirror?.textContent).toBe("old\u200b");
 	await view.rerender({ text: currentText });
 	const output = screen.getByRole("textbox", { name: "Merge output" });
 	expect(output).toHaveValue(currentText);
@@ -50,7 +52,8 @@ it("keeps the typed result visible when an earlier syntax reply arrives", async 
 		1: [{ start: 0, end: 3, syntax_class: "syn-keyword", emphasized: false }],
 	});
 	await waitFor(() => expect(clock.pending).toBe(1));
-	expect(view.container.querySelector("pre")).toBeNull();
+	expect(mirror?.textContent).toBe(`${currentText}\u200b`);
+	expect(mirror?.querySelector(".syn-keyword")).toBeNull();
 	clock.flush();
 	await tick();
 	await waitFor(() =>
@@ -59,6 +62,7 @@ it("keeps the typed result visible when an earlier syntax reply arrives", async 
 		),
 	);
 	expect(view.container.querySelector("tag")).toBeNull();
+	expect(view.container.querySelector("pre")).toBe(mirror);
 	expect(output).toHaveValue(currentText);
 });
 

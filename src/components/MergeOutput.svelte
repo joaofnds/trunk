@@ -59,6 +59,9 @@ let large = $derived(
 	text.length > MAX_PAINT_LENGTH || lines.length > MAX_PAINT_LINES,
 );
 let markers = $derived(showInvisibles && !!text);
+// Use the same visible surface from the first plain frame through syntax delivery.
+// Oversized, unmarked buffers can be drawn directly by the native textarea.
+let useMirror = $derived(!large || markers);
 const refresh = createCoalescedTask(getScheduler(), async () => {
 	const path = filePath;
 	const value = displayText;
@@ -195,12 +198,12 @@ $effect(() => {
 	style:line-height="{lineHeight}px"
 	class:wrapped={wordWrap}
 >
-	{#if current || markers}
+	{#if useMirror}
 		<pre
 			bind:this={mirror}
 			aria-hidden="true"
 			class="syntax-highlight pointer-events-none select-none overflow-hidden py-1 px-2"
-		>{#if large}<MergeText text={text.replace(/\r\n?/g, "\n")} showInvisibles={true} />{:else}{@render paintedLines()}{/if}{"\u200b"}</pre>
+		>{#if large}<MergeText text={text.replace(/\r\n?/g, "\n")} showInvisibles={true} />{:else if current || markers}{@render paintedLines()}{:else}{displayText}{/if}{"\u200b"}</pre>
 	{/if}
 	<textarea
 		aria-label="Merge output"
@@ -215,7 +218,7 @@ $effect(() => {
 			onscroll();
 		}}
 		class="relative w-full h-full resize-none border-none focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-accent text-text bg-transparent py-1 px-2"
-		class:painted={!!current || markers}
+		class:painted={useMirror}
 	></textarea>
 </div>
 

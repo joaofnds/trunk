@@ -169,6 +169,7 @@ describe("DiffToolbar invisibles toggle", () => {
 		});
 		const btn = screen.getByTitle("Show invisible characters");
 		expect(btn).toBeEnabled();
+		expect(btn.textContent?.trim()).toBe("");
 	});
 });
 
@@ -433,6 +434,7 @@ describe("DiffToolbar word wrap toggle", () => {
 
 		const toggle = screen.getByTitle("Toggle word wrap") as HTMLButtonElement;
 		expect(toggle.disabled).toBe(false);
+		expect(toggle.textContent?.trim()).toBe("");
 	});
 
 	it("disables the toggle with an explanation when the font is not fixed-pitch", () => {

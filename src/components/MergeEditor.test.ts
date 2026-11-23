@@ -12,6 +12,7 @@ import {
 	expect,
 	it,
 	type MockedFunction,
+	onTestFinished,
 	vi,
 } from "vitest";
 import {
@@ -20,6 +21,7 @@ import {
 	makeMergeSides,
 	mergedRegion as merged,
 } from "../__tests__/helpers/factories.js";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createMergePicks } from "../lib/merge-picks.js";
 import type { MergeRegion, MergeSides } from "../lib/types.js";
@@ -139,6 +141,85 @@ describe("MergeEditor", () => {
 			await screen.findByRole("textbox", { name: "Merge base text" }),
 		).toHaveAttribute("wrap", "soft");
 		expect(output).toHaveValue("[] local draft");
+	});
+
+	it.each([
+		{
+			width: 865,
+			labels: ["Show conflicts", "Invisible characters", "Word wrap"],
+		},
+		{ width: 320, labels: ["", "", ""] },
+	])(
+		"shows the file view controls above the source panes at $width pixels",
+		async ({ width, labels }) => {
+			stubLayout({ width, height: 480 });
+			onTestFinished(restoreLayout);
+			render(MergeEditor, {
+				props: {
+					repoPath: "/repo",
+					filePath: "src/theme.ts",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			const current = await screen.findByRole("region", {
+				name: "Current (Ours)",
+			});
+
+			const header = screen.getByRole("region", {
+				name: "Merge file controls",
+			});
+			expect(
+				header.compareDocumentPosition(current) &
+					Node.DOCUMENT_POSITION_FOLLOWING,
+			).toBeTruthy();
+			const controls = within(header);
+			expect(
+				controls.getByRole("button", { name: "Path actions for src/theme.ts" }),
+			).toBeVisible();
+			const buttons = [
+				controls.getByRole("button", { name: "Show conflicts with context" }),
+				controls.getByRole("button", { name: "Show invisible characters" }),
+				controls.getByRole("button", { name: "Toggle word wrap" }),
+			];
+			expect(buttons.map((button) => button.textContent?.trim())).toEqual(
+				labels,
+			);
+			expect(buttons.every((button) => button.querySelector("svg"))).toBe(true);
+		},
+	);
+
+	it("shows the new file and accepts edits while its output syntax is pending", async () => {
+		const highlighting = Promise.withResolvers<unknown>();
+		mockInvoke.mockImplementation(async (command, args) => {
+			if (command === "get_merge_sides")
+				return sidesOf(
+					merged(
+						args && "filePath" in args && args.filePath === "a.ts"
+							? "first file"
+							: "next file",
+					),
+				);
+			if (command === "highlight_merge_output") return highlighting.promise;
+		});
+		const view = render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "a.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		await screen.findByDisplayValue("first file");
+
+		await view.rerender({ filePath: "b.ts" });
+		const output = await screen.findByDisplayValue("next file");
+		const visibleText = output.parentElement?.querySelector("pre");
+		expect(visibleText).toBeVisible();
+		expect(visibleText?.textContent).toBe("next file\u200b");
+		await fireEvent.input(output, { target: { value: "next file edited" } });
+		expect(visibleText?.textContent).toBe("next file edited\u200b");
+		highlighting.resolve(null);
 	});
 
 	it("copies the conflicted file's relative and absolute path from the filename menu", async () => {

@@ -46,6 +46,7 @@ import {
 import { measureRowMetrics, type RowMetrics } from "../lib/row-metrics.js";
 import type { MergedSpan, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
+import ButtonGroup from "../lib/ui/ButtonGroup.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
@@ -77,6 +78,9 @@ let {
 }: Props = $props();
 
 let fullFile = $state(true);
+let fileBarWidth = $state(0);
+// Leave room for the filename alongside the three worded controls.
+const showViewLabels = $derived(fileBarWidth >= 440);
 const contextToggleLabel = $derived(
 	fullFile ? "Show conflicts with context" : "Show full file",
 );
@@ -910,6 +914,52 @@ registerUpdateBlocker(
 			{/if}
 		</div>
 	{:else}
+		<section
+			aria-label="Merge file controls"
+			class="h-bar bg-surface shadow-hairline flex items-center gap-2 px-2 shrink-0"
+			bind:clientWidth={fileBarWidth}
+		>
+			<span class="flex-1 min-w-0">
+				<LinkButton
+					truncate
+					aria-label={`Path actions for ${filePath}`}
+					aria-haspopup="menu"
+					onclick={openPathMenu}
+					oncontextmenu={openPathMenu}
+				>
+					<FilePathLabel path={filePath} />
+				</LinkButton>
+			</span>
+			<ButtonGroup size="base">
+				<Button
+					joined
+					icon={!showViewLabels}
+					size="base"
+					aria-label={contextToggleLabel}
+					title={contextToggleLabel}
+					onclick={() => (fullFile = !fullFile)}
+				>
+					{#if fullFile}
+						<FoldVertical size={14} />
+					{:else}
+						<UnfoldVertical size={14} />
+					{/if}
+					{#if showViewLabels}
+						{fullFile ? "Show conflicts" : "Show full file"}
+					{/if}
+				</Button>
+				<DiffTextControls
+					joined
+					showLabels={showViewLabels}
+					showInvisibles={diffPreferences.showInvisibles}
+					wordWrap={diffPreferences.wordWrap}
+					fixedPitch={sideWrapAvailable}
+					onshowinvisibleschange={(show) =>
+						diffPreferences.changeShowInvisibles(show)}
+					onwordwrapchange={(wrap) => diffPreferences.changeWordWrap(wrap)}
+				/>
+			</ButtonGroup>
+		</section>
 		<!-- Top row: Current + Incoming side by side (50% height) -->
 		<div class="flex-1 flex min-h-0">
 			<!-- Current (Ours) Panel -->
@@ -960,127 +1010,86 @@ registerUpdateBlocker(
 
 		<!-- Bottom panel: Output (50% height) -->
 		<div class="flex-1 flex flex-col min-h-0 border-t border-border">
-			<div class="merge-toolbar">
-				<div
-					class="h-bar bg-surface shadow-hairline grid output-bar items-center px-2 gap-2 shrink-0"
+			<div
+				class="bg-surface shadow-hairline flex flex-wrap output-bar items-center px-2 gap-x-2 shrink-0"
+			>
+				<span class="flex flex-1 items-center text-callout text-text-muted"
+					>Output</span
 				>
-					<div class="output-file flex items-center min-w-0 gap-2">
-						<span class="text-callout text-text-muted">Output</span>
-						<span class="min-w-0">
-							<LinkButton
-								truncate
-								aria-label={`Path actions for ${filePath}`}
-								aria-haspopup="menu"
-								onclick={openPathMenu}
-								oncontextmenu={openPathMenu}
-							>
-								<FilePathLabel path={filePath} />
-							</LinkButton>
-						</span>
-						<fieldset
-							class="flex shrink-0 items-center gap-1"
-							aria-label="Merge view options"
+				<div class="flex items-center gap-1">
+					{#if needsReview}
+						<span class="text-caption text-text-muted whitespace-nowrap"
+							>{unresolved} {unresolved === 1 ? "block" : "blocks"} to
+							review</span
 						>
-							<Button
-								icon
-								size="sm"
-								variant="ghost"
-								aria-label={contextToggleLabel}
-								title={contextToggleLabel}
-								onclick={() => (fullFile = !fullFile)}
-							>
-								{#if fullFile}
-									<FoldVertical size={14} />
-								{:else}
-									<UnfoldVertical size={14} />
-								{/if}
-							</Button>
-							<DiffTextControls
-								showInvisibles={diffPreferences.showInvisibles}
-								wordWrap={diffPreferences.wordWrap}
-								fixedPitch={sideWrapAvailable}
-								onshowinvisibleschange={(show) =>
-									diffPreferences.changeShowInvisibles(show)}
-								onwordwrapchange={(wrap) =>
-									diffPreferences.changeWordWrap(wrap)}
-							/>
-						</fieldset>
-					</div>
-					<div class="output-progress flex items-center gap-1">
-						{#if needsReview}
-							<span class="text-caption text-text-muted whitespace-nowrap"
-								>{unresolved} {unresolved === 1 ? "block" : "blocks"} to
-								review</span
-							>
-						{:else if unresolved > 0}
-							<span class="text-caption text-text-muted whitespace-nowrap"
-								>{unresolved}
-								{unresolved === 1 ? "conflict" : "conflicts"} unresolved</span
-							>
-						{:else if manualEdit}
-							<span class="text-caption text-text-muted whitespace-nowrap"
-								>Manual edit</span
-							>
-						{/if}
+					{:else if unresolved > 0}
+						<span class="text-caption text-text-muted whitespace-nowrap"
+							>{unresolved}
+							{unresolved === 1 ? "conflict" : "conflicts"} unresolved</span
+						>
+					{:else if manualEdit}
+						<span class="text-caption text-text-muted whitespace-nowrap"
+							>Manual edit</span
+						>
+					{/if}
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
+						disabled={saving}
+						onclick={handleReset}
+						aria-label="Reset merge selections"
+						title="Clear every conflict's selection"
+						><RotateCcw size={14} /></Button
+					>
+					{#if hasConflicts}
 						<Button
 							icon
 							size="sm"
 							variant="ghost"
-							disabled={saving}
-							onclick={handleReset}
-							aria-label="Reset merge selections"
-							title="Clear every conflict's selection"
-							><RotateCcw size={14} /></Button
+							onclick={handlePrevConflict}
+							disabled={!hasPrev}
+							aria-label="Previous conflict"
+							aria-keyshortcuts="["
+							tooltip="Previous conflict ([)"
+							><ChevronUp size={16} /></Button
 						>
-						{#if hasConflicts}
-							<Button
-								icon
-								size="sm"
-								variant="ghost"
-								onclick={handlePrevConflict}
-								disabled={!hasPrev}
-								aria-label="Previous conflict"
-								aria-keyshortcuts="["
-								tooltip="Previous conflict ([)"
-								><ChevronUp size={16} /></Button
-							>
-							<span class="text-small text-text-muted whitespace-nowrap"
-								>{focusedConflictIdx + 1}/{conflictIndices.length}</span
-							>
-							<Button
-								icon
-								size="sm"
-								variant="ghost"
-								onclick={handleNextConflict}
-								disabled={!hasNext}
-								aria-label="Next conflict"
-								aria-keyshortcuts="]"
-								tooltip="Next conflict (])"
-								><ChevronDown size={16} /></Button
-							>
-						{/if}
-					</div>
+						<span class="text-small text-text-muted whitespace-nowrap"
+							>{focusedConflictIdx + 1}/{conflictIndices.length}</span
+						>
+						<Button
+							icon
+							size="sm"
+							variant="ghost"
+							onclick={handleNextConflict}
+							disabled={!hasNext}
+							aria-label="Next conflict"
+							aria-keyshortcuts="]"
+							tooltip="Next conflict (])"
+							><ChevronDown size={16} /></Button
+						>
+					{/if}
+				</div>
 
-					<!-- Right: actions -->
-					<div class="flex items-center gap-2 justify-end">
-						<Button
-							size="sm"
-							variant="success"
-							onclick={handleSaveAndResolve}
-							disabled={saving || (!manualEdit && unresolved > 0)}
-							>{needsReview
-								? "Review and Save…"
-								: "Save and Mark Resolved"}</Button
-						>
-						<Button
-							icon
-							size="sm"
-							variant="ghost"
-							onclick={onclose}
-							aria-label="Close merge editor"
-							><X size={16} /></Button
-						>
-					</div>
+				<!-- Right: actions -->
+				<div class="ml-auto flex items-center gap-2 justify-end">
+					<Button
+						size="sm"
+						variant="success"
+						onclick={handleSaveAndResolve}
+						disabled={saving || (!manualEdit && unresolved > 0)}
+						>{needsReview
+							? "Review and Save…"
+							: "Save and Mark Resolved"}</Button
+					>
+					<Button
+						icon
+						size="sm"
+						variant="ghost"
+						onclick={onclose}
+						aria-label="Close merge editor"
+						><X size={16} /></Button
+					>
 				</div>
 			</div>
 
@@ -1247,25 +1256,7 @@ registerUpdateBlocker(
 	background: var(--merge-word-bg);
 }
 
-.merge-toolbar {
-	container-type: inline-size;
-}
-
-.output-bar {
-	grid-template-columns: minmax(0, 1fr) auto auto;
-}
-
-@container (max-width: 34rem) {
-	.output-bar {
-		height: auto;
-		grid-template-columns: minmax(0, 1fr) auto;
-	}
-	.output-file,
-	.output-progress {
-		min-height: var(--bar-h);
-	}
-	.output-file {
-		grid-column: 1 / -1;
-	}
+.output-bar > * {
+	min-height: var(--bar-h);
 }
 </style>
