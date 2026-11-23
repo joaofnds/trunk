@@ -25,6 +25,7 @@ enum BuildStep {
     RemoveFile {
         path: String,
     },
+    #[cfg(unix)]
     MakeExecutable {
         path: String,
     },
@@ -75,14 +76,15 @@ impl BuildStep {
     /// commits on HEAD's branch before it runs. Only file edits and commits
     /// leave the branch alone.
     const fn needs_branch_written(&self) -> bool {
-        !matches!(
-            self,
+        match self {
             Self::WriteFile { .. }
-                | Self::WriteBinaryFile { .. }
-                | Self::RemoveFile { .. }
-                | Self::MakeExecutable { .. }
-                | Self::Commit { .. }
-        )
+            | Self::WriteBinaryFile { .. }
+            | Self::RemoveFile { .. }
+            | Self::Commit { .. } => false,
+            #[cfg(unix)]
+            Self::MakeExecutable { .. } => false,
+            _ => true,
+        }
     }
 }
 
@@ -130,6 +132,7 @@ impl TestContextBuilder {
     }
 
     /// A file with its executable bits set, so the next commit records it as 100755.
+    #[cfg(unix)]
     pub fn with_executable_file(&mut self, path: &str, content: &str) -> &mut Self {
         self.with_file(path, content);
         self.steps.push(BuildStep::MakeExecutable {
@@ -308,6 +311,7 @@ impl TestContextBuilder {
                 BuildStep::RemoveFile { path } => {
                     remove_file(dir.path(), path, &mut pending);
                 }
+                #[cfg(unix)]
                 BuildStep::MakeExecutable { path } => make_executable(&dir.path().join(path)),
                 BuildStep::Commit { message, secs } => {
                     let parent = unwritten_tip.map_or_else(
@@ -402,6 +406,7 @@ fn write_file(
 }
 
 /// Set a file's executable bits, which `add_path` then records as mode 100755.
+#[cfg(unix)]
 pub fn make_executable(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt as _;
 

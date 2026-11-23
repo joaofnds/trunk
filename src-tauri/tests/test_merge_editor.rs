@@ -1185,6 +1185,7 @@ fn save_merge_result_writes_and_stages() {
         !index.has_conflicts(),
         "index should have no conflicts after staging"
     );
+    assert_eq!(ctx.staged_content("file.txt"), "resolved content");
 }
 
 #[cfg(unix)]

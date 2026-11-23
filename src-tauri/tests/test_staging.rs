@@ -1,5 +1,6 @@
 mod common;
 
+#[cfg(unix)]
 use common::builder::make_executable;
 use common::context::TestContext;
 use std::fmt::Write as _;
@@ -425,6 +426,7 @@ fn discard_all_deletes_nested_untracked_file() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn discard_all_reports_the_untracked_files_it_cannot_delete_and_deletes_the_rest() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -2581,6 +2583,7 @@ fn committed(path: &str, content: &str) -> TestContext {
         .build()
 }
 
+#[cfg(unix)]
 fn committed_executable(path: &str, content: &str) -> TestContext {
     TestContext::builder()
         .with_file("README.md", "hello\n")
@@ -2589,6 +2592,7 @@ fn committed_executable(path: &str, content: &str) -> TestContext {
         .build()
 }
 
+#[cfg(unix)]
 fn is_executable(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt as _;
 
@@ -2650,6 +2654,7 @@ fn discarding_a_hunk_restores_bytes_that_are_not_utf8() {
     assert_eq!(std::fs::read(&file).unwrap(), b"one\ncaf\xe9\n");
 }
 
+#[cfg(unix)]
 #[test]
 fn staging_a_hunk_of_an_executable_keeps_it_executable() {
     let ctx = committed_executable("run.sh", "echo one\n");
@@ -2660,6 +2665,7 @@ fn staging_a_hunk_of_an_executable_keeps_it_executable() {
     assert_eq!(ctx.staged_mode("run.sh"), 0o100_755);
 }
 
+#[cfg(unix)]
 #[test]
 fn unstaging_a_hunk_of_an_executable_keeps_it_executable() {
     let ctx = committed_executable("run.sh", "echo one\n");
@@ -2671,6 +2677,7 @@ fn unstaging_a_hunk_of_an_executable_keeps_it_executable() {
     assert_eq!(ctx.staged_mode("run.sh"), 0o100_755);
 }
 
+#[cfg(unix)]
 #[test]
 fn discarding_a_hunk_of_an_executable_keeps_it_executable() {
     let ctx = committed_executable("run.sh", "echo one\n");
@@ -2683,6 +2690,7 @@ fn discarding_a_hunk_of_an_executable_keeps_it_executable() {
     assert!(is_executable(&file), "the discard kept the executable bits");
 }
 
+#[cfg(unix)]
 #[test]
 fn staging_a_hunk_of_an_untracked_executable_stages_it_executable() {
     let ctx = committed("README.md", "hello\n");
@@ -3007,6 +3015,7 @@ fn stage_hunk_reports_the_whitespace_change_the_view_hides() {
     assert!(outcome.file_still_changed);
 }
 
+#[cfg(unix)]
 #[test]
 fn stage_hunk_reports_the_mode_change_its_hunk_leaves() {
     let ctx = TestContext::builder()
@@ -3058,6 +3067,7 @@ fn unstage_hunk_reports_the_file_done_beside_another_staged_file() {
     assert!(!outcome.file_still_changed);
 }
 
+#[cfg(unix)]
 #[test]
 fn unstage_hunk_reports_the_staged_mode_change_its_hunk_leaves() {
     let ctx = TestContext::builder()
