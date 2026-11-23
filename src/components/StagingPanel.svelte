@@ -22,6 +22,7 @@ import {
 	takeAllCurrent,
 	takeAllIncoming,
 } from "../lib/merge-parser.js";
+import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
 import { nativeMenu } from "../lib/native-menu.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
@@ -48,6 +49,7 @@ import OperationBanner from "./OperationBanner.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
+	mergePicks?: MergePicksStore;
 	repoPath: string;
 	currentBranch?: string;
 	onfileselect?: (
@@ -80,6 +82,7 @@ interface Props {
 
 let {
 	repoPath,
+	mergePicks = createMergePicks(),
 	currentBranch,
 	commitFormSession,
 	onfileselect,
@@ -317,11 +320,7 @@ const MARKER_NAMES_SHOWN = 5;
 
 /** Whether to mark these conflicted files resolved, asking first when any of
  *  them still holds conflict markers, which staging would commit as content. */
-async function confirmResolved(filePaths: string[]): Promise<boolean> {
-	const marked = await safeInvoke<string[]>("conflict_marker_files", {
-		path: repoPath,
-		filePaths,
-	});
+async function confirmResolved(marked: string[]): Promise<boolean> {
 	if (marked.length === 0) return true;
 
 	const shown = marked.slice(0, MARKER_NAMES_SHOWN).join("\n");
@@ -338,14 +337,58 @@ async function confirmResolved(filePaths: string[]): Promise<boolean> {
 	);
 }
 
+/** Staging the working file bypasses the draft in Output. Keep that draft
+ * until the user agrees and Git has accepted this exact resolution action. */
+async function stageWorkingResolution(filePaths: string[]): Promise<boolean> {
+	const repo = repoPath;
+	if (filePaths.some((path) => mergePicks.isSaving(repo, path))) return false;
+	const finish = filePaths.map((path) => mergePicks.startSave(repo, path));
+	try {
+		const { files, marked } = await safeInvoke<{
+			files: { path: string; revision: string }[];
+			marked: string[];
+		}>("prepare_mark_resolved", { path: repo, filePaths });
+		if (repo !== repoPath) return false;
+		const drafts = filePaths.filter(
+			(path) => mergePicks.draftText(repo, path) !== undefined,
+		);
+		if (
+			drafts.length &&
+			!(await ask(
+				`Stage the working files and discard edited Output for ${drafts.slice(0, MARKER_NAMES_SHOWN).join(", ")}${drafts.length > MARKER_NAMES_SHOWN ? " and more" : ""}?`,
+				{
+					title: "Discard Edited Output",
+					kind: "warning",
+					okLabel: "Stage Working Files",
+				},
+			))
+		)
+			return false;
+		if (
+			repo !== repoPath ||
+			!(await confirmResolved(marked)) ||
+			repo !== repoPath
+		)
+			return false;
+		await safeInvoke("mark_conflicts_resolved", { path: repo, files });
+		for (const path of filePaths) mergePicks.forget(repo, path);
+		return repo === repoPath;
+	} finally {
+		for (const done of finish) done?.();
+	}
+}
+
 async function stageFile(filePath: string, from: "unstaged" | "conflicted") {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	try {
-		if (from === "conflicted" && !(await confirmResolved([filePath]))) {
-			stopLoading([filePath]);
-			return;
+		if (from === "conflicted") {
+			if (!(await stageWorkingResolution([filePath]))) {
+				stopLoading([filePath]);
+				return;
+			}
+		} else {
+			await safeInvoke("stage_file", { path: repoPath, filePath });
 		}
-		await safeInvoke("stage_file", { path: repoPath, filePath });
 		onfileadvance?.(filePath, from);
 		optimisticMove(filePath, from, "stage");
 	} catch (e) {
@@ -597,11 +640,30 @@ async function resolveConflictedFile(
 	filePath: string,
 	side: "ours" | "theirs",
 ) {
+	const repo = repoPath;
+	const finish = mergePicks.startSave(repo, filePath);
+	if (!finish) return;
 	try {
 		const sides = await safeInvoke<MergeSides>("get_merge_sides", {
-			path: repoPath,
+			purpose: "resolution",
+			path: repo,
 			filePath,
 		});
+		if (repo !== repoPath) return;
+		const draft = mergePicks.draftText(repo, filePath);
+		if (
+			draft !== undefined &&
+			!(await ask(
+				`Replace your edited Output for ${filePath} with the ${side === "ours" ? "Current" : "Incoming"} resolution and stage it?`,
+				{
+					title: "Replace Edited Output",
+					kind: "warning",
+					okLabel: "Replace and Stage",
+				},
+			))
+		)
+			return;
+		if (repo !== repoPath) return;
 		// The same result the editor's Take All buttons give: the conflicting
 		// lines come from the chosen side and the rest is the text git merged,
 		// since the menu item and the button carry the same name.
@@ -612,30 +674,39 @@ async function resolveConflictedFile(
 		const content = computeOutput(sides.regions, taken);
 		await safeInvoke("save_merge_result", {
 			expectedRevision: sides.revision,
-			path: repoPath,
+			path: repo,
 			filePath,
 			content,
 		});
+		mergePicks.forget(repo, filePath);
+		if (repo !== repoPath) return;
 		onfileadvance?.(filePath, "conflicted");
 		await loadStatus();
 	} catch (e) {
 		reportErrorToast(e, "Resolution failed");
+	} finally {
+		finish();
 	}
 }
 
 async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
+	const textResolution =
+		status?.conflicted.find((file) => file.path === filePath)
+			?.can_take_sides === true;
 	const absPath = `${repoPath}/${filePath}`;
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
 				text: "Take All Current",
+				enabled: textResolution,
 				action: () => {
 					resolveConflictedFile(filePath, "ours").catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: "Take All Incoming",
+				enabled: textResolution,
 				action: () => {
 					resolveConflictedFile(filePath, "theirs").catch(() => {});
 				},
@@ -666,11 +737,13 @@ async function resolveDirectory(dirPath: string) {
 }
 
 async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
+	const repo = repoPath;
+	const absPath = `${repo}/${dirPath}`;
+	const filePaths = filesUnder(status?.conflicted, dirPath).map(
+		(file) => file.path,
+	);
+	if (filePaths.length === 0) return;
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
-	const absPath = `${repoPath}/${dirPath}`;
-	const files = filesUnder(status?.conflicted, dirPath);
-	if (files.length === 0) return;
-
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
@@ -687,9 +760,9 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
-				text: `Resolve All (${files.length})`,
+				text: `Resolve All (${filePaths.length})`,
 				action: () => {
-					resolveDirectory(dirPath);
+					if (repo === repoPath) void resolveFiles(filePaths);
 				},
 			}),
 		],
@@ -723,8 +796,7 @@ async function markAllResolved() {
 
 async function resolveFiles(filePaths: string[]) {
 	await changeFiles(filePaths, "Resolution failed", async () => {
-		if (!(await confirmResolved(filePaths))) return;
-		await safeInvoke("stage_files", { path: repoPath, filePaths });
+		await stageWorkingResolution(filePaths);
 	});
 }
 

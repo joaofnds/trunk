@@ -93,48 +93,32 @@ function blockHasPairingInfo(deletes: Seat[], adds: Seat[]): boolean {
 	);
 }
 
-function partnerOf(seat: Seat): number | null {
-	return seat.line.pairing?.kind === "partner" ? seat.line.pairing.line : null;
+/** Seat one refined run in source order. Unmatched lines get a blank opposite
+ *  cell; Current partners are Incoming offsets within this run. */
+export function* pairedIndices(
+	partners: readonly (number | null)[],
+	incomingCount: number,
+): Generator<[number, number]> {
+	let incoming = 0;
+	for (const [current, partner] of partners.entries()) {
+		if (partner === null) {
+			yield [current, -1];
+			continue;
+		}
+		while (incoming < partner) yield [-1, incoming++];
+		yield [current, incoming++];
+	}
+	while (incoming < incomingCount) yield [-1, incoming++];
 }
 
-/**
- * Seat a block by the word diff's verdict: partnered lines share a row,
- * alone lines sit against a phantom. Partner indices are monotonic on both
- * sides (they come from ordered diff ops), so a two-pointer merge preserves
- * each side's order.
- */
 function pairByPartner(deletes: Seat[], adds: Seat[], rows: PairedRow[]): void {
-	let d = 0;
-	let a = 0;
-
-	while (d < deletes.length || a < adds.length) {
-		const del = d < deletes.length ? deletes[d] : null;
-		const add = a < adds.length ? adds[a] : null;
-
-		if (del && partnerOf(del) === null) {
-			rows.push({ left: del, right: null });
-			d++;
-			continue;
-		}
-		if (add && partnerOf(add) === null) {
-			rows.push({ left: null, right: add });
-			a++;
-			continue;
-		}
-		if (del && add) {
-			rows.push({ left: del, right: add });
-			d++;
-			a++;
-			continue;
-		}
-
-		if (del) {
-			rows.push({ left: del, right: null });
-			d++;
-		} else if (add) {
-			rows.push({ left: null, right: add });
-			a++;
-		}
+	const partners = deletes.map(({ line }) =>
+		line.pairing?.kind === "partner"
+			? line.pairing.line - adds[0].lineIdx
+			: null,
+	);
+	for (const [left, right] of pairedIndices(partners, adds.length)) {
+		rows.push({ left: deletes[left] ?? null, right: adds[right] ?? null });
 	}
 }
 

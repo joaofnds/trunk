@@ -2210,6 +2210,29 @@ describe("RepoView", () => {
 				for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
 			}
 
+			it("closes the active merge on Escape while another tab holds an anchored dialog", async () => {
+				stubConflicts(["a.txt"]);
+				await openConflict("a.txt");
+				const hiddenTab = document.createElement("div");
+				hiddenTab.className = "invisible";
+				const dialog = document.createElement("dialog");
+				dialog.open = true;
+				hiddenTab.append(dialog);
+				document.body.append(hiddenTab);
+				try {
+					const close = screen.getByRole("button", {
+						name: "Close merge editor",
+					});
+					close.focus();
+					await fireEvent.keyDown(close, { key: "Escape" });
+					expect(
+						screen.queryByRole("textbox", { name: "Merge output" }),
+					).toBeNull();
+				} finally {
+					hiddenTab.remove();
+				}
+			});
+
 			it("leaves the merge editor open when Escape dismisses its Base dialog", async () => {
 				stubConflicts(["a.txt"], "base-oid");
 				await openConflict("a.txt");

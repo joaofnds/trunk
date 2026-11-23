@@ -15,6 +15,14 @@ export class MergeEditorDriver {
 		await openContextMenu(button, this.menu, path);
 	}
 
+	wrapsOutput(): boolean {
+		return (
+			document.querySelector<HTMLTextAreaElement>(
+				'textarea[aria-label="Merge output"]',
+			)?.wrap === "soft"
+		);
+	}
+
 	async toggleWordWrap(): Promise<void> {
 		const control = await waitFor("the merge wrap control", () =>
 			document.querySelector<HTMLButtonElement>(
@@ -22,6 +30,37 @@ export class MergeEditorDriver {
 			),
 		);
 		control.click();
+	}
+
+	async typeOutput(text: string): Promise<void> {
+		const output = await waitFor("editable merge output", () =>
+			document.querySelector<HTMLTextAreaElement>(
+				'textarea[aria-label="Merge output"]:not([readonly])',
+			),
+		);
+		output.value = text;
+		output.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	async close(): Promise<void> {
+		const close = await waitFor("the merge editor close button", () =>
+			document.querySelector<HTMLButtonElement>(
+				'button[aria-label="Close merge editor"]',
+			),
+		);
+		close.click();
+	}
+
+	recoveredOutput(): string | null {
+		return (
+			document.querySelector<HTMLTextAreaElement>(
+				'textarea[aria-label="Previous merge draft"]',
+			)?.value ?? null
+		);
+	}
+
+	async recover(path: string): Promise<void> {
+		await pressButton(`Recover draft for ${path}`);
 	}
 
 	/** Takes the incoming side of every conflict. */
@@ -39,12 +78,9 @@ export class MergeEditorDriver {
 		await pressButton("Save and Mark Resolved");
 	}
 
-	/** Whether the editor is on screen, judged by the controls only it offers.
-	 *  It describes one conflict, so it has no business outliving the operation
-	 *  that raised it. */
 	isShowing(): boolean {
-		return [...document.querySelectorAll("button")].some(
-			(button) => button.textContent?.trim() === "Save and Mark Resolved",
+		return (
+			document.querySelector('section[aria-label="Merge editor"]') !== null
 		);
 	}
 }

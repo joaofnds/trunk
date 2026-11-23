@@ -209,6 +209,7 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --test test_current_file_links_windows
+      - run: mise exec -- cargo test --manifest-path src-tauri/Cargo.toml --test test_merge_editor save_merge_result_writes_and_stages -- --exact
 
   app-test:
     name: Application Harness

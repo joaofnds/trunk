@@ -92,6 +92,8 @@ pub struct FileStatus {
     pub old_path: Option<String>,
     pub status: FileStatusType,
     pub is_binary: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub can_take_sides: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -353,12 +355,23 @@ pub struct OperationCommit {
 /// Decorated merge editor lines, keyed by their one-based number in a pane.
 pub type MergeLineSpans = std::collections::BTreeMap<usize, Vec<MergedSpan>>;
 
-#[derive(Debug, Serialize, Clone)]
-pub struct MergeSides {
+/// For each refined conflict, the Incoming partner of each Current line.
+pub type MergePartners = std::collections::BTreeMap<usize, Vec<Option<usize>>>;
+
+#[derive(Debug, Default, Serialize, Clone)]
+pub struct MergePresentation {
+    #[serde(skip_serializing_if = "MergePartners::is_empty")]
+    pub conflict_partners: MergePartners,
     #[serde(skip_serializing_if = "MergeLineSpans::is_empty")]
     pub ours_spans: MergeLineSpans,
     #[serde(skip_serializing_if = "MergeLineSpans::is_empty")]
     pub theirs_spans: MergeLineSpans,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct MergeSides {
+    #[serde(flatten)]
+    pub presentation: MergePresentation,
     pub revision: String,
     pub base_oid: Option<String>,
     pub current_label: Option<String>,

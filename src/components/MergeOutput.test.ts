@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { assert, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -104,16 +104,21 @@ it.each(["line\n".repeat(1000), "x".repeat(128 * 1024 + 1)])(
 	"keeps oversized results editable without requesting syntax",
 	async (text) => {
 		vi.mocked(invoke).mockClear();
+		const oninput = vi.fn();
 		render(MergeOutput, {
 			filePath: "theme.ts",
 			text,
 			readonly: false,
 			lineHeight: 18,
-			oninput: vi.fn(),
+			oninput,
 			onscroll: vi.fn(),
 		});
 		await tick();
-		expect(screen.getByRole("textbox")).toHaveValue(text);
+		const editor = screen.getByRole("textbox");
+		expect(editor).not.toHaveAttribute("readonly");
+		await fireEvent.input(editor, { target: { value: `${text}!` } });
+		expect(oninput).toHaveBeenCalledOnce();
+		expect(editor).toHaveValue(`${text}!`);
 		expect(invoke).not.toHaveBeenCalled();
 	},
 );

@@ -31,17 +31,23 @@ export function mapOffset(
 	const last = from.length - 1;
 	if (last <= 0) return y;
 	if (y >= from[last]) return to[last] + (y - from[last]);
-	if (y <= 0) return 0;
+	if (y < 0) return 0;
+	const lo = regionAt(from, y);
+	const height = from[lo + 1] - from[lo];
+	const fraction = height === 0 ? 0 : (y - from[lo]) / height;
+	return to[lo] + fraction * (to[lo + 1] - to[lo]);
+}
+
+/** Index of the region containing y, or the final boundary beyond the document. */
+export function regionAt(from: RegionLayout, y: number): number {
 	let lo = 0;
-	let hi = last - 1;
+	let hi = from.length - 1;
 	while (lo < hi) {
 		const mid = (lo + hi + 1) >> 1;
 		if (from[mid] <= y) lo = mid;
 		else hi = mid - 1;
 	}
-	const height = from[lo + 1] - from[lo];
-	const fraction = height === 0 ? 0 : (y - from[lo]) / height;
-	return to[lo] + fraction * (to[lo + 1] - to[lo]);
+	return lo;
 }
 
 /**

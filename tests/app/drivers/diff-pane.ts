@@ -25,6 +25,14 @@ const BINARY_ROW = ".binary-row";
 /** The center diff pane's markdown affordance: the source/rendered toggle and
  *  the tinted blocks the rendered view shows. */
 export class DiffPaneDriver {
+	wrapsLine(text: string): boolean {
+		return [
+			...document.querySelectorAll(
+				".diff-line.whitespace-pre-wrap .diff-line-content",
+			),
+		].some((line) => line.textContent === text);
+	}
+
 	/** The content of every unchanged row in the pane, topmost first. A
 	 *  current-file view is all context, so this is how a test reads it. */
 	contextLines(): string[] {

@@ -150,6 +150,50 @@ describe("TabBar", () => {
 		}
 	});
 
+	it("distinguishes Windows checkouts by the drive or shared folder", () => {
+		const repos = ["C:\\src\\api", "D:\\src\\api", "\\\\build\\team\\api"].map(
+			(repoPath) => ({ ...tabs[0], id: repoPath, repoPath, repoName: "api" }),
+		);
+		render(TabBar, { props: { ...defaultProps, tabs: repos } });
+
+		const labels = screen
+			.getAllByRole("tab")
+			.map((tab) => tab.textContent?.trim());
+		expect(labels).toEqual(["api C:\\src", "api D:\\src", "api team"]);
+	});
+
+	it("keeps an uninterrupted checkout ancestor compact with its distinguishing letter visible", () => {
+		const repos = ["X", "Y"].map((letter) => {
+			const repoPath = `/${"a".repeat(160)}${letter}${"z".repeat(30)}/api`;
+			return { ...tabs[0], id: repoPath, repoName: "api", repoPath };
+		});
+		render(TabBar, { props: { ...defaultProps, tabs: repos } });
+		for (const [i, letter] of ["X", "Y"].entries()) {
+			const tab = screen.getByRole("tab", {
+				name: `api, ${repos[i].repoPath}`,
+			});
+			const ancestor = within(tab).getByText(new RegExp(letter));
+			expect(ancestor.textContent?.length).toBeLessThanOrEqual(18);
+		}
+	});
+
+	it("keeps four long checkout names distinct when the same endings recur", () => {
+		const roots = ["aaaaaaaaaa", "bbbbbbbbbb"].flatMap((prefix) =>
+			["X", "Y"].map((suffix) => `${prefix}SharedDirectoryWithSuffix${suffix}`),
+		);
+		const repos = roots.map((root) => ({
+			...tabs[0],
+			id: root,
+			repoPath: `/${root}/api`,
+			repoName: "api",
+		}));
+		render(TabBar, { props: { ...defaultProps, tabs: repos } });
+		const labels = screen
+			.getAllByRole("tab")
+			.map((tab) => tab.textContent?.trim());
+		expect(new Set(labels).size).toBe(4);
+	});
+
 	it("highlights active tab", () => {
 		render(TabBar, { props: defaultProps });
 		const activeTab = screen.getByText("trunk").closest(".tab-item");

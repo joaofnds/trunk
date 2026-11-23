@@ -153,14 +153,14 @@ pub fn holds_conflict(working: &str, marker_size: usize) -> bool {
 /// The marked ancestor for the conflict on screen, provided those sides still
 /// identify the same conflict and all the marked base sections reconstruct the indexed file.
 #[must_use]
-pub fn marked_ancestor(
-    working: &str,
+pub fn marked_ancestor<'a>(
+    working: &'a str,
     marker_size: usize,
     ordinal: usize,
     ours: &[String],
     theirs: &[String],
     ancestor: &str,
-) -> Option<String> {
+) -> Option<Vec<&'a str>> {
     let Reading::Conflicts(pieces) = read(working, marker_size, true) else {
         return None;
     };
@@ -190,7 +190,7 @@ pub fn marked_ancestor(
     reconstructed
         .copied()
         .eq(ancestor.split('\n'))
-        .then(|| lines.base.as_deref().unwrap_or_default().join("\n"))
+        .then(|| lines.base.clone().unwrap_or_default())
 }
 
 /// The file split as the editor joins it back: on every newline, so a file that ends in
@@ -743,6 +743,25 @@ mod tests {
                 MergeRegion::Merged { .. } => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn an_inserted_block_and_a_replaced_blank_line_have_different_ancestors() {
+        for (marked, expected) in [("", vec![]), ("\n", vec![""])] {
+            let working = format!(
+                "top\n<<<<<<< HEAD\nmine\n||||||| base\n{marked}=======\nyours\n>>>>>>> topic\nbottom"
+            );
+            let ancestor = format!("top\n{marked}bottom");
+            let excerpt = super::marked_ancestor(
+                &working,
+                MARKER_SIZE,
+                0,
+                &lines("mine"),
+                &lines("yours"),
+                &ancestor,
+            );
+            assert_eq!(excerpt, Some(expected));
+        }
     }
 
     #[test]

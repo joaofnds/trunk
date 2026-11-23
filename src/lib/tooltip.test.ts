@@ -131,6 +131,35 @@ describe("tooltip", () => {
 		expect(popup()).toBeNull();
 	});
 
+	it("pages a focused button's long report and dismisses it without moving focus", () => {
+		const height = vi
+			.spyOn(HTMLElement.prototype, "offsetHeight", "get")
+			.mockReturnValue(window.innerHeight * 2);
+		try {
+			node.focus();
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
+			const report = document.querySelector<HTMLElement>(
+				".tooltip-pop-scrollable",
+			);
+			if (!report) throw new Error("scrollable report missing");
+			Object.defineProperty(report, "clientHeight", { value: 120 });
+			const press = (key: string) =>
+				node.dispatchEvent(
+					new KeyboardEvent("keydown", { key, cancelable: true }),
+				);
+			expect(press("PageDown")).toBe(false);
+			expect(report.scrollTop).toBe(120);
+			expect(press("PageUp")).toBe(false);
+			expect(report.scrollTop).toBe(0);
+			expect(press("Escape")).toBe(false);
+			expect(popup()).toBeNull();
+			expect(document.activeElement).toBe(node);
+			expect(press("PageDown")).toBe(true);
+		} finally {
+			height.mockRestore();
+		}
+	});
+
 	it("hides the tooltip on mouseleave", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
 		vi.advanceTimersByTime(SHOW_DELAY_MS);

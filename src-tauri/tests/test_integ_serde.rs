@@ -3,7 +3,7 @@ mod common;
 use common::context::TestContext;
 use trunk_git::conflicted_file::MergeRegion;
 use trunk_lib::commands::commit_actions::Conclusion;
-use trunk_lib::types::MergeSides;
+use trunk_lib::types::{MergePresentation, MergeSides, MergedSpan};
 
 // ── GraphResult (via stash_save which returns GraphResult) ──────────────────
 
@@ -901,8 +901,29 @@ fn merge_regions_serialize_tagged_by_type_in_camel_case() {
     ];
 
     let json = serde_json::to_value(MergeSides {
-        ours_spans: trunk_lib::types::MergeLineSpans::new(),
-        theirs_spans: trunk_lib::types::MergeLineSpans::new(),
+        presentation: MergePresentation {
+            conflict_partners: [(1, vec![Some(0), None])].into(),
+            ours_spans: [(
+                2,
+                vec![MergedSpan {
+                    start: 0,
+                    end: 1,
+                    syntax_class: "string".into(),
+                    emphasized: true,
+                }],
+            )]
+            .into(),
+            theirs_spans: [(
+                3,
+                vec![MergedSpan {
+                    start: 1,
+                    end: 2,
+                    syntax_class: "number".into(),
+                    emphasized: false,
+                }],
+            )]
+            .into(),
+        },
         regions,
         revision: "snapshot".to_owned(),
         base_oid: None,
@@ -918,6 +939,9 @@ fn merge_regions_serialize_tagged_by_type_in_camel_case() {
             "base_oid": null,
             "current_label": "main",
             "incoming_label": null,
+            "conflict_partners": { "1": [0, null] },
+            "ours_spans": { "2": [{ "start": 0, "end": 1, "syntax_class": "string", "emphasized": true }] },
+            "theirs_spans": { "3": [{ "start": 1, "end": 2, "syntax_class": "number", "emphasized": false }] },
             "regions": [
                 { "type": "merged", "oursLines": ["a"], "theirsLines": ["b"], "mergedLines": ["b"] },
                 { "type": "conflict", "oursLines": ["x"], "theirsLines": ["y"] },

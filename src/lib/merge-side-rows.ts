@@ -1,6 +1,9 @@
 import { BAR_HEIGHT } from "./chrome-heights.js";
+import { pairedIndices } from "./diff-utils.js";
 import { columnsUpTo } from "./display-columns.js";
-import type { MergeRegion } from "./types.js";
+import { pickedConflictLines, pickKey } from "./merge-parser.js";
+import { layoutFrom, mapOffset, regionAt } from "./merge-scroll.js";
+import type { MergeRegion, MergeSides } from "./types.js";
 import { buildOffsets, windowFor } from "./virtual-window.js";
 
 export const MERGE_LINE_HEIGHT = 18;
@@ -59,6 +62,7 @@ export function buildMergeSideRows(
 	expanded: ReadonlySet<number>,
 	wrapColumns: number,
 	measured?: ReadonlyMap<string, number>,
+	conflictPartners?: MergeSides["conflict_partners"],
 ) {
 	const rows: MergeSideRow[] = [];
 	const gaps = new Map<number, { row: number; head: number; tail: number }>();
@@ -72,7 +76,10 @@ export function buildMergeSideRows(
 		const conflict = region.type === "conflict";
 		const ours = region.oursLines;
 		const theirs = region.theirsLines;
-		const slots = Math.max(ours.length, theirs.length);
+		const partners = conflictPartners?.[regionIdx];
+		const pairs =
+			partners && Array.from(pairedIndices(partners, theirs.length));
+		const slots = pairs?.length ?? Math.max(ours.length, theirs.length);
 		const firstRow = rows.length;
 		if (conflict) {
 			conflictNum++;
@@ -113,8 +120,10 @@ export function buildMergeSideRows(
 			// Each side keeps its own last lines before a conflict, even when Git
 			// merged an insertion on only one side of the gap.
 			const suffix = hidden > 0 && slot >= slots - tail;
-			const oursIdx = suffix ? ours.length - (slots - slot) : slot;
-			const theirsIdx = suffix ? theirs.length - (slots - slot) : slot;
+			const oursIdx =
+				pairs?.[slot][0] ?? (suffix ? ours.length - (slots - slot) : slot);
+			const theirsIdx =
+				pairs?.[slot][1] ?? (suffix ? theirs.length - (slots - slot) : slot);
 			const left =
 				suffix && oursIdx < head
 					? undefined
@@ -122,7 +131,7 @@ export function buildMergeSideRows(
 							ours,
 							oursIdx,
 							oursFirst,
-							`ours-${regionIdx}-${oursIdx}`,
+							pickKey("ours", regionIdx, oursIdx),
 						);
 			const right =
 				suffix && theirsIdx < head
@@ -131,7 +140,7 @@ export function buildMergeSideRows(
 							theirs,
 							theirsIdx,
 							theirsFirst,
-							`theirs-${regionIdx}-${theirsIdx}`,
+							pickKey("theirs", regionIdx, theirsIdx),
 						);
 			rows.push({
 				type: conflict ? "conflict-line" : "context",
@@ -269,14 +278,9 @@ function anchorContext(
 	}
 }
 
-export function mergeScrollLayouts(
-	model: ReturnType<typeof buildMergeSideRows>,
-	regions: readonly (readonly string[])[],
-	columns: number,
-) {
+function anchors() {
 	const side: number[] = [];
 	const output: number[] = [];
-	let top = 0;
 
 	// Consecutive short lines share one slope; a long file with the same
 	// geometry in both panes only needs its first and last scroll anchors.
@@ -295,34 +299,147 @@ export function mergeScrollLayouts(
 			output.push(y);
 		}
 	}
-	append(0, 0);
+	return { side, output, append };
+}
 
-	for (const [index, lines] of regions.entries()) {
-		const start = model.regionRows[index];
-		const end = model.regionRows[index + 1];
-		const heights =
-			columns > 0
-				? buildOffsets(lines.map((line) => mergeLineHeight(line, columns)))
-				: null;
-		const anchor = (row: number, line: number) =>
-			append(
-				model.offsets[row],
-				top + (heights ? heights[line] : line * MERGE_LINE_HEIGHT),
-			);
-		const gap = model.gaps.get(index);
-		if (gap) {
-			const head = Math.min(gap.head, lines.length);
-			const tail = Math.max(head, lines.length - gap.tail);
-			anchorContext(model, start, gap.row, lines, 0, head, anchor);
-			anchor(gap.row, head);
-			anchor(gap.row + 1, tail);
-			anchorContext(model, gap.row + 1, end, lines, tail, lines.length, anchor);
-		} else if (model.rows[start]?.type === "context") {
-			anchorContext(model, start, end, lines, 0, lines.length, anchor);
-		}
-		anchor(end, lines.length);
-		top += heights ? heights[lines.length] : lines.length * MERGE_LINE_HEIGHT;
+interface RegionScroll {
+	height: number;
+	toOutput(side: MergeSide, y: number): number;
+	toSide(y: number): number;
+}
+
+type SideRows = ReturnType<typeof buildMergeSideRows>;
+
+function contextScroll(
+	model: SideRows,
+	index: number,
+	lines: readonly string[],
+	columns: number,
+): RegionScroll {
+	const { side, output, append } = anchors();
+	append(0, 0);
+	const start = model.regionRows[index];
+	const end = model.regionRows[index + 1];
+	const heights =
+		columns > 0
+			? buildOffsets(lines.map((line) => mergeLineHeight(line, columns)))
+			: null;
+	const anchor = (row: number, line: number) =>
+		append(
+			model.offsets[row] - model.regionTops[index],
+			heights ? heights[line] : line * MERGE_LINE_HEIGHT,
+		);
+	const gap = model.gaps.get(index);
+	if (gap) {
+		const head = Math.min(gap.head, lines.length);
+		const tail = Math.max(head, lines.length - gap.tail);
+		anchorContext(model, start, gap.row, lines, 0, head, anchor);
+		anchor(gap.row, head);
+		anchor(gap.row + 1, tail);
+		anchorContext(model, gap.row + 1, end, lines, tail, lines.length, anchor);
+	} else {
+		anchorContext(model, start, end, lines, 0, lines.length, anchor);
+	}
+	anchor(end, lines.length);
+	return {
+		height: output[output.length - 1],
+		toOutput: (_, y) => mapOffset(side, output, y),
+		toSide: (y) => mapOffset(output, side, y),
+	};
+}
+
+function conflictScroll(
+	model: SideRows,
+	index: number,
+	region: Extract<MergeRegion, { type: "conflict" }>,
+	columns: number,
+	taken: ReadonlySet<string>,
+): RegionScroll {
+	const base = model.regionTops[index];
+	const start = model.regionRows[index];
+	const end = model.regionRows[index + 1];
+	const sourceHeight = model.regionTops[index + 1] - base;
+	const picks = new Map<
+		string,
+		{ top: number; bottom: number; row?: number }
+	>();
+	let height = 0;
+	for (const { key, text } of pickedConflictLines(region, index, taken)) {
+		const top = height;
+		height += mergeLineHeight(text, columns);
+		picks.set(key, { top, bottom: height });
 	}
 
-	return { side, output };
+	const ours = anchors();
+	const theirs = anchors();
+	ours.append(0, 0);
+	theirs.append(0, 0);
+	for (let row = start; row < end; row++) {
+		const { ours: left, theirs: right } = model.rows[row];
+		const currentPick = left && picks.get(left.key);
+		const incomingPick = right && picks.get(right.key);
+		if (currentPick) currentPick.row = row;
+		if (incomingPick) incomingPick.row = row;
+		for (const [map, pick] of [
+			[ours, currentPick ?? incomingPick],
+			[theirs, incomingPick ?? currentPick],
+		] as const) {
+			if (!pick) continue;
+			map.append(model.offsets[row] - base, pick.top);
+			map.append(model.offsets[row + 1] - base, pick.bottom);
+		}
+	}
+	ours.append(sourceHeight, height);
+	theirs.append(sourceHeight, height);
+
+	// Output emits all Current picks before Incoming. Reading back may move
+	// up the source pane at that boundary, even to a second pick of the same row.
+	const reverse = anchors();
+	for (const pick of picks.values()) {
+		const row = pick.row;
+		if (row === undefined) continue;
+		reverse.append(pick.top, model.offsets[row] - base);
+		reverse.append(pick.bottom, model.offsets[row + 1] - base);
+	}
+	return {
+		height,
+		toOutput(side, y) {
+			const map = side === "ours" ? ours : theirs;
+			return mapOffset(map.side, map.output, y);
+		},
+		toSide: (y) => mapOffset(reverse.side, reverse.output, y),
+	};
+}
+
+/** A pick only changes conflict geometry. Reuse folded/wrapped context until
+ *  the source rows or Output width change. */
+export function mergeScrollLayouts(
+	model: SideRows,
+	regions: readonly MergeRegion[],
+	columns: number,
+) {
+	const layouts = regions.map((region, index) => {
+		if (region.type === "conflict")
+			return (taken: ReadonlySet<string>) =>
+				conflictScroll(model, index, region, columns, taken);
+		const fixed = contextScroll(model, index, region.mergedLines, columns);
+		return () => fixed;
+	});
+	return (taken: ReadonlySet<string>) => {
+		const maps = layouts.map((layout) => layout(taken));
+		const output = layoutFrom(maps.map((map) => map.height));
+		const source = model.regionTops;
+		return {
+			toOutput(side: MergeSide, y: number) {
+				const i = regionAt(source, y);
+				return (
+					output[i] + (maps[i]?.toOutput(side, y - source[i]) ?? y - source[i])
+				);
+			},
+			toSide(y: number) {
+				const i = regionAt(output, y);
+				return source[i] + (maps[i]?.toSide(y - output[i]) ?? y - output[i]);
+			},
+		};
+	};
 }

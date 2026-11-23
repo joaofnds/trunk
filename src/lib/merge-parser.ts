@@ -1,5 +1,27 @@
 import type { MergeRegion } from "./types.js";
 
+export function pickKey(
+	side: string,
+	region: number,
+	line: number | "none",
+): string {
+	return `${side}-${region}-${line}`;
+}
+
+export function* pickedConflictLines(
+	region: Extract<MergeRegion, { type: "conflict" }>,
+	index: number,
+	taken: ReadonlySet<string>,
+) {
+	for (const side of ["ours", "theirs"] as const) {
+		const lines = side === "ours" ? region.oursLines : region.theirsLines;
+		for (let i = 0; i < lines.length; i++) {
+			const key = pickKey(side, index, i);
+			if (taken.has(key)) yield { key, text: lines[i] };
+		}
+	}
+}
+
 /**
  * The merged output's lines, one list per region: the text git merged, and for
  * a conflict the lines taken from it, the current side's before the incoming.
@@ -10,25 +32,134 @@ export function outputRegions(
 ): (readonly string[])[] {
 	return regions.map((region, i) => {
 		if (region.type === "merged") return region.mergedLines;
-		return [
-			...region.oursLines.filter((_, j) => takenLines.has(`ours-${i}-${j}`)),
-			...region.theirsLines.filter((_, j) =>
-				takenLines.has(`theirs-${i}-${j}`),
-			),
-		];
+		return Array.from(
+			pickedConflictLines(region, i, takenLines),
+			(line) => line.text,
+		);
 	});
 }
 
 /** The line ending most of the file's lines carry, which typed output is saved
  *  with because a textarea hands back every line ending as a bare newline. */
 export function lineEndingOf(regions: readonly MergeRegion[]): "\r\n" | "\n" {
-	const lines = regions.flatMap((region) => [
-		...region.oursLines,
-		...region.theirsLines,
-	]);
-	const crlf = lines.filter((line) => line.endsWith("\r")).length;
+	// A separator exists between consecutive entries of each source stream.
+	let breaks = 0;
+	let crlf = 0;
+	for (const side of ["oursLines", "theirsLines"] as const) {
+		let previous: string | undefined;
+		for (const region of regions) {
+			const lines =
+				region.type === "merged" ? region.mergedLines : region[side];
+			for (const line of lines) {
+				if (previous !== undefined) {
+					breaks++;
+					if (previous.endsWith("\r")) crlf++;
+				}
+				previous = line;
+			}
+		}
+	}
+	return crlf * 2 > breaks ? "\r\n" : "\n";
+}
 
-	return crlf * 2 > lines.length ? "\r\n" : "\n";
+/** The textarea reports LF throughout. Preserve the original bytes outside
+ * the edited range, including the individual endings of mixed-ending files. */
+export function editedOutput(
+	previous: string,
+	value: string,
+	ending: string,
+	edit?: { start: number; end: number },
+): string {
+	if (ending === "\n" && !previous.includes("\r")) return value;
+	let from = 0,
+		start = 0;
+	let to = previous.length,
+		end = value.length;
+	const prefixLimit = edit ? Math.min(edit.start, edit.end) : end;
+	while (from < to && start < prefixLimit) {
+		const cr = previous[from] === "\r";
+		if ((cr ? "\n" : previous[from]) !== value[start]) break;
+		from += cr && previous[from + 1] === "\n" ? 2 : 1;
+		start++;
+	}
+	const suffixLimit = edit?.end ?? start;
+	while (to > from && end > suffixLimit) {
+		const last = previous[to - 1];
+		if ((last === "\r" ? "\n" : last) !== value[end - 1]) break;
+		to -= last === "\n" && to - 1 > from && previous[to - 2] === "\r" ? 2 : 1;
+		end--;
+	}
+	return (
+		previous.slice(0, from) +
+		value.slice(start, end).replaceAll("\n", ending) +
+		previous.slice(to)
+	);
+}
+
+/** Native Undo can combine several input events. Keep their byte-level changes
+ * only for buffers where normalizing a newline would throw away its spelling. */
+export function createMergeEditHistory() {
+	type Change = { at: number; before: string; after: string };
+	const changes: Change[] = [];
+	let cursor = 0;
+	let last: string | undefined;
+	return (
+		previous: string,
+		value: string,
+		ending: string,
+		edit?: { start: number; end: number },
+		inputType?: string,
+	) => {
+		if (previous !== last) {
+			changes.length = 0;
+			cursor = 0;
+		}
+		const undo = inputType === "historyUndo";
+		if (undo || inputType === "historyRedo") {
+			let raw = previous;
+			let i = cursor;
+			while (undo ? i > 0 : i < changes.length) {
+				const change = changes[undo ? --i : i++];
+				const removed = undo ? change.after : change.before;
+				const added = undo ? change.before : change.after;
+				raw =
+					raw.slice(0, change.at) +
+					added +
+					raw.slice(change.at + removed.length);
+				if (raw.replace(/\r\n?/g, "\n") === value) {
+					cursor = i;
+					last = raw;
+					return raw;
+				}
+			}
+		}
+		const next = editedOutput(previous, value, ending, edit);
+		// A file using only its default ending can rely on the native undo stack.
+		if (
+			changes.length ||
+			(ending === "\n"
+				? previous.includes("\r")
+				: /\r(?!\n)|(?<!\r)\n/.test(previous))
+		) {
+			let at = 0;
+			const common = Math.min(previous.length, next.length);
+			while (at < common && previous[at] === next[at]) at++;
+			let tail = 0;
+			while (
+				tail < common - at &&
+				previous[previous.length - tail - 1] === next[next.length - tail - 1]
+			)
+				tail++;
+			changes.splice(cursor, changes.length - cursor, {
+				at,
+				before: previous.slice(at, previous.length - tail),
+				after: next.slice(at, next.length - tail),
+			});
+			cursor++;
+		}
+		last = next;
+		return next;
+	};
 }
 
 /** The merged output text from regions and selection state. */
@@ -51,8 +182,8 @@ export function sideKeys(
 ): string[] {
 	const region = regions[regionIdx];
 	const lines = side === "ours" ? region.oursLines : region.theirsLines;
-	if (lines.length === 0) return [`${side}-${regionIdx}-none`];
-	return lines.map((_, j) => `${side}-${regionIdx}-${j}`);
+	if (lines.length === 0) return [pickKey(side, regionIdx, "none")];
+	return lines.map((_, j) => pickKey(side, regionIdx, j));
 }
 
 function takeAll(

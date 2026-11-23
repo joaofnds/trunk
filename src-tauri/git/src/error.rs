@@ -7,6 +7,8 @@ pub struct TrunkError {
     /// The message of the pull safety copy the failed pull kept in the stash list.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pull_safety_copy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_revision: Option<String>,
 }
 
 impl TrunkError {
@@ -15,6 +17,7 @@ impl TrunkError {
             code: code.into(),
             message: message.into(),
             pull_safety_copy: None,
+            working_revision: None,
         }
     }
 

@@ -28,6 +28,7 @@ use cap_std::fs::{Dir, OpenOptions};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::io::{self, Read};
+mod publication;
 use std::path::Path;
 
 /// Which version of a file to read.
@@ -181,6 +182,18 @@ fn read_validated_working_tree_file(
     repo: &git2::Repository,
     path: &ValidatedRelativePath<'_>,
 ) -> Result<Vec<u8>, TrunkError> {
+    let directory = open_parent(repo, path)?;
+    let mut file = open_regular_file(&directory, path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| io_error(path.input, error))?;
+    Ok(bytes)
+}
+
+fn open_parent(
+    repo: &git2::Repository,
+    path: &ValidatedRelativePath<'_>,
+) -> Result<Dir, TrunkError> {
     let workdir = repo
         .workdir()
         .ok_or_else(|| TrunkError::new("bare_repo", "cannot read working tree of a bare repo"))?;
@@ -193,7 +206,14 @@ fn read_validated_working_tree_file(
             .map_err(|error| path_open_error(path.input, error))?;
     }
 
-    let mut file = directory
+    Ok(directory)
+}
+
+fn open_regular_file(
+    directory: &Dir,
+    path: &ValidatedRelativePath<'_>,
+) -> Result<cap_std::fs::File, TrunkError> {
+    let file = directory
         .open_with(path.file_name, &no_link_open_options())
         .map_err(|error| path_open_error(path.input, error))?;
     let metadata = file
@@ -210,10 +230,198 @@ fn read_validated_working_tree_file(
         ));
     }
 
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|error| io_error(path.input, error))?;
-    Ok(bytes)
+    Ok(file)
+}
+
+/// The working bytes and filesystem identity that a Mark Resolved confirmation covers.
+/// A missing path represents a deletion. A link carries its target bytes.
+pub struct ResolutionFile {
+    pub bytes: Vec<u8>,
+    pub mode: u32,
+    pub device: u64,
+    pub inode: u64,
+    pub permissions: u32,
+}
+
+impl ResolutionFile {
+    const fn deleted() -> Self {
+        Self {
+            bytes: Vec::new(),
+            mode: 0,
+            device: 0,
+            inode: 0,
+            permissions: 0,
+        }
+    }
+
+    /// # Errors
+    ///
+    /// Refuses linked parents and working entries Git cannot stage as a file.
+    pub fn read(repo: &git2::Repository, input: &str) -> Result<Self, TrunkError> {
+        use cap_fs_ext::MetadataExt;
+        let path = ValidatedRelativePath::parse(input)?;
+        let root = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
+        let mut parent = Dir::open_ambient_dir(root, cap_std::ambient_authority())
+            .map_err(|e| io_error(input, e))?;
+        for name in &path.parents {
+            match parent.open_dir_nofollow(name) {
+                Ok(dir) => parent = dir,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Self::deleted()),
+                Err(e) => return Err(io_error(input, e)),
+            }
+        }
+
+        let metadata = match parent.symlink_metadata(path.file_name) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Self::deleted()),
+            Err(e) => return Err(io_error(input, e)),
+        };
+        let (bytes, mode, metadata) = if metadata.is_symlink() {
+            let target = parent
+                .read_link_contents(path.file_name)
+                .map_err(|e| io_error(input, e))?;
+            (
+                target.as_os_str().as_encoded_bytes().to_vec(),
+                0o120_000,
+                metadata,
+            )
+        } else if metadata.is_dir() {
+            let dir = parent
+                .open_dir_nofollow(path.file_name)
+                .map_err(|e| io_error(input, e))?;
+            let nested = git2::Repository::open_ext(
+                root.join(input),
+                git2::RepositoryOpenFlags::NO_SEARCH,
+                std::iter::empty::<&Path>(),
+            )?;
+            let oid = nested.head()?.peel_to_commit()?.id();
+            (
+                oid.as_bytes().to_vec(),
+                0o160_000,
+                dir.dir_metadata().map_err(|e| io_error(input, e))?,
+            )
+        } else {
+            let mut file = open_regular_file(&parent, &path)?;
+            let metadata = file.metadata().map_err(|e| io_error(input, e))?;
+            #[cfg(unix)]
+            let executable =
+                cap_std::fs::PermissionsExt::mode(&metadata.permissions()) & 0o100 != 0;
+            #[cfg(not(unix))]
+            let executable = false;
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)
+                .map_err(|e| io_error(input, e))?;
+            (
+                bytes,
+                if executable { 0o100_755 } else { 0o100_644 },
+                metadata,
+            )
+        };
+        Ok(Self {
+            bytes,
+            mode,
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            #[cfg(unix)]
+            permissions: cap_std::fs::PermissionsExt::mode(&metadata.permissions()),
+            #[cfg(not(unix))]
+            permissions: u32::from(metadata.permissions().readonly()),
+        })
+    }
+}
+
+/// An open destination and the bytes a resolution must still agree with.
+pub struct WorkingTreeEdit<'a> {
+    directory: Dir,
+    path: ValidatedRelativePath<'a>,
+    file: cap_std::fs::File,
+    permissions: cap_std::fs::Permissions,
+    bytes: Vec<u8>,
+}
+
+impl<'a> WorkingTreeEdit<'a> {
+    /// # Errors
+    ///
+    /// Refuses missing files, links and non-regular paths below the workdir.
+    pub fn open(repo: &git2::Repository, input: &'a str) -> Result<Self, TrunkError> {
+        let path = ValidatedRelativePath::parse(input)?;
+        let directory = open_parent(repo, &path)?;
+        let mut file = open_regular_file(&directory, &path)?;
+        let permissions = file
+            .metadata()
+            .map_err(|e| io_error(input, e))?
+            .permissions();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| io_error(input, e))?;
+
+        Ok(Self {
+            directory,
+            path,
+            file,
+            permissions,
+            bytes,
+        })
+    }
+
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    #[must_use]
+    pub fn executable(&self) -> bool {
+        #[cfg(unix)]
+        {
+            use cap_std::fs::PermissionsExt;
+            self.permissions.mode() & 0o100 != 0
+        }
+        #[cfg(not(unix))]
+        false
+    }
+
+    /// # Errors
+    ///
+    /// Returns `conflict_changed` if the path or content changed while staging,
+    /// or a filesystem error if the replacement could not be prepared or installed.
+    pub fn replace(self, repo: &git2::Repository, bytes: &[u8]) -> Result<(), TrunkError> {
+        let current = Self::open(repo, self.path.input).map_err(|_| Self::changed())?;
+        if !self.same_file(&current)? || self.bytes != current.bytes {
+            return Err(Self::changed());
+        }
+        if self.bytes == bytes {
+            return Ok(());
+        }
+
+        drop(current);
+        self.publish(bytes)
+    }
+
+    fn same_file(&self, other: &Self) -> Result<bool, TrunkError> {
+        use cap_fs_ext::MetadataExt;
+        let metadata =
+            |f: io::Result<cap_std::fs::Metadata>| f.map_err(|e| io_error(self.path.input, e));
+        let same = |a: cap_std::fs::Metadata, b: cap_std::fs::Metadata| {
+            a.dev() == b.dev() && a.ino() == b.ino()
+        };
+        Ok(same(
+            metadata(self.file.metadata())?,
+            metadata(other.file.metadata())?,
+        ) && same(
+            metadata(self.directory.dir_metadata())?,
+            metadata(other.directory.dir_metadata())?,
+        ) && self.permissions == other.permissions)
+    }
+
+    #[must_use]
+    pub fn changed() -> TrunkError {
+        TrunkError::new(
+            "conflict_changed",
+            "This conflict changed after the editor opened. Copy your draft and reopen the file to review it before staging.",
+        )
+    }
 }
 
 fn no_link_open_options() -> OpenOptions {
@@ -273,7 +481,18 @@ impl WorkingTreeFile {
     }
 }
 
-fn is_binary(bytes: &[u8]) -> bool {
+/// Text that the merge editor can display and save without changing its bytes.
+#[must_use]
+pub fn merge_text(bytes: &[u8]) -> Option<&str> {
+    if is_binary(bytes) {
+        return None;
+    }
+    std::str::from_utf8(bytes).ok()
+}
+
+/// Whether Git classifies the first bytes as binary.
+#[must_use]
+pub fn is_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(GIT_BINARY_PROBE_BYTES).any(|b| *b == 0)
 }
 

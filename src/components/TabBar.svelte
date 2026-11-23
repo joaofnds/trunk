@@ -2,7 +2,11 @@
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
 import type Sortable from "sortablejs";
-import { displayPath } from "../lib/path.js";
+import {
+	displayPath,
+	repositoryParts,
+	repositorySeparator,
+} from "../lib/path.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
@@ -46,7 +50,7 @@ $effect(() => {
 });
 
 // Prefer a complete trailing word when long checkout directories differ there.
-// Keep the whole directory when that abbreviation would identify two checkouts.
+// With no distinct word, show the part where similar directory names diverge.
 function compactAncestor(name: string, peers: string[]): string {
 	if (name.length <= 18) return name;
 	for (const separator of name.matchAll(/[-_. ]+/g)) {
@@ -59,7 +63,24 @@ function compactAncestor(name: string, peers: string[]): string {
 			return `…${tail}`;
 		}
 	}
-	return name;
+	let shared = 0;
+	for (const peer of peers) {
+		let i = 0;
+		while (i < name.length && name[i] === peer?.[i]) i++;
+		shared = Math.max(shared, i);
+	}
+	const start = Math.min(Math.max(0, shared - 5), name.length - 16);
+	const end = start + 16;
+	const excerpt = name.slice(start, end);
+	if (!peers.some((peer) => peer?.includes(excerpt))) {
+		return (start ? "…" : "") + excerpt + (end < name.length ? "…" : "");
+	}
+	const ends = (value: string) => `${value.slice(0, 7)}…${value.slice(-8)}`;
+	const label = ends(name);
+	const similar = peers.filter((peer) => peer && ends(peer) === label);
+	if (!similar.length) return label;
+	const position = [...new Set([...similar, name])].sort().indexOf(name) + 1;
+	return `${label}·${position}`;
 }
 
 // The first different ancestor identifies the checkout. A leading slash
@@ -73,12 +94,13 @@ const parentLabels = $derived.by(() => {
 			paths = new Map();
 			groups.set(repoName, paths);
 		}
-		paths.set(repoPath, repoPath.replace(/\/+$/, "").split("/").slice(0, -1));
+		paths.set(repoPath, repositoryParts(repoPath).slice(0, -1));
 	}
 	const labels = new Map<string, { ancestor: string; tail: string }>();
 	for (const paths of groups.values()) {
 		if (paths.size < 2) continue;
 		for (const [path, parents] of paths) {
+			const separator = repositorySeparator(path);
 			const others = [...paths].filter(([other]) => other !== path);
 			let depth = 1;
 			let suffix = parents.slice(-depth).join("/");
@@ -92,8 +114,8 @@ const parentLabels = $derived.by(() => {
 			const [name, ...tail] = parents.slice(-depth);
 			const peers = others.map(([, parts]) => parts.slice(-depth)[0]);
 			labels.set(path, {
-				ancestor: compactAncestor(name || "/", peers),
-				tail: tail.length ? (name ? "/" : "") + tail.join("/") : "",
+				ancestor: compactAncestor(name || separator, peers),
+				tail: tail.length ? (name ? separator : "") + tail.join(separator) : "",
 			});
 		}
 	}

@@ -29,7 +29,7 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { listsSameFiles } from "../lib/file-status.js";
 import { inertWhile } from "../lib/inert-while.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
-import { focusInEditable } from "../lib/keyboard.js";
+import { focusInEditable, keyInDialog } from "../lib/keyboard.js";
 import {
 	type LoadedDiff,
 	loadedDiffFor,
@@ -102,6 +102,7 @@ import type {
 	WipStats,
 	WorkingTreeStatus,
 } from "../lib/types.js";
+import Button from "../lib/ui/Button.svelte";
 import Splitter from "../lib/ui/Splitter.svelte";
 import { registerUpdateParticipant } from "../lib/updates-context.js";
 import { isUpdateFrozen } from "../lib/updates-lifecycle.js";
@@ -658,6 +659,15 @@ let commitRead: {
 } | null = null;
 let navigationIntent = 0;
 const mergePicks = createMergePicks();
+const unlistedDrafts = $derived.by(() => {
+	if (!repoPath || !cachedStatus) return [];
+	const conflicted = new Set(cachedStatus.conflicted.map((file) => file.path));
+	return mergePicks
+		.draftPaths(repoPath)
+		.filter(
+			(path) => !conflicted.has(path) && !mergePicks.isSaving(repoPath, path),
+		);
+});
 
 // Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
 // Detail/file state loads per pair; a stale response is dropped by generation.
@@ -1155,9 +1165,7 @@ function setStagingSelection(selection: StagingFileSelection | null) {
 }
 
 // A bulk action, a commit or a terminal can move the open file out of the list it
-// was opened from. A conflicted selection describes a conflict, so once the file
-// is no longer conflicted there is nothing left for the merge editor to show,
-// whatever ended the operation. An unstaged or staged file follows itself into
+// was opened from. An unstaged or staged file follows itself into
 // the other list, and closes when it left both.
 function keepSelectionListed(s: WorkingTreeStatus) {
 	const selected = selectedFile;
@@ -1168,6 +1176,11 @@ function keepSelectionListed(s: WorkingTreeStatus) {
 	if (listed(selected.kind)) return;
 
 	if (selected.kind === "conflicted") {
+		if (
+			mergePicks.draftText(repoPath, selected.path) !== undefined ||
+			mergePicks.isSaving(repoPath, selected.path)
+		)
+			return;
 		setStagingSelection(null);
 		return;
 	}
@@ -2336,6 +2349,10 @@ registerUpdateParticipant({
 		};
 		const review = reviewEditors.captureUpdate();
 		const path = repoPath;
+		const mergeDrafts = mergePicks.draftPaths(path);
+		const mergeBlocker = mergeDrafts.length
+			? `Save or discard edited Output for ${mergeDrafts.join(", ")} in ${path} before restarting.`
+			: null;
 		return {
 			generation: JSON.stringify([
 				path,
@@ -2348,7 +2365,7 @@ registerUpdateParticipant({
 				commitRecoveryError ??
 				(!draftLoaded || !reviewRecoveryLoaded
 					? "Wait for saved drafts to finish loading before restarting."
-					: (reviewRecoveryError ?? review.blocker)),
+					: (reviewRecoveryError ?? review.blocker ?? mergeBlocker)),
 			flush: async (permit) => {
 				commitDraftTimer.cancel();
 				unsavedDraft = null;
@@ -2440,7 +2457,7 @@ $effect(() => {
 		if (!tabActive) return;
 		if (e.key !== "Escape") return;
 		// The diff's own Escape, which clears a line selection, has already run.
-		if (e.defaultPrevented || document.querySelector("dialog[open]")) return;
+		if (e.defaultPrevented || keyInDialog(e)) return;
 		// An Escape typed into a field, the merge output included, is the field's.
 		if (focusInEditable(document.activeElement)) return;
 		// The diff or merge editor under the review panel is the one ending the
@@ -2888,6 +2905,7 @@ async function handleRebaseStart(
 										!reviewPanelShown}
 									{repoPath}
 									filePath={conflictedFile.path}
+									unlistedDraft={unlistedDrafts.includes(conflictedFile.path)}
 									onclose={handleDiffClose}
 									onresolved={handleFileResolved}
 									picks={mergePicks}
@@ -3088,7 +3106,22 @@ async function handleRebaseStart(
 						{/snippet}
 					</LazyView>
 				{:else if draftLoaded}
+					{#if unlistedDrafts.length}
+						<section
+							aria-label="Recover merge drafts"
+							class="flex max-h-dropdown-max shrink-0 flex-col items-start gap-1 overflow-auto p-2"
+						>
+							{#each unlistedDrafts as path (path)}
+								<Button
+									size="sm"
+									onclick={() => handleFileSelect(path, "conflicted")}
+									>Recover draft for {path}</Button
+								>
+							{/each}
+						</section>
+					{/if}
 					<StagingPanel
+						{mergePicks}
 						bind:this={stagingPanelRef}
 						{repoPath}
 						currentBranch={headBranch}

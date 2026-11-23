@@ -28,6 +28,7 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { noReviewCounts } from "../__tests__/helpers/review-props.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createMergePicks } from "../lib/merge-picks.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { MergeSides, ReviewTally } from "../lib/types.js";
@@ -645,14 +646,22 @@ describe("StagingPanel", () => {
 });
 
 describe("StagingPanel merge-continue", () => {
+	function resolutions(...paths: string[]) {
+		return paths.map((path) => ({ path, revision: `revision of ${path}` }));
+	}
+
 	function mockMergeState(
 		conflicted: unknown[] = [],
 		unstaged: unknown[] = [],
 		withMarkers: string[] = [],
 	) {
 		mockInvoke.mockReset();
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "conflict_marker_files") return Promise.resolve(withMarkers);
+		mockInvoke.mockImplementation((cmd: string, args = {}) => {
+			if (cmd === "prepare_mark_resolved")
+				return Promise.resolve({
+					files: resolutions(...(args.filePaths as string[])),
+					marked: withMarkers,
+				});
 			if (cmd === "get_status")
 				return Promise.resolve({
 					unstaged,
@@ -756,7 +765,12 @@ describe("StagingPanel merge-continue", () => {
 	it("identifies marking conflicts resolved in a narrow pane", async () => {
 		stubLayout({ width: 200, height: 700, replace: true });
 		mockMergeState([
-			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+			{
+				path: "src/a.ts",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
 		]);
 		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
 
@@ -768,7 +782,12 @@ describe("StagingPanel merge-continue", () => {
 
 	it("hides an empty unstaged list beside a merge's conflicts", async () => {
 		mockMergeState([
-			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+			{
+				path: "src/a.ts",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
 		]);
 
 		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
@@ -779,7 +798,12 @@ describe("StagingPanel merge-continue", () => {
 
 	it("moves a staged conflict into the staged list before the status answers", async () => {
 		mockMergeState([
-			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+			{
+				path: "src/a.ts",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
 		]);
 		const answer = mockInvoke.getMockImplementation();
 		if (answer === undefined) throw new Error("merge state is not mocked");
@@ -828,8 +852,10 @@ describe("StagingPanel merge-continue", () => {
 		});
 
 		function stageCalls() {
-			return mockInvoke.mock.calls.filter(([command]) =>
-				command.startsWith("stage_file"),
+			return mockInvoke.mock.calls.filter(
+				([command]) =>
+					command.startsWith("stage_file") ||
+					command === "mark_conflicts_resolved",
 			);
 		}
 
@@ -864,9 +890,57 @@ describe("StagingPanel merge-continue", () => {
 				await screen.findByRole("button", { name: "Mark All Resolved" }),
 			);
 
-			expect(await callsOnceRefreshed("stage_files")).toEqual([
-				["stage_files", { path: "/repo", filePaths: ["src/a.ts"] }],
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("src/a.ts") },
+				],
 			]);
+		});
+
+		it("keeps Output when the working file changes during the marker warning", async () => {
+			const mergePicks = createMergePicks();
+			mergePicks.set("/repo", "src/a.ts", "original", {
+				taken: new Set(),
+				typed: "keep my output",
+			});
+			const confirmation = deferred<boolean>();
+			vi.mocked(ask)
+				.mockResolvedValueOnce(true)
+				.mockReturnValueOnce(confirmation.promise);
+			const read = mockInvoke.getMockImplementation();
+			if (!read) throw new Error("missing merge state");
+			mockInvoke.mockImplementation((command, args) =>
+				command === "mark_conflicts_resolved"
+					? Promise.reject({
+							code: "conflict_changed",
+							message: "Working file changed",
+						})
+					: read(command, args),
+			);
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo", mergePicks },
+			});
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
+			);
+			await waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+			expect(mockInvoke).toHaveBeenCalledWith("prepare_mark_resolved", {
+				path: "/repo",
+				filePaths: ["src/a.ts"],
+			});
+			expect(stageCalls()).toEqual([]);
+			confirmation.resolve(true);
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("src/a.ts") },
+				],
+			]);
+			expect(mergePicks.draftText("/repo", "src/a.ts")).toBe("keep my output");
+			expect(
+				toasts.items.some((toast) => toast.message === "Working file changed"),
+			).toBe(true);
 		});
 
 		it("asks before the file's own action marks it resolved", async () => {
@@ -911,7 +985,7 @@ describe("StagingPanel merge-continue", () => {
 				await screen.findByRole("button", { name: "Mark All Resolved" }),
 			);
 
-			await callsOnceRefreshed("stage_files");
+			await callsOnceRefreshed("mark_conflicts_resolved");
 			expect(ask).not.toHaveBeenCalled();
 		});
 	});
@@ -987,6 +1061,79 @@ describe("StagingPanel merge-continue", () => {
 			],
 		};
 
+		it("disables both text resolutions for a binary conflict", async () => {
+			mockMergeState([
+				{
+					path: "asset",
+					status: "Conflicted",
+					is_binary: true,
+					can_take_sides: false,
+				},
+			]);
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+			const row = stagingRowFor(await screen.findByTitle("asset"));
+			vi.mocked(MenuItem.new).mockClear();
+
+			await fireEvent.contextMenu(row);
+
+			for (const text of ["Take All Current", "Take All Incoming"]) {
+				await waitFor(() =>
+					expect(MenuItem.new).toHaveBeenCalledWith(
+						expect.objectContaining({ text, enabled: false }),
+					),
+				);
+			}
+		});
+
+		it("keeps edited Output when sidebar replacement is declined", async () => {
+			const mergePicks = createMergePicks();
+			mergePicks.set("/repo", "draft.ts", "snapshot", {
+				taken: new Set(),
+				typed: "my edit",
+			});
+			mockMergeState([
+				{
+					path: "draft.ts",
+					status: "Conflicted",
+					is_binary: false,
+					can_take_sides: true,
+				},
+			]);
+			const read = mockInvoke.getMockImplementation();
+			if (!read) throw new Error("missing merge state");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "get_merge_sides" ? Promise.resolve(sides) : read(cmd, args),
+			);
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo", mergePicks },
+			});
+			vi.mocked(MenuItem.new).mockClear();
+			vi.mocked(ask).mockResolvedValueOnce(false);
+			await fireEvent.contextMenu(
+				stagingRowFor(await screen.findByTitle("draft.ts")),
+			);
+			const action = await waitFor(() => {
+				const item = vi
+					.mocked(MenuItem.new)
+					.mock.calls.find(([info]) => info.text === "Take All Incoming")?.[0];
+				expect(item?.action).toBeDefined();
+				return item?.action;
+			});
+			action?.("Take All Incoming");
+			await waitFor(() =>
+				expect(ask).toHaveBeenCalledWith(
+					expect.stringContaining("draft.ts"),
+					expect.objectContaining({ title: "Replace Edited Output" }),
+				),
+			);
+			expect(mergePicks.get("/repo", "draft.ts")?.picks.typed).toBe("my edit");
+			expect(mockInvoke.mock.calls.map(([command]) => command)).not.toContain(
+				"save_merge_result",
+			);
+		});
+
 		it.each([
 			["Take All Current", "a\nB-ours\nc\nd-ours\ne\nf-theirs\n"],
 			["Take All Incoming", "a\nB-theirs\nc\nd-ours\ne\nf-theirs\n"],
@@ -994,13 +1141,18 @@ describe("StagingPanel merge-continue", () => {
 			"%s takes that side of the conflict and keeps the rest as git merged it",
 			async (text, merged) => {
 				mockMergeState([
-					{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+					{
+						path: "src/a.ts",
+						status: "Conflicted",
+						is_binary: false,
+						can_take_sides: true,
+					},
 				]);
 				const answer = mockInvoke.getMockImplementation();
 				if (answer === undefined) throw new Error("merge state is not mocked");
 				mockInvoke.mockImplementation(
 					(command: string, args?: Record<string, unknown>) =>
-						command === "get_merge_sides"
+						command === "get_merge_sides" && args?.purpose === "resolution"
 							? Promise.resolve(sides)
 							: answer(command, args),
 				);
@@ -1035,9 +1187,24 @@ describe("StagingPanel merge-continue", () => {
 
 	describe("when resolving conflicted files in bulk", () => {
 		const conflicted = [
-			{ path: "src/a.ts", status: "Conflicted", is_binary: false },
-			{ path: "src/b.ts", status: "Conflicted", is_binary: false },
-			{ path: "docs/c.md", status: "Conflicted", is_binary: false },
+			{
+				path: "src/a.ts",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
+			{
+				path: "src/b.ts",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
+			{
+				path: "docs/c.md",
+				status: "Conflicted",
+				is_binary: false,
+				can_take_sides: true,
+			},
 		];
 
 		async function chooseConflictedFolderMenuItem(
@@ -1052,6 +1219,30 @@ describe("StagingPanel merge-continue", () => {
 			mockMergeState(conflicted);
 		});
 
+		it("leaves the manual draft and conflict intact when staging the working file is declined", async () => {
+			const mergePicks = createMergePicks();
+			mergePicks.set("/repo", "src/b.ts", "snapshot", {
+				taken: new Set(),
+				typed: "unsaved",
+			});
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo", mergePicks },
+			});
+			vi.mocked(ask).mockResolvedValueOnce(false);
+			await fireEvent.click(
+				await screen.findByRole("button", { name: "Mark All Resolved" }),
+			);
+			await waitFor(() =>
+				expect(ask).toHaveBeenCalledWith(
+					expect.stringContaining("src/b.ts"),
+					expect.objectContaining({ okLabel: "Stage Working Files" }),
+				),
+			);
+			expect(mockInvoke.mock.calls.map(([name]) => name)).not.toContain(
+				"mark_conflicts_resolved",
+			);
+			expect(mergePicks.get("/repo", "src/b.ts")?.picks.typed).toBe("unsaved");
+		});
 		it("marks every conflicted file resolved in one index update", async () => {
 			render(StagingPanel, {
 				props: { ...noReviewCounts(), repoPath: "/repo" },
@@ -1061,10 +1252,13 @@ describe("StagingPanel merge-continue", () => {
 				await screen.findByRole("button", { name: "Mark All Resolved" }),
 			);
 
-			expect(await callsOnceRefreshed("stage_file")).toEqual([
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
 				[
-					"stage_files",
-					{ path: "/repo", filePaths: ["src/a.ts", "src/b.ts", "docs/c.md"] },
+					"mark_conflicts_resolved",
+					{
+						path: "/repo",
+						files: resolutions("src/a.ts", "src/b.ts", "docs/c.md"),
+					},
 				],
 			]);
 		});
@@ -1088,7 +1282,9 @@ describe("StagingPanel merge-continue", () => {
 				const answer = mockInvoke.getMockImplementation();
 				if (!answer) throw new Error("the panel's reads have no stub");
 				mockInvoke.mockImplementation((cmd, args) =>
-					cmd === "stage_files" ? finished.promise : answer(cmd, args),
+					cmd === "mark_conflicts_resolved"
+						? finished.promise
+						: answer(cmd, args),
 				);
 				render(StagingPanel, {
 					props: {
@@ -1102,7 +1298,7 @@ describe("StagingPanel merge-continue", () => {
 				await resolve();
 				await waitFor(() =>
 					expect(mockInvoke).toHaveBeenCalledWith(
-						"stage_files",
+						"mark_conflicts_resolved",
 						expect.anything(),
 					),
 				);
@@ -1113,6 +1309,43 @@ describe("StagingPanel merge-continue", () => {
 				await waitFor(() => expect(folderAction(/^src \(2\)/)).not.toBeNull());
 			},
 		);
+
+		it("resolves only the files named by the open folder menu when another conflict arrives", async () => {
+			const scheduler = new FakeScheduler();
+			render(StagingPanel, {
+				props: {
+					...noReviewCounts(),
+					repoPath: "/repo",
+					treeViewEnabled: true,
+				},
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			const row = await screen.findByRole("treeitem", { name: /^src \(2\)/ });
+			vi.mocked(MenuItem.new).mockClear();
+			await fireEvent.contextMenu(row);
+			const selected = await waitFor(() => {
+				const item = vi
+					.mocked(MenuItem.new)
+					.mock.calls.find(
+						([options]) => options.text === "Resolve All (2)",
+					)?.[0];
+				expect(item?.action).toBeDefined();
+				return item;
+			});
+			mockMergeState([...conflicted, { ...conflicted[0], path: "src/new.ts" }]);
+			eventHandlers.get("repo-changed")?.({
+				payload: { repo: "/repo", paths: [] },
+			});
+			scheduler.advanceBy(200);
+			await screen.findByRole("treeitem", { name: /^src \(3\)/ });
+			selected?.action?.(selected.text);
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("src/a.ts", "src/b.ts") },
+				],
+			]);
+		});
 
 		it("resolves a conflicted directory in one index update", async () => {
 			render(StagingPanel, {
@@ -1125,8 +1358,11 @@ describe("StagingPanel merge-continue", () => {
 
 			await chooseConflictedFolderMenuItem(/^src \(2\)/, /^Resolve All/);
 
-			expect(await callsOnceRefreshed("stage_file")).toEqual([
-				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("src/a.ts", "src/b.ts") },
+				],
 			]);
 		});
 
@@ -1154,7 +1390,7 @@ describe("StagingPanel merge-continue", () => {
 				options.action?.(options.text);
 			}
 
-			await callsOnceRefreshed("stage_file");
+			await callsOnceRefreshed("mark_conflicts_resolved");
 			const touchingStaged = mockInvoke.mock.calls.filter(([, args]) =>
 				JSON.stringify(args ?? {}).includes("src/main.ts"),
 			);
@@ -1178,8 +1414,11 @@ describe("StagingPanel merge-continue", () => {
 				within(rowWithActions).getByRole("button", { name: "Stage directory" }),
 			);
 
-			expect(await callsOnceRefreshed("stage_file")).toEqual([
-				["stage_files", { path: "/repo", filePaths: ["src/a.ts", "src/b.ts"] }],
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("src/a.ts", "src/b.ts") },
+				],
 			]);
 		});
 
@@ -1202,7 +1441,7 @@ describe("StagingPanel merge-continue", () => {
 			});
 
 			it("reports a failed mark-all to the user", async () => {
-				failCommand("stage_files");
+				failCommand("mark_conflicts_resolved");
 				render(StagingPanel, {
 					props: { ...noReviewCounts(), repoPath: "/repo" },
 				});
@@ -1220,11 +1459,11 @@ describe("StagingPanel merge-continue", () => {
 						},
 					]);
 				});
-				await callsOnceRefreshed("stage_files");
+				await callsOnceRefreshed("mark_conflicts_resolved");
 			});
 
 			it("reports a failed folder resolve to the user", async () => {
-				failCommand("stage_files");
+				failCommand("mark_conflicts_resolved");
 				render(StagingPanel, {
 					props: {
 						...noReviewCounts(),
@@ -1244,7 +1483,7 @@ describe("StagingPanel merge-continue", () => {
 						},
 					]);
 				});
-				await callsOnceRefreshed("stage_files");
+				await callsOnceRefreshed("mark_conflicts_resolved");
 			});
 
 			it("reports a failed refresh after the resolve", async () => {
@@ -1689,7 +1928,12 @@ describe("StagingPanel with no rebase form", () => {
 		"keeps Continue off while a stopped %s still has a conflicted file",
 		async (opType) => {
 			mockOperation(opType, [
-				{ path: "src/a.ts", status: "Conflicted", is_binary: false },
+				{
+					path: "src/a.ts",
+					status: "Conflicted",
+					is_binary: false,
+					can_take_sides: true,
+				},
 			]);
 
 			render(StagingPanel, {

@@ -6,6 +6,8 @@ import {
 } from "../__tests__/helpers/factories.js";
 import {
 	computeOutput,
+	createMergeEditHistory,
+	editedOutput,
 	getConflictIndices,
 	lineEndingOf,
 	outputRegions,
@@ -133,7 +135,22 @@ describe("getConflictIndices", () => {
 });
 
 describe("lineEndingOf", () => {
+	it("types a CRLF when Git normalized the indexed context but the working file uses CRLF", () => {
+		const regions = [
+			gitMergedRegion({
+				ours: ["a", "b", ""],
+				theirs: ["a", "b", ""],
+				merged: ["a\r", "b\r", ""],
+			}),
+		];
+		const raw = computeOutput(regions, new Set());
+		expect(editedOutput(raw, "a\nb\nnext\n", lineEndingOf(regions))).toBe(
+			"a\r\nb\r\nnext\r\n",
+		);
+	});
+
 	it.each([
+		["\r\n", [conflict(["a\r"], ["b\r"]), merged("")]],
 		["\r\n", [merged("a\r", "b\r"), conflict(["c\r"], ["d\r"])]],
 		["\n", [merged("a", "b"), conflict(["c"], ["d"])]],
 		["\n", [merged("a\r", "b", "c"), conflict(["d"], ["e\r"])]],
@@ -143,4 +160,49 @@ describe("lineEndingOf", () => {
 			expect(lineEndingOf(regions)).toBe(ending);
 		},
 	);
+});
+
+describe("editedOutput", () => {
+	it("restores the exact mixed separators when native undo groups edits and redo repeats them", () => {
+		const apply = createMergeEditHistory();
+		const original = "a\r\nb\nc\r\nd";
+		const joined = apply(
+			original,
+			"a\nbc\nd",
+			"\r\n",
+			{ start: 3, end: 3 },
+			"deleteContentForward",
+		);
+		const edited = apply(
+			joined,
+			"a\nb!c\nd",
+			"\r\n",
+			{ start: 3, end: 4 },
+			"insertText",
+		);
+		const undone = apply(
+			edited,
+			"a\nb\nc\nd",
+			"\r\n",
+			{ start: 3, end: 4 },
+			"historyUndo",
+		);
+		expect(undone).toBe(original);
+		expect(apply(undone, "a\nb!c\nd", "\r\n", undefined, "historyRedo")).toBe(
+			edited,
+		);
+	});
+	it("deletes the chosen separator between visually identical blank lines", () => {
+		expect(editedOutput("a\r\n\nb", "a\nb", "\r\n", { start: 1, end: 1 })).toBe(
+			"a\nb",
+		);
+	});
+	it("preserves mixed endings on both sides of an edit", () => {
+		expect(editedOutput("a\r\nb\nc\r\n", "a\nnew\nb\nc\n", "\r\n")).toBe(
+			"a\r\nnew\r\nb\nc\r\n",
+		);
+	});
+	it("keeps an unchanged terminating newline when replacing the last line", () => {
+		expect(editedOutput("a\nb\r\n", "a\nc\n", "\n")).toBe("a\nc\r\n");
+	});
 });

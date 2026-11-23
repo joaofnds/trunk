@@ -230,6 +230,24 @@ export class VisualHarness {
 		);
 	}
 
+	inspectMergeEditor<T>(
+		repository: string,
+		file: string,
+		viewport: { width: number; height: number },
+		test: CaptureTest,
+		measure: (editor: Element) => T,
+	): Promise<T> {
+		return this.onPage(test, (page) =>
+			page.inspectMergeEditor(
+				join(this.repos, repository),
+				file,
+				viewport,
+				test.signal,
+				measure,
+			),
+		);
+	}
+
 	difference(baseline: Buffer, capture: Buffer): Promise<Difference> {
 		return pixelDifference(this.browser, baseline, capture);
 	}
@@ -558,6 +576,36 @@ class AppPage {
 			this.page.locator(".exact-virtual-viewport"),
 			abandoned,
 		);
+	}
+
+	async inspectMergeEditor<T>(
+		path: string,
+		file: string,
+		viewport: { width: number; height: number },
+		abandoned: AbortSignal,
+		measure: (editor: Element) => T,
+	): Promise<T> {
+		const options = { signal: abandoned };
+		try {
+			await this.openRepository(path, {}, abandoned);
+			await this.page
+				.getByTestId("staging-file")
+				.getByTitle(file, { exact: true })
+				.click(options);
+			const editor = this.page.getByRole("region", {
+				name: "Merge editor",
+				exact: true,
+			});
+			await editor
+				.getByRole("textbox", { name: "Merge output" })
+				.waitFor(options);
+			await this.page.setViewportSize(viewport);
+			await this.idle(abandoned);
+
+			return await editor.evaluate(measure, undefined, options);
+		} finally {
+			await this.page.setViewportSize(VIEWPORT);
+		}
 	}
 
 	describeHost(): string {

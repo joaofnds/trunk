@@ -30,6 +30,19 @@ function normalizeKey(key: string): string {
 	return key.length === 1 ? key.toLowerCase() : key;
 }
 
+/** A background tab can keep an anchored dialog mounted while another tab owns the keyboard. */
+export function keyInDialog(event: KeyboardEvent): boolean {
+	const target =
+		event.target instanceof Element ? event.target : document.activeElement;
+	if (target?.closest("dialog[open]")) return true;
+
+	return Array.from(document.querySelectorAll("dialog:modal")).some(
+		(dialog) =>
+			dialog.getClientRects().length > 0 &&
+			getComputedStyle(dialog).visibility === "visible",
+	);
+}
+
 /** Whether the focused element consumes typing, so plain-key shortcuts must stand down. */
 export function focusInEditable(active: Element | null): boolean {
 	if (!(active instanceof HTMLElement)) return false;

@@ -174,6 +174,7 @@ export interface FileStatus {
 	old_path: string | null;
 	status: FileStatusType;
 	is_binary: boolean;
+	can_take_sides?: boolean;
 }
 
 /** One row of the file finder's source list, from `list_tracked_files`. */
@@ -244,6 +245,10 @@ export type MergeRegion =
 	  };
 
 export interface MergeSides {
+	/** In a refined conflict, the Incoming index partnered with each Current line. */
+	readonly conflict_partners?: Readonly<
+		Record<number, readonly (number | null)[]>
+	>;
 	readonly revision: string;
 	readonly base_oid: string | null;
 	readonly current_label: string | null;

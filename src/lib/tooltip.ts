@@ -123,11 +123,32 @@ function attachTooltip(
 		hide();
 	}
 
+	function readReport(event: KeyboardEvent) {
+		if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+			return;
+		if (
+			document.activeElement !== node ||
+			!el?.classList.contains("tooltip-pop-scrollable")
+		)
+			return;
+		if (event.key === "PageDown" || event.key === "PageUp") {
+			el.scrollTop +=
+				event.key === "PageDown" ? el.clientHeight : -el.clientHeight;
+		} else if (event.key === "Escape") {
+			hide();
+		} else {
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
 	node.addEventListener("mouseenter", scheduleShow);
 	node.addEventListener("mouseleave", leave);
 	node.addEventListener("focus", scheduleShow);
 	node.addEventListener("blur", hide);
 	node.addEventListener("click", hide);
+	node.addEventListener("keydown", readReport);
 
 	return {
 		update(next: string) {
@@ -141,6 +162,7 @@ function attachTooltip(
 			node.removeEventListener("focus", scheduleShow);
 			node.removeEventListener("blur", hide);
 			node.removeEventListener("click", hide);
+			node.removeEventListener("keydown", readReport);
 		},
 	};
 }

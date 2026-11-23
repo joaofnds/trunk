@@ -81,6 +81,11 @@ impl UserGit {
         })
     }
 
+    pub fn stdin(&mut self, input: Stdio) -> &mut Self {
+        self.0.stdin(input);
+        self
+    }
+
     /// Starts git in a process group of its own, for a command the user can cancel
     /// while it runs.
     ///
@@ -178,6 +183,26 @@ impl RunningGit {
         self.child.id()
     }
 
+    /// # Errors
+    ///
+    /// Stops and joins Git and its filter process group when the deadline expires.
+    pub async fn wait_bounded(self, budget: std::time::Duration) -> io::Result<Output> {
+        let pid = self.id();
+        let mut wait = std::pin::pin!(self.wait());
+        if let Ok(result) = tokio::time::timeout(budget, &mut wait).await {
+            return result;
+        }
+
+        if let Some(pid) = pid {
+            crate::remote_ops::RemoteProcess::background(pid).stop();
+        }
+        wait.await?;
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "Git's clean filter timed out.",
+        ))
+    }
+
     /// Waits for git to exit and returns its status and what it printed.
     ///
     /// # Errors
@@ -246,6 +271,28 @@ mod tests {
             stdout: Vec::new(),
             stderr: Vec::new(),
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_blocked_git_process_is_reaped_at_its_deadline() {
+        use std::os::fd::OwnedFd;
+        use std::os::unix::net::UnixStream;
+
+        let (input, _held_open) = UnixStream::pair().unwrap();
+        let mut git = UserGit(Command::new("cat"));
+        git.stdin(OwnedFd::from(input).into());
+        let child = git.spawn().unwrap();
+        let pid = i32::try_from(child.id().unwrap()).unwrap();
+
+        let error = child
+            .wait_bounded(std::time::Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        // The process group must be gone when the caller receives its timeout.
+        assert_eq!(unsafe { libc::kill(-pid, 0) }, -1);
+        assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH));
     }
 
     #[test]

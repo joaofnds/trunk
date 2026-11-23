@@ -5659,10 +5659,12 @@ dependencies = [
  "cap-std",
  "git2",
  "libc",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",
  "windows-sys 0.61.2",
+ "xattr",
 ]
 
 [[package]]

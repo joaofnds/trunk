@@ -4,7 +4,6 @@ import {
 	gitMergedRegion,
 	mergedRegion,
 } from "../__tests__/helpers/factories.js";
-import { mapOffset } from "./merge-scroll.js";
 import {
 	buildMergeSideRows,
 	mergeScrollLayouts,
@@ -12,6 +11,23 @@ import {
 } from "./merge-side-rows.js";
 
 describe(buildMergeSideRows, () => {
+	it("keeps a leading insertion alone and seats the edited values on the same row", () => {
+		const model = buildMergeSideRows(
+			[conflictRegion(["extra", "shortcut: O"], ["shortcut: K"])],
+			null,
+			new Set(),
+			0,
+			undefined,
+			{ 0: [null, 0] },
+		);
+		expect(
+			model.rows.slice(1).map((row) => [row.ours?.key, row.theirs?.key]),
+		).toEqual([
+			["ours-0-0", undefined],
+			["ours-0-1", "theirs-0-0"],
+		]);
+	});
+
 	it("preserves each side's numbered conflict context while expanding a single gap", () => {
 		const regions = [
 			gitMergedRegion({
@@ -138,6 +154,30 @@ describe(reflowedSideTop, () => {
 });
 
 describe(mergeScrollLayouts, () => {
+	it("anchors repeated picked text to its source line, including both picks on a row", () => {
+		const regions = [
+			conflictRegion(
+				Array(100).fill("duplicate"),
+				Array(100).fill("duplicate"),
+			),
+		];
+		const model = buildMergeSideRows(regions, null, new Set(), 0);
+		const layout = mergeScrollLayouts(
+			model,
+			regions,
+			0,
+		)(new Set(["ours-0-50", "theirs-0-50", "theirs-0-7"]));
+
+		expect(layout.toOutput("ours", model.offsets[51])).toBe(0);
+		expect(layout.toOutput("theirs", model.offsets[51])).toBe(36);
+		expect(layout.toOutput("ours", model.offsets[8])).toBe(18);
+		expect([0, 18, 36].map(layout.toSide)).toEqual([
+			model.offsets[51],
+			model.offsets[8],
+			model.offsets[51],
+		]);
+	});
+
 	it("keeps logical output lines aligned when the side wraps into more rows", () => {
 		const lines = [
 			"x".repeat(240),
@@ -150,10 +190,14 @@ describe(mergeScrollLayouts, () => {
 			20,
 		);
 
-		const { side, output } = mergeScrollLayouts(model, [lines], 60);
+		const layout = mergeScrollLayouts(
+			model,
+			[mergedRegion(...lines)],
+			60,
+		)(new Set());
 
-		expect(mapOffset(side, output, model.offsets[1])).toBe(72);
-		expect(mapOffset(output, side, 72)).toBe(216);
+		expect(layout.toOutput("ours", model.offsets[1])).toBe(72);
+		expect(layout.toSide(72)).toBe(216);
 	});
 
 	it("maps an automatic merge to the lines retained from each side", () => {
@@ -172,10 +216,10 @@ describe(mergeScrollLayouts, () => {
 		];
 		const model = buildMergeSideRows(regions, null, new Set(), 5);
 
-		const { side, output } = mergeScrollLayouts(model, [lines], 50);
+		const layout = mergeScrollLayouts(model, regions, 50)(new Set());
 
-		expect(mapOffset(side, output, model.offsets[1])).toBe(18);
-		expect(mapOffset(side, output, model.offsets[3])).toBe(54);
+		expect(layout.toOutput("ours", model.offsets[1])).toBe(18);
+		expect(layout.toOutput("ours", model.offsets[3])).toBe(54);
 	});
 
 	it("maps the first visible line after a folded gap to its complete output position", () => {
@@ -186,9 +230,9 @@ describe(mergeScrollLayouts, () => {
 		];
 		const model = buildMergeSideRows(regions, 2, new Set(), 0);
 
-		const { side, output } = mergeScrollLayouts(model, [context, ["new"]], 4);
+		const layout = mergeScrollLayouts(model, regions, 4)(new Set(["ours-1-0"]));
 
-		expect(mapOffset(side, output, model.offsets[1])).toBe(7 * 18);
-		expect(mapOffset(output, side, 7 * 18)).toBe(model.offsets[1]);
+		expect(layout.toOutput("ours", model.offsets[1])).toBe(7 * 18);
+		expect(layout.toSide(7 * 18)).toBe(model.offsets[1]);
 	});
 });

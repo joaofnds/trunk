@@ -45,6 +45,8 @@ export interface TrunkError {
 	message: string;
 	/** The stash entry a failed pull kept of the changes it started with. */
 	pull_safety_copy?: string;
+	/** The working copy written by a merge save whose index publication failed. */
+	working_revision?: string;
 }
 
 // Type guard for the TrunkError shape thrown by safeInvoke (a plain object with

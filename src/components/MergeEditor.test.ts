@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
+	act,
 	fireEvent,
 	render,
 	screen,
@@ -22,7 +23,6 @@ import {
 	makeMergeSides,
 	mergedRegion as merged,
 } from "../__tests__/helpers/factories.js";
-import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { createMergePicks } from "../lib/merge-picks.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -84,7 +84,20 @@ describe("MergeEditor", () => {
 		const next = await screen.findByRole("button", { name: "Next conflict" });
 		const previous = screen.getByRole("button", { name: "Previous conflict" });
 		const output = screen.getByRole("textbox", { name: "Merge output" });
-		await fireEvent.keyDown(window, { key: "]" });
+		const inactiveTab = document.createElement("div");
+		inactiveTab.className = "invisible";
+		const anchored = document.createElement("dialog");
+		anchored.open = true;
+		inactiveTab.append(anchored);
+		document.body.append(inactiveTab);
+		onTestFinished(() => inactiveTab.remove());
+		const first = screen.getByRole("button", { name: "1 b" });
+		first.focus();
+		await fireEvent.keyDown(first, { key: "]", altKey: true });
+		const second = screen.getByRole("button", { name: "3 d" });
+		expect(second).toHaveFocus();
+		await fireEvent.click(second);
+		expect(output).toHaveValue("middle\nd");
 		expect(next).toBeDisabled();
 		expect(previous).toBeEnabled();
 		output.focus();
@@ -145,51 +158,46 @@ describe("MergeEditor", () => {
 		expect(output).toHaveValue("[] local draft");
 	});
 
-	it.each([865, 320])(
-		"shows icon-only file view controls above the source panes at %i pixels",
-		async (width) => {
-			stubLayout({ width, height: 480 });
-			onTestFinished(restoreLayout);
-			render(MergeEditor, {
-				props: {
-					repoPath: "/repo",
-					filePath: "src/theme.ts",
-					onclose: vi.fn(),
-					onresolved: vi.fn(),
-				},
-			});
-			const current = await screen.findByRole("region", {
-				name: "Current (Ours)",
-			});
+	it("exposes icon-only diff controls in the file toolbar before the current source", async () => {
+		render(MergeEditor, {
+			props: {
+				repoPath: "/repo",
+				filePath: "src/theme.ts",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		const current = await screen.findByRole("region", {
+			name: "Current (Ours)",
+		});
 
-			const header = screen.getByRole("region", {
-				name: "Merge file controls",
-			});
-			expect(
-				header.compareDocumentPosition(current) &
-					Node.DOCUMENT_POSITION_FOLLOWING,
-			).toBeTruthy();
-			const controls = within(header);
-			expect(
-				controls.getByRole("button", { name: "Path actions for src/theme.ts" }),
-			).toBeVisible();
-			const buttons = [
-				controls.getByRole("button", { name: "Show conflicts with context" }),
-				controls.getByRole("button", { name: "Show invisible characters" }),
-				controls.getByRole("button", { name: "Toggle word wrap" }),
-			];
-			for (const button of buttons) {
-				expect(button, button.title).toHaveClass(
-					"h-control-sm",
-					"w-control-sm",
-					"border-transparent",
-				);
-				expect(button.textContent?.trim(), button.title).toBe("");
-				expect(button.querySelector("svg")).toBeVisible();
-				expect(button).toHaveAccessibleName(button.title);
-			}
-		},
-	);
+		const header = screen.getByRole("region", {
+			name: "Merge file controls",
+		});
+		expect(
+			header.compareDocumentPosition(current) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		const controls = within(header);
+		expect(
+			controls.getByRole("button", { name: "Path actions for src/theme.ts" }),
+		).toBeVisible();
+		const buttons = [
+			controls.getByRole("button", { name: "Show conflicts with context" }),
+			controls.getByRole("button", { name: "Show invisible characters" }),
+			controls.getByRole("button", { name: "Toggle word wrap" }),
+		];
+		for (const button of buttons) {
+			expect(button, button.title).toHaveClass(
+				"h-control-sm",
+				"w-control-sm",
+				"border-transparent",
+			);
+			expect(button.textContent?.trim(), button.title).toBe("");
+			expect(button.querySelector("svg")).toBeVisible();
+			expect(button).toHaveAccessibleName(button.title);
+		}
+	});
 
 	it("shows the new file and accepts edits while its output syntax is pending", async () => {
 		const highlighting = Promise.withResolvers<unknown>();
@@ -305,8 +313,12 @@ describe("MergeEditor", () => {
 		await show("Show conflicts with context");
 		expect(current.queryByText("one")).toBeNull();
 		expect(incoming.queryByText("three")).toBeNull();
-		await fireEvent.click(
-			incoming.getByRole("button", { name: "Expand 1 hidden line" }),
+		const gap = incoming.getByRole("button", { name: "Expand 1 hidden line" });
+		gap.focus();
+		await fireEvent.click(gap);
+		expect(document.activeElement).not.toBe(document.body);
+		expect(document.activeElement).toContainElement(
+			incoming.getByText("three"),
 		);
 		expect(current.getByText("one")).toBeInTheDocument();
 		expect(incoming.getByText("three")).toBeInTheDocument();
@@ -314,7 +326,10 @@ describe("MergeEditor", () => {
 		await show("Toggle word wrap");
 		await show("Show invisible characters");
 		const pick = current.getByRole("button", { name: "7 new value" });
-		expect(pick.querySelector("[data-glyph='→']")?.textContent).toBe("\t");
+		expect(
+			pick.closest(".merge-line")?.querySelector("[data-glyph='→']")
+				?.textContent,
+		).toBe("\t");
 		await fireEvent.click(pick);
 		await show("Show full file");
 		await show("Show conflicts with context");
@@ -390,6 +405,8 @@ describe("MergeEditor", () => {
 			expect(mark.parentElement?.textContent).toBe(text);
 		}
 		const row = within(incoming).getByRole("button", { name: /Ctrl\+K/ });
+		await fireEvent.click(within(incoming).getByRole("mark"));
+		expect(row).toHaveAttribute("aria-pressed", "false");
 		await fireEvent.click(row);
 		expect(row).toHaveAttribute("aria-pressed", "true");
 		expect(screen.getByRole("textbox", { name: "Merge output" })).toHaveValue(
@@ -432,7 +449,7 @@ describe("MergeEditor", () => {
 	});
 
 	it("discards a base reply after the editor moves to another file", async () => {
-		let deliver!: (value: unknown) => void;
+		const pendingBase = Promise.withResolvers<unknown>();
 		mockInvoke.mockImplementation((cmd, args) =>
 			cmd === "get_merge_sides"
 				? Promise.resolve({
@@ -442,9 +459,9 @@ describe("MergeEditor", () => {
 								? "blob"
 								: null,
 					})
-				: new Promise((resolve) => {
-						deliver = resolve;
-					}),
+				: cmd === "get_merge_base"
+					? pendingBase.promise
+					: Promise.resolve(null),
 		);
 		const props = {
 			repoPath: "/repo",
@@ -460,8 +477,8 @@ describe("MergeEditor", () => {
 		);
 		await editor.rerender({ ...props, filePath: "second" });
 		await screen.findByRole("textbox", { name: "Merge output" });
-		deliver({ scope: "conflict", text: "stale" });
-		await Promise.resolve();
+		pendingBase.resolve({ scope: "conflict", text: "stale" });
+		await act(() => pendingBase.promise.then(() => {}));
 		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(
 			screen.queryByRole("button", { name: /Show merge base/ }),
@@ -537,6 +554,73 @@ describe("MergeEditor", () => {
 		expect(output).toHaveValue("first draft");
 		expect(take).toBeEnabled();
 		expect(reset).toBeEnabled();
+	});
+
+	it("reopens and stages the edited draft after the working write succeeded alone", async () => {
+		let firstSave = true;
+		mockInvoke.mockImplementation((cmd, args) => {
+			if (cmd === "get_merge_sides") {
+				if (!args || !("filePath" in args) || args.filePath !== "a")
+					return Promise.resolve(sidesOf(merged("other")));
+				return Promise.resolve(
+					firstSave
+						? MERGE_SIDES
+						: {
+								...sidesOf(merged("first draft")),
+								revision: "after-write",
+							},
+				);
+			}
+			if (cmd === "save_merge_result" && firstSave) {
+				firstSave = false;
+				return Promise.reject({
+					code: "stage_failed",
+					message: "Retry",
+					working_revision: "after-write",
+				});
+			}
+			return Promise.resolve(undefined);
+		});
+		const view = render(MergeEditor, {
+			props: {
+				repoPath: "/r",
+				filePath: "a",
+				onclose: vi.fn(),
+				onresolved: vi.fn(),
+			},
+		});
+		await screen.findByRole("textbox", { name: "Merge output" });
+		const output = () => screen.getByRole("textbox", { name: "Merge output" });
+		const save = () =>
+			screen.getByRole("button", { name: "Save and Mark Resolved" });
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Take All Current" }),
+		);
+		await fireEvent.input(output(), { target: { value: "first draft" } });
+		const originalEditor = output() as HTMLTextAreaElement;
+		originalEditor.setSelectionRange(1, 4, "backward");
+		await fireEvent.click(save());
+		await waitFor(() => expect(output()).not.toHaveAttribute("readonly"));
+		expect(output()).toBe(originalEditor);
+		expect([
+			originalEditor.selectionStart,
+			originalEditor.selectionEnd,
+			originalEditor.selectionDirection,
+		]).toEqual([1, 4, "backward"]);
+		await fireEvent.input(output(), { target: { value: "edited retry" } });
+
+		await view.rerender({ filePath: "b" });
+		await waitFor(() => expect(output()).toHaveValue("other"));
+		await view.rerender({ filePath: "a" });
+		await waitFor(() => expect(output()).toHaveValue("edited retry"));
+		await fireEvent.click(save());
+
+		expect(mockInvoke).toHaveBeenCalledWith("save_merge_result", {
+			path: "/r",
+			filePath: "a",
+			expectedRevision: "after-write",
+			content: "edited retry",
+		});
 	});
 
 	it("renders panel headers after loading", async () => {
@@ -830,7 +914,118 @@ describe("MergeEditor", () => {
 			);
 		});
 
-		it("starts afresh in a file whose sides changed while another file was open", async () => {
+		it("keeps a previous revision's draft available until it is explicitly discarded", async () => {
+			const view = render(MergeEditor, { props });
+			await fireEvent.input(await output(), {
+				target: { value: "my unsaved draft" },
+			});
+			await view.rerender({ filePath: "other" });
+			await screen.findByLabelText("Path actions for other");
+
+			const reread = Promise.withResolvers<MergeSides>();
+			mockInvoke.mockImplementation(async (command) =>
+				command === "get_merge_sides" ? reread.promise : undefined,
+			);
+			await view.rerender({ filePath: props.filePath });
+			expect(screen.getByLabelText("Path actions for other")).toBeVisible();
+			reread.resolve({
+				...sidesOf(merged("new context"), conflict(["ours"], ["theirs"])),
+				revision: "new",
+			});
+			const draft = await screen.findByRole("textbox", {
+				name: "Previous merge draft",
+			});
+			expect(draft).toHaveValue("my unsaved draft");
+			expect(draft).toHaveAttribute("readonly");
+			expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+			await fireEvent.click(screen.getByRole("button", { name: "Copy draft" }));
+			expect(copyPath).toHaveBeenCalledWith("my unsaved draft", "merge draft");
+
+			await view.rerender({ filePath: "other" });
+			await screen.findByLabelText("Path actions for other");
+			await view.rerender({ filePath: props.filePath });
+			await screen.findByRole("textbox", { name: "Previous merge draft" });
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Discard draft and reopen" }),
+			);
+
+			expect(
+				await screen.findByRole("textbox", { name: "Merge output" }),
+			).toHaveValue("new context");
+			expect(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			).toBeDisabled();
+		});
+
+		it("lets another file edit while the first save is pending and routes the late refusal to its own file", async () => {
+			const pending = Promise.withResolvers<void>();
+			mockInvoke.mockImplementation(async (cmd, args) => {
+				if (cmd === "save_merge_result") return pending.promise;
+				if (cmd === "get_merge_sides")
+					return args && "filePath" in args && args.filePath === "b"
+						? sidesOf(merged("second"))
+						: MERGE_SIDES;
+			});
+			const view = render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Take All Current" }),
+			);
+			await fireEvent.input(await output(), {
+				target: { value: "first draft" },
+			});
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			);
+			await view.rerender({ filePath: "b" });
+			const other = await screen.findByDisplayValue("second");
+			expect(other).not.toHaveAttribute("readonly");
+			await fireEvent.input(other, { target: { value: "second draft" } });
+			await view.rerender({ filePath: props.filePath });
+			expect(await screen.findByDisplayValue("first draft")).toHaveAttribute(
+				"readonly",
+			);
+			await view.rerender({ filePath: "b" });
+			await screen.findByDisplayValue("second draft");
+
+			pending.reject({ code: "conflict_changed", message: "Revision changed" });
+
+			expect(await output()).toHaveValue("second draft");
+			expect(await output()).not.toHaveAttribute("readonly");
+			await view.rerender({ filePath: props.filePath });
+			expect(
+				await screen.findByRole("textbox", { name: "Previous merge draft" }),
+			).toHaveValue("first draft");
+		});
+
+		it("opens the draft for recovery immediately when Git refuses a stale save", async () => {
+			const commit = Promise.withResolvers<void>();
+			mockInvoke.mockImplementation(async (cmd) => {
+				if (cmd === "get_merge_sides") return MERGE_SIDES;
+				if (cmd === "save_merge_result") return commit.promise;
+			});
+			render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Take All Current" }),
+			);
+			await fireEvent.input(await output(), { target: { value: "my edits" } });
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			);
+
+			commit.reject({
+				code: "conflict_changed",
+				message: "The revision changed",
+			});
+
+			expect(
+				await screen.findByRole("textbox", { name: "Previous merge draft" }),
+			).toHaveValue("my edits");
+			expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+		});
+
+		it("keeps the output from line picks for recovery when the sides change", async () => {
 			const view = render(MergeEditor, { props });
 			await output();
 			await fireEvent.click(line("theirs two"));
@@ -841,17 +1036,27 @@ describe("MergeEditor", () => {
 			mockInvoke.mockImplementation((cmd: string) =>
 				Promise.resolve(
 					cmd === "get_merge_sides"
-						? sidesOf(
-								merged("changed first"),
-								conflict(["ours one"], ["theirs one", "theirs two"]),
-								merged("last", ""),
-							)
+						? {
+								...sidesOf(
+									merged("changed first"),
+									conflict(["ours one"], ["theirs one", "theirs two"]),
+									merged("last", ""),
+								),
+								revision: "changed snapshot",
+							}
 						: undefined,
 				),
 			);
 
 			await view.rerender({ filePath: "src/main.ts" });
 
+			const previous = await screen.findByRole("textbox", {
+				name: "Previous merge draft",
+			});
+			expect((previous as HTMLTextAreaElement).value).toContain("theirs two");
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Discard draft and reopen" }),
+			);
 			await waitFor(async () =>
 				expect((await output()).value).toContain("changed first"),
 			);
@@ -1197,6 +1402,44 @@ describe("MergeEditor", () => {
 			return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 		}
 
+		it("returns to the selected conflict and selection in the draft", async () => {
+			const view = render(MergeEditor, {
+				props: {
+					repoPath: "/repo",
+					filePath: "a.ts",
+					onclose: vi.fn(),
+					onresolved: vi.fn(),
+				},
+			});
+			const next = await screen.findByRole("button", { name: "Next conflict" });
+			await fireEvent.click(next);
+			const editor = screen.getByRole("textbox") as HTMLTextAreaElement;
+			await fireEvent.input(editor, { target: { value: "edited resolution" } });
+			editor.setSelectionRange(3, 8, "backward");
+			const side = screen
+				.getByRole("region", { name: "Current (Ours)" })
+				.querySelector(".overflow-auto");
+			if (!side) throw new Error("Current has no scrollport");
+			const sideTop = side.scrollTop;
+			editor.scrollTop = 46;
+			await view.rerender({ filePath: "b.ts" });
+			await screen.findByLabelText("Path actions for b.ts");
+
+			await view.rerender({ filePath: "a.ts" });
+
+			const restored = (await screen.findByDisplayValue(
+				"edited resolution",
+			)) as HTMLTextAreaElement;
+			expect(screen.getByText("2/3")).toBeVisible();
+			expect(side.scrollTop).toBe(sideTop);
+			expect(restored.scrollTop).toBe(46);
+			expect([
+				restored.selectionStart,
+				restored.selectionEnd,
+				restored.selectionDirection,
+			]).toEqual([3, 8, "backward"]);
+		});
+
 		it("counts the conflict the user scrolled back to", async () => {
 			render(MergeEditor, {
 				props: {
@@ -1238,6 +1481,41 @@ describe("MergeEditor", () => {
 			);
 		}
 
+		it.each(["missing_file", "unclosed_conflict"])(
+			"keeps the draft available through a %s error and retry",
+			async (code) => {
+				const picks = createMergePicks();
+				picks.set("/test/repo", "logo.png", MERGE_SIDES.revision, {
+					taken: new Set(),
+					typed: "my unsaved output",
+				});
+				failLoad(code, "Working file cannot be read");
+				render(MergeEditor, { props: { ...props(), picks } });
+				expect(
+					await screen.findByRole("textbox", { name: "Previous merge draft" }),
+				).toHaveValue("my unsaved output");
+				mockInvoke.mockResolvedValue(MERGE_SIDES);
+				await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+				expect(
+					await screen.findByRole("textbox", { name: "Merge output" }),
+				).toHaveValue("my unsaved output");
+			},
+		);
+
+		it("disables side choices when the working file has no conflict blocks", async () => {
+			mockInvoke.mockResolvedValue(sidesOf(merged("already resolved")));
+			render(MergeEditor, { props: props() });
+			expect(
+				await screen.findByRole("button", { name: "Take All Incoming" }),
+			).toBeDisabled();
+			expect(
+				screen.getByRole("button", { name: "Take All Current" }),
+			).toBeDisabled();
+			expect(screen.getByRole("textbox", { name: "Merge output" })).toHaveValue(
+				"already resolved",
+			);
+		});
+
 		it("shows why a binary conflict will not open here", async () => {
 			const onclose = vi.fn();
 			failLoad(
@@ -1273,6 +1551,9 @@ describe("MergeEditor", () => {
 				render(MergeEditor, { props: props() });
 
 				expect(await screen.findByText(message)).toBeInTheDocument();
+				expect(
+					screen.getByRole("button", { name: "Close merge editor" }),
+				).toBeEnabled();
 				expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 			},
 		);
@@ -1430,11 +1711,11 @@ describe("MergeEditor", () => {
 			expect(refusal).not.toBeInTheDocument();
 		});
 
-		it("opens a different file at the beginning of horizontally scrolled source lines", async () => {
+		it("pans both source panes and restores the offset for each file", async () => {
 			const longLine = "x".repeat(300);
 			mockInvoke.mockImplementation(async (cmd, args) => {
 				if (cmd === "get_merge_sides" && args && "filePath" in args)
-					return sidesOf(merged(longLine + args.filePath));
+					return sidesOf(merged("short", longLine + args.filePath));
 			});
 			const view = render(MergeEditor, {
 				props: {
@@ -1444,20 +1725,27 @@ describe("MergeEditor", () => {
 					onresolved: vi.fn(),
 				},
 			});
-			const current = within(
-				await screen.findByRole("region", { name: "Current (Ours)" }),
-			);
-			current.getByText(longLine + "a.ts", {
-				selector: ".syntax-highlight",
-			}).scrollLeft = 120;
+			const current = (
+				await screen.findByRole("region", { name: "Current (Ours)" })
+			).querySelector<HTMLElement>(".overflow-auto");
+			const incoming = screen
+				.getByRole("region", { name: "Incoming (Theirs)" })
+				.querySelector<HTMLElement>(".overflow-auto");
+
+			if (!current || !incoming) throw new Error("Missing source scrollport");
+
+			current.scrollLeft = 120;
+			await fireEvent.scroll(current);
+			expect(incoming.scrollLeft).toBe(120);
 			await view.rerender({ filePath: "b.ts" });
-			expect(
-				(
-					await current.findByText(longLine + "b.ts", {
-						selector: ".syntax-highlight",
-					})
-				).scrollLeft,
-			).toBe(0);
+			await screen.findByLabelText("Path actions for b.ts");
+			expect(current.scrollLeft).toBe(0);
+			expect(incoming.scrollLeft).toBe(0);
+
+			await view.rerender({ filePath: "a.ts" });
+			await screen.findByLabelText("Path actions for a.ts");
+			expect(current.scrollLeft).toBe(120);
+			expect(incoming.scrollLeft).toBe(120);
 		});
 
 		it("ignores the earlier file's refusal", async () => {

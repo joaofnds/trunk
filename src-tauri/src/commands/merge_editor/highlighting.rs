@@ -1,7 +1,7 @@
 //! Presentation spans for the exact lines shown in the merge editor.
 
 use crate::syntax;
-use crate::types::{MergeLineSpans, WordSpan};
+use crate::types::{LinePairing, MergeLineSpans, MergePartners, MergePresentation, WordSpan};
 use crate::word_spans;
 use std::time::Instant;
 use syntect::easy::HighlightLines;
@@ -75,13 +75,14 @@ pub(super) fn syntax_for_text(file_path: &str, text: &str) -> Option<MergeLineSp
     Some(pane.spans)
 }
 
-pub(super) fn sides(file_path: &str, regions: &[MergeRegion]) -> (MergeLineSpans, MergeLineSpans) {
+pub(super) fn sides(file_path: &str, regions: &[MergeRegion]) -> MergePresentation {
     let mut ours = Pane::new(file_path);
     let mut theirs = Pane::new(file_path);
     // Only word refinement spends this file-wide budget. Parsing context
     // between conflicts must not starve the next comparison.
     let mut remaining = word_spans::WORD_DIFF_BUDGET;
-    for region in regions {
+    let mut conflict_partners = MergePartners::new();
+    for (index, region) in regions.iter().enumerate() {
         match region {
             MergeRegion::Merged {
                 ours_lines,
@@ -98,13 +99,32 @@ pub(super) fn sides(file_path: &str, regions: &[MergeRegion]) -> (MergeLineSpans
                 let start = Instant::now();
                 let words = word_spans::for_conflict(ours_lines, theirs_lines, start + remaining);
                 remaining = remaining.saturating_sub(start.elapsed());
-                let (old, new) = words.split_at(ours_lines.len().min(words.len()));
+                let spans = words.as_ref().map_or(&[][..], |diff| diff.spans.as_slice());
+                let (old, new) = spans.split_at(ours_lines.len().min(spans.len()));
                 ours.region(ours_lines, old);
                 theirs.region(theirs_lines, new);
+                if let Some(diff) = words
+                    && diff.pairing[0] != LinePairing::Unknown
+                {
+                    let partners = diff.pairing[..ours_lines.len()]
+                        .iter()
+                        .map(|verdict| match verdict {
+                            LinePairing::Partner { line } => {
+                                Some(*line as usize - ours_lines.len())
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    conflict_partners.insert(index, partners);
+                }
             }
         }
     }
-    (ours.spans, theirs.spans)
+    MergePresentation {
+        ours_spans: ours.spans,
+        theirs_spans: theirs.spans,
+        conflict_partners,
+    }
 }
 
 #[cfg(test)]
@@ -130,7 +150,11 @@ mod tests {
     fn text_files_show_the_changed_values_without_a_syntax_grammar() {
         let old = ["  accent: \"cyan\",", "  fontSize: 15,"];
         let new = ["  accent: \"amber\",", "  fontSize: 12,"];
-        let (ours, theirs) = sides("theme.unknown", &[replacements(&old, &new)]);
+        let MergePresentation {
+            ours_spans: ours,
+            theirs_spans: theirs,
+            ..
+        } = sides("theme.unknown", &[replacements(&old, &new)]);
         assert_eq!(emphasis(&ours, 1, old[0]), ["cyan"]);
         assert_eq!(emphasis(&theirs, 1, new[0]), ["amber"]);
         assert_eq!(emphasis(&ours, 2, old[1]), ["15"]);
@@ -153,7 +177,11 @@ mod tests {
                 merged_lines: vec![tail.into()],
             },
         ];
-        let (ours, theirs) = sides("file.ts", &regions);
+        let MergePresentation {
+            ours_spans: ours,
+            theirs_spans: theirs,
+            ..
+        } = sides("file.ts", &regions);
         assert!(
             ours[&2]
                 .iter()
@@ -177,7 +205,9 @@ mod tests {
         ] {
             let last = lines.len() + 1;
             let regions = [replacements(&lines, &[]), replacements(&[old], &[new])];
-            let (ours, _) = sides("file.ts", &regions);
+            let MergePresentation {
+                ours_spans: ours, ..
+            } = sides("file.ts", &regions);
             assert!(ours[&last].iter().all(|span| span.syntax_class.is_empty()));
             assert_eq!(emphasis(&ours, last, old), ["15"]);
         }
@@ -190,7 +220,11 @@ mod tests {
             replacements(&[&huge], &[]),
             replacements(&["const value = 15;"], &["const value = 12;"]),
         ];
-        let (ours, theirs) = sides("file.ts", &regions);
+        let MergePresentation {
+            ours_spans: ours,
+            theirs_spans: theirs,
+            ..
+        } = sides("file.ts", &regions);
         assert!(!ours.contains_key(&1));
         assert!(ours[&2].iter().all(|s| s.syntax_class.is_empty()));
         assert_eq!(emphasis(&ours, 2, "const value = 15;"), ["15"]);

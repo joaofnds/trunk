@@ -20,7 +20,7 @@ interface Props {
 	showInvisibles?: boolean;
 	wrapColumns?: number;
 	element?: HTMLElement;
-	oninput: (event: Event) => void;
+	oninput: (event: Event, previousStart?: number) => void;
 	onscroll: () => void;
 }
 
@@ -42,6 +42,7 @@ let paint = $state.raw<{
 	lines: string[];
 	spans: LineSpans;
 } | null>(null);
+let previousStart: number | undefined;
 let mirror = $state<HTMLPreElement>();
 let disposed = false;
 let unsupportedPath: string | undefined;
@@ -51,9 +52,8 @@ const MAX_PAINT_LENGTH = 128 * 1024;
 const MAX_PAINT_LINES = 1000;
 // The native textarea normalizes CR and CRLF for display. The merge editor
 // keeps the original line endings for saving picks.
-let displayText = $derived(
-	text.length <= MAX_PAINT_LENGTH ? text.replace(/\r\n?/g, "\n") : "",
-);
+let textareaText = $derived(text.replace(/\r\n?/g, "\n"));
+let displayText = $derived(text.length <= MAX_PAINT_LENGTH ? textareaText : "");
 let lines = $derived(displayText.split("\n", MAX_PAINT_LINES + 1));
 let large = $derived(
 	text.length > MAX_PAINT_LENGTH || lines.length > MAX_PAINT_LINES,
@@ -203,16 +203,22 @@ $effect(() => {
 			bind:this={mirror}
 			aria-hidden="true"
 			class="syntax-highlight pointer-events-none select-none overflow-hidden py-1 px-2"
-		>{#if large}<MergeText text={text.replace(/\r\n?/g, "\n")} showInvisibles={true} />{:else if current || markers}{@render paintedLines()}{:else}{displayText}{/if}{"\u200b"}</pre>
+		>{#if large}<MergeText text={textareaText} showInvisibles={true} />{:else if current || markers}{@render paintedLines()}{:else}{displayText}{/if}{"\u200b"}</pre>
 	{/if}
 	<textarea
 		aria-label="Merge output"
 		{readonly}
 		bind:this={element}
-		value={text}
+		value={textareaText}
 		wrap={wordWrap ? "soft" : "off"}
 		spellcheck="false"
-		{oninput}
+		onbeforeinput={(event) => {
+			previousStart = event.currentTarget.selectionStart;
+		}}
+		oninput={(event) => {
+			oninput(event, previousStart);
+			previousStart = undefined;
+		}}
 		onscroll={() => {
 			syncMirror();
 			onscroll();
@@ -249,8 +255,11 @@ $effect(() => {
 	}
 }
 @media (forced-colors: active) {
-	pre {
-		visibility: hidden;
+	textarea.painted {
+		-webkit-text-fill-color: transparent;
+	}
+	textarea.painted::selection {
+		-webkit-text-fill-color: currentColor;
 	}
 }
 </style>

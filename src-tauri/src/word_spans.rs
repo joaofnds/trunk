@@ -113,29 +113,28 @@ fn run_fits(lengths: impl Iterator<Item = usize>) -> bool {
     true
 }
 
-/// Refine the two line sequences the merge editor actually displays. No diff
-/// hunk or line-pairing decision is needed for a conflict.
+/// Refine the two line sequences the merge editor actually displays.
 pub(crate) fn for_conflict(
     ours: &[String],
     theirs: &[String],
     deadline: Instant,
-) -> Vec<Vec<WordSpan>> {
+) -> Option<HunkWordDiff> {
     if ours.is_empty()
         || theirs.is_empty()
         || deadline <= Instant::now()
         || !run_fits(ours.iter().chain(theirs).map(|line| line.len() + 1))
     {
-        return Vec::new();
+        return None;
     }
     let old: Vec<_> = ours.iter().map(String::as_str).collect();
     let new: Vec<_> = theirs.iter().map(String::as_str).collect();
-    let mut result = vec![Vec::new(); old.len() + new.len()];
-    refine_words(&old, &new, (0, old.len()), deadline, |_, _, spans| {
-        for (index, words) in spans {
-            result[index] = words;
-        }
-    });
-    result
+    let len = old.len() + new.len();
+    let mut result = HunkWordDiff {
+        spans: vec![Vec::new(); len],
+        pairing: vec![LinePairing::Unknown; len],
+    };
+    refine_run(&old, &new, (0, old.len()), deadline, &mut result);
+    Some(result)
 }
 
 /// Word-diff one delete run against the add run that follows it and write the
@@ -163,41 +162,15 @@ fn emphasize_run(
         .iter()
         .map(|line| line.content.as_str())
         .collect();
-    refine_words(
-        &old,
-        &new,
-        (del.start, add.start),
-        deadline,
-        |op, accepted, spans| {
-            for (index, words) in spans {
-                result.spans[index] = words;
-            }
-            pair_op_lines(op, accepted, lines, &del, &add, &mut result.pairing);
-        },
-    );
-
-    // The budget ran out inside this run: whatever verdicts the coarse,
-    // deadline-cut refinement produced depend on machine timing, so the run
-    // falls back to positional pairing rather than seating lines by them.
-    if deadline <= Instant::now() {
-        for pairing in &mut result.pairing[del] {
-            *pairing = LinePairing::Unknown;
-        }
-        for pairing in &mut result.pairing[add] {
-            *pairing = LinePairing::Unknown;
-        }
-    }
+    refine_run(&old, &new, (del.start, add.start), deadline, result);
 }
 
-/// Diff the actual line boundaries supplied by Git or the merge editor. In
-/// particular a bare carriage return inside a displayed line stays on that
-/// line. Accepted emphasis and pairing share the same refinement verdict.
-fn refine_words(
+fn refine_run(
     old: &[&str],
     new: &[&str],
     starts: (usize, usize),
     deadline: Instant,
-    mut emit: impl FnMut(&similar::DiffOp, bool, Vec<(usize, Vec<WordSpan>)>),
+    result: &mut HunkWordDiff,
 ) {
     let diff = similar::TextDiffConfig::default()
         .deadline(deadline)
@@ -245,61 +218,57 @@ fn refine_words(
         }
 
         let accepted = refined && emphasis_within(&op_spans, changed_bytes);
-        if !accepted {
-            op_spans.clear();
+        if accepted {
+            for (index, spans) in op_spans {
+                result.spans[index] = spans;
+            }
         }
-        emit(op, accepted, op_spans);
+        pair_op_lines(op, accepted, old, new, starts, &mut result.pairing);
+    }
+    if deadline <= Instant::now() {
+        // A deadline-cut verdict depends on machine timing. Use positional rows.
+        result.pairing[starts.0..starts.0 + old.len()].fill(LinePairing::Unknown);
+        result.pairing[starts.1..starts.1 + new.len()].fill(LinePairing::Unknown);
     }
 }
 
-/// Seat one op's lines. `Equal` lines are identical across the runs and pair
-/// outright. An accepted `Replace` (its refinement produced emphasis and the
-/// op reads as an edit, not a rewrite) pairs
-/// positionally within the op, but each pair must also pass a direct
-/// similarity check of its own two lines — the run-level refinement can
-/// vouch for the run while a positional pair inside it shares nothing (its
-/// real twin sitting one row further), and an uncertain pairing stays
-/// unpaired (the initiative's rule). A refused `Replace` (similar's ratio
-/// gate found the sides unrelated) leaves every line alone. The uneven tail
-/// of an op is alone; one-sided ops have nothing to pair with.
+/// Keep homologous lines on one row. An insertion or deletion in a replacement
+/// can shift the remaining pairs. On a mismatch consume the surplus side first.
 fn pair_op_lines(
     op: &similar::DiffOp,
-    op_accepted: bool,
-    lines: &[DiffLine],
-    del: &std::ops::Range<usize>,
-    add: &std::ops::Range<usize>,
+    accepted: bool,
+    old_lines: &[&str],
+    new_lines: &[&str],
+    starts: (usize, usize),
     pairing: &mut [LinePairing],
 ) {
-    let old = op.old_range();
-    let new = op.new_range();
-
-    for k in 0..old.len().max(new.len()) {
-        let old_idx = (k < old.len()).then(|| del.start + old.start + k);
-        let new_idx = (k < new.len()).then(|| add.start + new.start + k);
-
-        let homologous = match (op.tag(), old_idx, new_idx) {
-            (DiffTag::Equal, _, _) => true,
-            (DiffTag::Replace, Some(o), Some(n)) => {
-                op_accepted && lines_similar(&lines[o].content, &lines[n].content)
+    let mut old = op.old_range();
+    let mut new = op.new_range();
+    pairing[starts.0 + old.start..starts.0 + old.end].fill(LinePairing::Alone);
+    pairing[starts.1 + new.start..starts.1 + new.end].fill(LinePairing::Alone);
+    if op.tag() != DiffTag::Equal && !accepted {
+        return;
+    }
+    while !old.is_empty() && !new.is_empty() {
+        if op.tag() == DiffTag::Equal || lines_similar(old_lines[old.start], new_lines[new.start]) {
+            let o = starts.0 + old.start;
+            let n = starts.1 + new.start;
+            pairing[o] = LinePairing::Partner {
+                line: u32::try_from(n).unwrap_or(u32::MAX),
+            };
+            pairing[n] = LinePairing::Partner {
+                line: u32::try_from(o).unwrap_or(u32::MAX),
+            };
+            old.start += 1;
+            new.start += 1;
+        } else {
+            let order = old.len().cmp(&new.len());
+            if !order.is_lt() {
+                old.start += 1;
             }
-            _ => false,
-        };
-
-        if let Some(o) = old_idx {
-            pairing[o] = match (homologous, new_idx) {
-                (true, Some(n)) => LinePairing::Partner {
-                    line: u32::try_from(n).unwrap_or(u32::MAX),
-                },
-                _ => LinePairing::Alone,
-            };
-        }
-        if let Some(n) = new_idx {
-            pairing[n] = match (homologous, old_idx) {
-                (true, Some(o)) => LinePairing::Partner {
-                    line: u32::try_from(o).unwrap_or(u32::MAX),
-                },
-                _ => LinePairing::Alone,
-            };
+            if !order.is_gt() {
+                new.start += 1;
+            }
         }
     }
 }
@@ -787,6 +756,26 @@ mod word_span_tests {
             pairing[0],
             LinePairing::Partner { line: 1 },
             "the delete shares no words with the first add and must not be seated beside it"
+        );
+    }
+
+    #[test]
+    fn an_inserted_line_does_not_displace_the_edited_line_it_precedes() {
+        let lines = vec![
+            del("const shortcut = 'Ctrl+O';\n"),
+            add("// local edit\n"),
+            add("const shortcut = 'Ctrl+K';\n"),
+        ];
+
+        let pairing = pairings(&lines, word_diff_budget());
+
+        assert_eq!(
+            pairing,
+            [
+                LinePairing::Partner { line: 2 },
+                LinePairing::Alone,
+                LinePairing::Partner { line: 0 }
+            ]
         );
     }
 

@@ -23,6 +23,12 @@ tempfile = { workspace = true }
 cap-std = "4.0.3"
 cap-fs-ext = "4.0.3"
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+xattr = "1"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation"] }
 

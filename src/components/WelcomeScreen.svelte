@@ -1,7 +1,6 @@
 <script lang="ts">
 import X from "@lucide/svelte/icons/x";
-import { splitFilePath } from "../lib/file-path.js";
-import { displayPath, repositoryName } from "../lib/path.js";
+import { displayPath, repositoryName, repositoryParent } from "../lib/path.js";
 import {
 	getRecentRepos,
 	type RecentRepo,
@@ -88,13 +87,10 @@ async function handleRemoveRecent(path: string) {
 				<ul class="flex flex-col gap-1 overflow-y-auto">
 					{#each displayedRepos as repo (repo.path)}
 						{@const name = repositoryName(repo.path)}
-						{@const path = (resolvedPaths[repo.path] ?? repo.path).replace(
-							/\/+$/,
-							"",
+						{@const parent = repositoryParent(
+							repo.path,
+							resolvedPaths[repo.path] ?? repo.path,
 						)}
-						{@const parent =
-							splitFilePath(path).directory ||
-							(path.startsWith("/") ? "/" : "")}
 						<li>
 							<Row
 								variant="entry"

@@ -49,36 +49,6 @@ const fn classify_workdir(s: Status) -> Option<FileStatusType> {
     None
 }
 
-/// A conflicted path has no working-tree blob to inspect — the sides live in the
-/// index at stages 1-3. Any side that is binary makes the merge editor the wrong
-/// tool for the file.
-fn conflict_is_binary(repo: &git2::Repository, file_path: &str) -> bool {
-    let Ok(index) = repo.index() else {
-        return false;
-    };
-    let Ok(conflicts) = index.conflicts() else {
-        return false;
-    };
-
-    for conflict in conflicts.flatten() {
-        let sides = [&conflict.our, &conflict.their, &conflict.ancestor];
-        let names_this_file = sides
-            .iter()
-            .filter_map(|side| side.as_ref())
-            .any(|entry| entry.path == file_path.as_bytes());
-        if !names_this_file {
-            continue;
-        }
-        return sides
-            .iter()
-            .filter_map(|side| side.as_ref())
-            .filter_map(|entry| repo.find_blob(entry.id).ok())
-            .any(|blob| blob.is_binary());
-    }
-
-    false
-}
-
 /// Where a renamed entry came from, taken from the status delta that carries
 /// both sides. `None` whenever the two sides name the same path, which is every
 /// status but a rename — the same rule `commands::diff::file_diff_of` applies,
@@ -127,11 +97,13 @@ pub fn get_status_inner(
 
         // Check for conflicts first
         if status.contains(Status::CONFLICTED) {
+            let sides = super::merge_editor::check_text_sides(&repo, &file_path);
             conflicted.push(FileStatus {
                 path: file_path.clone(),
                 old_path: None,
                 status: FileStatusType::Conflicted,
-                is_binary: conflict_is_binary(&repo, &file_path),
+                can_take_sides: Some(sides.is_ok()),
+                is_binary: sides.is_err_and(|e| e.code == "binary_conflict"),
             });
             continue;
         }
@@ -150,6 +122,7 @@ pub fn get_status_inner(
                 old_path: renamed_from(entry.head_to_index()),
                 status: status_type,
                 is_binary: false,
+                can_take_sides: None,
             });
         }
 
@@ -168,6 +141,7 @@ pub fn get_status_inner(
                 old_path: renamed_from(entry.index_to_workdir()),
                 status: status_type,
                 is_binary: false,
+                can_take_sides: None,
             });
         }
     }
@@ -562,7 +536,9 @@ pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkErr
     state_map.hold_for_writing(path, |repo| {
         let mut index = repo.index()?;
         let conflicted = conflicted_paths(&index)?;
-        let mut skip_conflicted = |file: &Path, _: &[u8]| i32::from(conflicted.contains(file));
+        let mut skip_conflicted = |file: &Path, _: &[u8]| {
+            i32::from(conflicted.contains(file.as_os_str().as_encoded_bytes()))
+        };
         index.add_all(
             std::iter::once(&"*"),
             git2::IndexAddOption::DEFAULT,
@@ -574,7 +550,7 @@ pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkErr
 }
 
 /// Every path the index holds a conflict for, whichever side names it.
-fn conflicted_paths(index: &git2::Index) -> Result<HashSet<PathBuf>, TrunkError> {
+fn conflicted_paths(index: &git2::Index) -> Result<HashSet<Vec<u8>>, TrunkError> {
     let mut paths = HashSet::new();
     for conflict in index.conflicts()? {
         let conflict = conflict?;
@@ -582,9 +558,7 @@ fn conflicted_paths(index: &git2::Index) -> Result<HashSet<PathBuf>, TrunkError>
             .into_iter()
             .flatten()
         {
-            paths.insert(PathBuf::from(
-                String::from_utf8_lossy(&entry.path).into_owned(),
-            ));
+            paths.insert(entry.path);
         }
     }
 

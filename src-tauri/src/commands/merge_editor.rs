@@ -1,9 +1,11 @@
 mod highlighting;
+pub mod mark;
+mod save;
 
 use std::path::Path;
 
 use crate::state::{CommitCache, OpenRepos, RepoState};
-use crate::types::MergeSides;
+use crate::types::{MergePresentation, MergeSides};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use trunk_git::blob_reader::{self, WorkingTreeFile};
@@ -18,30 +20,31 @@ fn conflict_entry(
     repo: &git2::Repository,
     file_path: &str,
 ) -> Result<git2::IndexConflict, TrunkError> {
-    let index = repo.index()?;
-    let mut conflicts = index
-        .conflicts()
-        .map_err(|e| TrunkError::new("conflict_error", e.to_string()))?;
+    let not_conflicted = || {
+        TrunkError::new(
+            "not_conflicted",
+            format!("File not in conflict: {file_path}"),
+        )
+    };
+    let entry = repo
+        .index()?
+        .conflict_get(Path::new(file_path))
+        .map_err(|error| {
+            if error.code() == git2::ErrorCode::NotFound {
+                not_conflicted()
+            } else {
+                error.into()
+            }
+        })?;
+    if [&entry.our, &entry.their, &entry.ancestor]
+        .into_iter()
+        .flatten()
+        .any(|stage| stage.path != file_path.as_bytes())
+    {
+        return Err(not_conflicted());
+    }
 
-    conflicts
-        .find(|entry| {
-            entry.as_ref().is_ok_and(|c| {
-                let entry_path = c
-                    .our
-                    .as_ref()
-                    .or(c.their.as_ref())
-                    .or(c.ancestor.as_ref())
-                    .map(|e| String::from_utf8_lossy(&e.path).into_owned());
-                entry_path.as_deref() == Some(file_path)
-            })
-        })
-        .ok_or_else(|| {
-            TrunkError::new(
-                "not_conflicted",
-                format!("File not in conflict: {file_path}"),
-            )
-        })?
-        .map_err(|e| TrunkError::new("conflict_error", e.to_string()))
+    Ok(entry)
 }
 
 /// The two sides of a conflict where both still hold the file as a file. A deleted
@@ -77,6 +80,30 @@ fn sides_with_text<'a>(
     }
 
     Ok((our, their))
+}
+
+fn binary_conflict(file_path: &str) -> TrunkError {
+    TrunkError::new(
+        "binary_conflict",
+        format!("{file_path} is binary, so resolve it outside the merge editor."),
+    )
+}
+
+fn text_side<'a>(blob: &'a git2::Blob<'_>, path: &str) -> Result<&'a str, TrunkError> {
+    blob_reader::merge_text(blob.content()).ok_or_else(|| binary_conflict(path))
+}
+
+/// The sidebar reads the same indexed sides that the editor would let it take.
+pub(super) fn check_text_sides(
+    repo: &git2::Repository,
+    path: &str,
+) -> Result<git2::IndexConflict, TrunkError> {
+    let conflict = conflict_entry(repo, path)?;
+    let sides: [_; 2] = sides_with_text(&conflict, path)?.into();
+    for side in sides {
+        text_side(&repo.find_blob(side.id)?, path)?;
+    }
+    Ok(conflict)
 }
 
 /// Only name a revision when its tree supplies this side's actual index blob.
@@ -152,8 +179,14 @@ fn incoming_label(repo: &git2::Repository, side: &git2::IndexEntry) -> Option<St
 }
 
 /// Tie a draft to the working bytes and all three index stages it was built from.
-fn merge_revision(working: &[u8], conflict: &git2::IndexConflict) -> Result<String, git2::Error> {
-    let mut stages = Vec::new();
+fn merge_revision(
+    working: &[u8],
+    conflict: &git2::IndexConflict,
+    marker_size: usize,
+    merges_text: bool,
+) -> Result<String, git2::Error> {
+    let mut stages = marker_size.to_be_bytes().to_vec();
+    stages.push(u8::from(merges_text));
     for entry in [&conflict.ancestor, &conflict.our, &conflict.their] {
         if let Some(entry) = entry {
             stages.extend(entry.mode.to_be_bytes());
@@ -192,6 +225,14 @@ fn matches_side(regions: &[conflicted_file::MergeRegion], text: &str, current: b
         .eq(text.split('\n'))
 }
 
+#[derive(Default, Clone, Copy, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeReadPurpose {
+    #[default]
+    Editor,
+    Resolution,
+}
+
 /// The regions of a conflicted file as git left it in the working tree, beside the
 /// two sides the index holds.
 ///
@@ -208,6 +249,7 @@ fn matches_side(regions: &[conflicted_file::MergeRegion], text: &str, current: b
 pub fn get_merge_sides_inner(
     path: &str,
     file_path: &str,
+    purpose: MergeReadPurpose,
     state_map: &OpenRepos,
 ) -> Result<MergeSides, TrunkError> {
     let repo = state_map.open(path)?;
@@ -217,31 +259,24 @@ pub fn get_merge_sides_inner(
     let conflict = conflict_entry(&repo, file_path)?;
     let (our, their) = sides_with_text(&conflict, file_path)?;
 
-    // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
-    // path writes that text back over the file, with both original sides already
-    // dropped from the index. Refusing here is what keeps the sides recoverable.
-    let binary = || {
-        TrunkError::new(
-            "binary_conflict",
-            format!("{file_path} is binary, so resolve it outside the merge editor."),
-        )
-    };
-    let text = |bytes: Vec<u8>| String::from_utf8(bytes).map_err(|_| binary());
-    let ours = text(repo.find_blob(our.id)?.content().to_vec())?;
-    let theirs = text(repo.find_blob(their.id)?.content().to_vec())?;
+    let our_blob = repo.find_blob(our.id)?;
+    let their_blob = repo.find_blob(their.id)?;
+    let ours = text_side(&our_blob, file_path)?;
+    let theirs = text_side(&their_blob, file_path)?;
     let working = match read_working_file(&repo, file_path)? {
-        WorkingTreeFile::Text(bytes) => text(bytes)?,
-        WorkingTreeFile::Binary { .. } => return Err(binary()),
+        WorkingTreeFile::Text(bytes) => {
+            String::from_utf8(bytes).map_err(|_| binary_conflict(file_path))?
+        }
+        WorkingTreeFile::Binary { .. } => return Err(binary_conflict(file_path)),
     };
-    let sides = Sides {
-        ours: &ours,
-        theirs: &theirs,
-    };
+    let sides = Sides { ours, theirs };
 
-    let regions = if working == ours && !git_merges_text(&repo, file_path)? {
+    let marker_size = conflict_marker_size(&repo, file_path)?;
+    let merges_text = git_merges_text(&repo, file_path)?;
+    let regions = if working == ours && !merges_text {
         conflicted_file::unmerged_regions(sides)?
     } else {
-        conflicted_file::regions(sides, &working, conflict_marker_size(&repo, file_path)?)
+        conflicted_file::regions(sides, &working, marker_size)
             .map_err(|error| match error {
                 ReadError::UnclosedConflict => TrunkError::new(
                     "unclosed_conflict",
@@ -252,20 +287,33 @@ pub fn get_merge_sides_inner(
                 ReadError::Git(error) => error.into(),
             })?
     };
-    let (ours_spans, theirs_spans) = highlighting::sides(file_path, &regions);
+    let editor = purpose == MergeReadPurpose::Editor;
+    if !editor
+        && !regions
+            .iter()
+            .any(|region| matches!(region, conflicted_file::MergeRegion::Conflict { .. }))
+    {
+        return Err(TrunkError::new(
+            "no_conflict_regions",
+            "No conflict blocks remain. Use Mark Resolved to stage the working file.",
+        ));
+    }
     Ok(MergeSides {
-        ours_spans,
-        theirs_spans,
-        revision: merge_revision(working.as_bytes(), &conflict)?,
+        presentation: if editor {
+            highlighting::sides(file_path, &regions)
+        } else {
+            MergePresentation::default()
+        },
+        revision: merge_revision(working.as_bytes(), &conflict, marker_size, merges_text)?,
         base_oid: conflict
             .ancestor
             .as_ref()
             .filter(|entry| entry.mode & 0o170_000 == 0o100_000)
             .map(|entry| entry.id.to_string()),
-        current_label: matches_side(&regions, &ours, true)
+        current_label: matches_side(&regions, ours, true)
             .then(|| current_label(&repo, our))
             .flatten(),
-        incoming_label: matches_side(&regions, &theirs, false)
+        incoming_label: matches_side(&regions, theirs, false)
             .then(|| incoming_label(&repo, their))
             .flatten(),
         regions,
@@ -283,6 +331,7 @@ pub struct MergeBaseSelection {
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "scope", content = "text", rename_all = "lowercase")]
 pub enum MergeBaseView {
+    Empty,
     Conflict(String),
     File(String),
 }
@@ -335,7 +384,11 @@ pub fn get_merge_base_inner(
             base,
         )
     {
-        return Ok(MergeBaseView::Conflict(excerpt));
+        return Ok(if excerpt.is_empty() {
+            MergeBaseView::Empty
+        } else {
+            MergeBaseView::Conflict(excerpt.join("\n"))
+        });
     }
     Ok(MergeBaseView::File(base.to_owned()))
 }
@@ -405,110 +458,12 @@ pub fn save_merge_result_inner(
     expected_revision: &str,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    state_map.hold_for_writing(path, |repo| {
-        let repo_path = repo
-            .workdir()
-            .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
-
-        // Refuse before touching the file. An editor left open after its operation
-        // ended would otherwise overwrite the restored content and stage it, and
-        // nothing committed it, so the repository could not give it back. A side that
-        // deleted the file is refused for the reason the read path gives.
-        let conflict = conflict_entry(repo, file_path)?;
-        sides_with_text(&conflict, file_path)?;
-        let changed = || TrunkError::new("conflict_changed",
-            "This conflict changed after the editor opened. Copy your draft and reopen the file to review it before staging.");
-        let Ok(WorkingTreeFile::Text(working)) = read_working_file(repo, file_path) else {
-            return Err(changed());
-        };
-        let revision = merge_revision(&working, &conflict)?;
-        let unchanged_stages = expected_revision.split_once(':')
-            .is_some_and(|(stages, _)| revision.starts_with(&format!("{stages}:")));
-        let already_written = working == content.as_bytes();
-        if revision != expected_revision && !(unchanged_stages && already_written) {
-            return Err(changed());
-        }
-        if !already_written {
-            write_working_file(repo_path, file_path, content)?;
-        }
-        let stage_error = |error: git2::Error| TrunkError::new("stage_failed",
-            format!("The resolution is saved in the working tree. Retry to stage it. {}", error.message()));
-        let mut index = repo.index().map_err(stage_error)?;
-        index.add_path(Path::new(file_path)).map_err(stage_error)?;
-        index.write().map_err(stage_error)?;
-
-        Ok(())
-    })
-}
-
-/// Writes the resolution as a regular file at `file_path`, as staging records it. A
-/// link standing at the path is replaced rather than written through, so the write
-/// cannot reach a file outside the repository, and a directory on the way that is a
-/// link is refused for the same reason.
-fn write_working_file(workdir: &Path, file_path: &str, content: &str) -> Result<(), TrunkError> {
-    let write_error =
-        |error: std::io::Error| TrunkError::new("write_error", format!("{file_path}: {error}"));
-    let full_path = workdir.join(file_path);
-    let mut parent = workdir.to_path_buf();
-    for component in Path::new(file_path)
-        .parent()
-        .into_iter()
-        .flat_map(Path::components)
-    {
-        parent.push(component);
-        if std::fs::symlink_metadata(&parent)
-            .map_err(write_error)?
-            .is_symlink()
-        {
-            return Err(TrunkError::new(
-                "write_error",
-                format!(
-                    "{file_path} is inside a symbolic link, so resolve it outside the merge editor."
-                ),
-            ));
-        }
-    }
-    if full_path.is_symlink() {
-        std::fs::remove_file(&full_path).map_err(write_error)?;
-    }
-    std::fs::write(&full_path, content).map_err(write_error)
-}
-
-/// The files among `file_paths` whose working copy still holds conflict markers.
-///
-/// The markers are read as the merge editor reads them, since marking such a file
-/// resolved would stage them as content. A file missing from the working tree holds
-/// none, and neither does a link or a binary file.
-///
-/// # Errors
-///
-/// Returns `not_open` when `path` names no open repository, `no_workdir` for a
-/// bare repository, `read_error` when a file exists but will not read, and the git
-/// error when the attributes will not read.
-pub fn conflict_marker_files_inner(
-    path: &str,
-    file_paths: &[String],
-    state_map: &OpenRepos,
-) -> Result<Vec<String>, TrunkError> {
-    let repo = state_map.open(path)?;
-    if repo.workdir().is_none() {
-        return Err(TrunkError::new("no_workdir", "Bare repository"));
-    }
-
-    let mut found = Vec::new();
-    for file_path in file_paths {
-        let content = match read_working_file(&repo, file_path) {
-            Ok(WorkingTreeFile::Text(content)) => content,
-            Ok(WorkingTreeFile::Binary { .. }) => continue,
-            Err(error) if error.code == "missing_file" => continue,
-            Err(error) => return Err(error),
-        };
-        let size = conflict_marker_size(&repo, file_path)?;
-        if conflicted_file::holds_conflict(&String::from_utf8_lossy(&content), size) {
-            found.push(file_path.clone());
-        }
-    }
-    Ok(found)
+    save::resolve(
+        &state_map.open(path)?,
+        file_path,
+        content,
+        expected_revision,
+    )
 }
 
 // --- Tauri command wrappers ---
@@ -526,11 +481,14 @@ pub async fn get_merge_sides(
     activity: crate::activity::Activity,
     path: String,
     file_path: String,
+    purpose: Option<MergeReadPurpose>,
     state: State<'_, RepoState>,
 ) -> Result<MergeSides, String> {
     let state_map = state.snapshot();
     activity
-        .spawn_blocking(move || get_merge_sides_inner(&path, &file_path, &state_map))
+        .spawn_blocking(move || {
+            get_merge_sides_inner(&path, &file_path, purpose.unwrap_or_default(), &state_map)
+        })
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
@@ -618,27 +576,4 @@ pub async fn save_merge_result<R: Runtime>(
     // watcher sees the index write.
     let _ = app.emit("repo-changed", RepoChanged::completed(path, &cache));
     Ok(())
-}
-
-/// # Errors
-///
-/// Returns the inner error as JSON, and `spawn_error` when the blocking task
-/// cannot be joined.
-///
-/// # Panics
-///
-/// Panics when one of the shared state locks it takes is poisoned.
-#[tauri::command]
-pub async fn conflict_marker_files(
-    activity: crate::activity::Activity,
-    path: String,
-    file_paths: Vec<String>,
-    state: State<'_, RepoState>,
-) -> Result<Vec<String>, String> {
-    let state_map = state.snapshot();
-    activity
-        .spawn_blocking(move || conflict_marker_files_inner(&path, &file_paths, &state_map))
-        .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-        .map_err(|e| e.to_json())
 }

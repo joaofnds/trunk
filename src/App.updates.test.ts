@@ -1,5 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { makeMergeSides } from "./__tests__/helpers/factories.js";
 import { StartupHarness } from "./__tests__/helpers/startup-harness.js";
 import { REPO_CHANGE_DELAY_MS } from "./lib/coalesced-task.js";
 import type { UpdateStatus } from "./lib/updates.js";
@@ -411,6 +412,48 @@ describe("App update controls", () => {
 			);
 			await app.settle();
 		}
+
+		it("keeps a closed merge draft when the user confirms a restart", async () => {
+			startup();
+			seedReady();
+			app.host.seedResponse("get_status", {
+				unstaged: [],
+				staged: [],
+				conflicted: [
+					{ path: "draft.txt", status: "Conflicted", is_binary: false },
+				],
+			});
+			app.host.seedResponse("get_merge_sides", makeMergeSides());
+			app.start();
+			await fireEvent.click(await screen.findByText("draft.txt"));
+			await fireEvent.input(
+				await screen.findByRole("textbox", { name: "Merge output" }),
+				{
+					target: { value: "unfinished resolution" },
+				},
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Close merge editor" }),
+			);
+
+			await confirmRestart();
+
+			expect(await screen.findByRole("alert")).toHaveTextContent(
+				"Save or discard edited Output for draft.txt in /active before restarting.",
+			);
+			expect(app.host.count("updates_prepare")).toBe(0);
+			expect(app.frozen()).toBe(false);
+			await fireEvent.click(
+				within(screen.getByRole("region", { name: "Trunk updates" })).getByRole(
+					"button",
+					{ name: "Close" },
+				),
+			);
+			await fireEvent.click(screen.getByText("draft.txt"));
+			expect(
+				await screen.findByRole("textbox", { name: "Merge output" }),
+			).toHaveValue("unfinished resolution");
+		});
 
 		async function restartDuringARefresh(fetchIntervalMs = 0) {
 			startup();

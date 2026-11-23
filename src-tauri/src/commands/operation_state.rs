@@ -61,7 +61,8 @@ pub(super) fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
     .iter()
     .find_map(|prefix| msg.strip_prefix(prefix))
     .and_then(|rest| {
-        rest.rsplit_once("' into ")
+        rest.split_once("' of ")
+            .or_else(|| rest.split_once("' into "))
             .map(|(name, _)| name)
             .or_else(|| rest.strip_suffix('\''))
     })

@@ -94,6 +94,21 @@ fn a_merge_of_a_commit_no_branch_points_at_names_no_source() {
 }
 
 #[test]
+fn a_fetched_branch_keeps_its_name_in_the_merge_banner() {
+    let ctx = merging_feature_with_a_conflict();
+    std::fs::write(
+        ctx.repo().path().join("MERGE_MSG"),
+        "Merge branch 'topic' of https://example.invalid/remote into main\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        ctx.get_operation_state().unwrap().source_branch.as_deref(),
+        Some("topic")
+    );
+}
+
+#[test]
 fn a_tag_merge_names_the_tag() {
     let ctx = merging_feature_with_a_conflict();
     std::fs::write(ctx.repo().path().join("MERGE_MSG"), "Merge tag 'v1'\n").unwrap();

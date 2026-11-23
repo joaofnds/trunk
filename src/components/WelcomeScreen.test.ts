@@ -78,6 +78,18 @@ describe("WelcomeScreen", () => {
 		expect(screen.getByText("other")).toBeInTheDocument();
 	});
 
+	it("shows the folder and network parent of a recent Windows checkout", async () => {
+		const path = "\\\\build\\repos\\trunk\\";
+		vi.mocked(getRecentRepos).mockResolvedValue([{ name: "old", path }]);
+		render(WelcomeScreen, { props: { onopen: vi.fn() } });
+
+		expect(await screen.findByText("trunk")).toBeVisible();
+		expect(screen.getByText("\\\\build\\repos")).toBeVisible();
+		expect(
+			screen.getByRole("button", { name: `trunk, ${path}` }),
+		).toHaveAttribute("title", path);
+	});
+
 	it("opens the repo the operator clicked", async () => {
 		const { row, onopen } = await renderWithRecentRepo();
 

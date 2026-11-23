@@ -11,27 +11,35 @@ import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import X from "@lucide/svelte/icons/x";
 import { onDestroy, tick, untrack } from "svelte";
+import { copyText } from "../lib/clipboard.js";
 import { ask } from "../lib/dialog.js";
 import { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { trailingWhitespaceStart } from "../lib/diff-utils.js";
+import { displayColumns } from "../lib/display-columns.js";
 import { flattened } from "../lib/display-text.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { showFilePathMenu } from "../lib/file-menu.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
-import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import { focusInEditable, keyInDialog } from "../lib/keyboard.js";
 import {
 	countUnresolved,
+	createMergeEditHistory,
 	getConflictIndices,
 	lineEndingOf,
 	outputRegions,
+	pickKey,
 	sideKeys,
 	takeAllCurrent,
 	takeAllIncoming,
 	toggleHunk,
 	toggleLine,
 } from "../lib/merge-parser.js";
-import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
-import { conflictNearest, mapOffset } from "../lib/merge-scroll.js";
+import {
+	createMergePicks,
+	type MergePicksStore,
+	type MergePosition,
+} from "../lib/merge-picks.js";
+import { conflictNearest } from "../lib/merge-scroll.js";
 import {
 	buildMergeSideRows,
 	CONFLICT_HEADER_HEIGHT,
@@ -44,9 +52,11 @@ import {
 	type SideLine,
 } from "../lib/merge-side-rows.js";
 import { measureRowMetrics, type RowMetrics } from "../lib/row-metrics.js";
+import { createHorizontalScrollSync } from "../lib/scroll-sync.js";
 import type { MergedSpan, MergeSides } from "../lib/types.js";
 import Button from "../lib/ui/Button.svelte";
 import Dialog from "../lib/ui/Dialog.svelte";
+import GutterGrip from "../lib/ui/GutterGrip.svelte";
 import LinkButton from "../lib/ui/LinkButton.svelte";
 import Row from "../lib/ui/Row.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
@@ -61,6 +71,7 @@ interface Props {
 	keysActive?: boolean;
 	repoPath: string;
 	filePath: string;
+	unlistedDraft?: boolean;
 	onclose: () => void;
 	onresolved: () => void;
 	picks?: MergePicksStore;
@@ -71,6 +82,7 @@ let {
 	keysActive = true,
 	repoPath,
 	filePath,
+	unlistedDraft = false,
 	onclose,
 	onresolved,
 	picks = createMergePicks(),
@@ -91,16 +103,35 @@ function handleMergeKeydown(event: KeyboardEvent) {
 		saving
 	)
 		return;
-	const chord = keyChord(event);
-	if (chord !== "[" && chord !== "]") return;
+	const key = event.key;
+	if (key !== "[" && key !== "]") return;
 	if (
+		event.metaKey ||
+		(event.ctrlKey && !event.getModifierState("AltGraph")) ||
 		focusInEditable(document.activeElement) ||
-		document.querySelector("dialog[open]")
+		keyInDialog(event)
 	)
 		return;
+
+	if (key === "[" ? !hasPrev : !hasNext) return;
 	event.preventDefault();
-	if (chord === "[") handlePrevConflict();
+	const pane = panelRefs[1]?.contains(document.activeElement) ? 1 : 0;
+	const fromLine = document.activeElement?.closest("[data-gutter-grip]");
+	if (key === "[") handlePrevConflict();
 	else handleNextConflict();
+	const region = conflictIndices[focusedConflictIdx];
+	tick().then(() => {
+		const source = panelRefs[pane];
+		const firstLine =
+			fromLine &&
+			source?.querySelector<HTMLElement>(
+				`[data-conflict="${region}"] [data-gutter-grip]`,
+			);
+		const control =
+			firstLine ||
+			source?.querySelector<HTMLElement>(`[data-conflict-header="${region}"]`);
+		control?.focus({ preventScroll: true });
+	});
 }
 
 function openPathMenu(event: MouseEvent) {
@@ -128,8 +159,9 @@ const SIDE_LABEL = {
 // ---------- State ----------
 // The displayed path, sides and drafts change together when the selected file is ready.
 type FileView = { repo: string; path: string } & (
-	| { kind: "ready"; sides: MergeSides; signature: string }
+	| { kind: "ready"; sides: MergeSides; revision: string }
 	| { kind: "error"; message: string; retryable: boolean }
+	| { kind: "recover"; text: string; reason: string; retryable?: boolean }
 );
 let view = $state.raw<FileView | null>(null);
 let displayed = $derived(view?.kind === "ready" ? view : null);
@@ -137,7 +169,9 @@ let sources = $derived(displayed?.sides);
 let regions = $derived(sources?.regions ?? []);
 let loadVersion = 0;
 onDestroy(() => {
+	rememberPosition();
 	loadVersion++;
+	cancelAnimationFrame(scrollRaf);
 });
 let takenLines = $state<Set<string>>(new Set());
 let manualEdit = $state(false);
@@ -151,8 +185,12 @@ const UNRESOLVABLE_HERE: ReadonlySet<string> = new Set([
 	"link_conflict",
 ]);
 let focusedConflictIdx = $state(0);
-let saving = $state(false);
-type BaseView = { scope: "conflict" | "file"; text: string };
+let saving = $derived(
+	!!displayed && picks.isSaving(displayed.repo, displayed.path),
+);
+type BaseView =
+	| { scope: "conflict" | "file"; text: string }
+	| { scope: "empty"; text?: undefined };
 let baseView = $state.raw<{
 	number: number;
 	opener: HTMLElement;
@@ -278,6 +316,7 @@ let expandedGaps = $derived.by(() => {
 // ---------- Derived ----------
 let conflictIndices = $derived(getConflictIndices(regions));
 let outputLines = $derived(outputRegions(regions, takenLines));
+let defaultEnding = $derived(lineEndingOf(regions));
 let outputText = $derived(
 	manualEdit ? manualText : outputLines.flat().join("\n"),
 );
@@ -295,6 +334,7 @@ let aligned = $derived.by(() => {
 		expandedGaps,
 		sideColumns,
 		measured,
+		sources?.conflict_partners,
 	);
 });
 let visible = $derived(
@@ -305,9 +345,10 @@ let visible = $derived(
 		20 * LINE_HEIGHT,
 	),
 );
-let scrollLayouts = $derived(
-	manualEdit ? null : mergeScrollLayouts(aligned, outputLines, outputColumns),
+let scrollForPicks = $derived(
+	mergeScrollLayouts(aligned, regions, outputColumns),
 );
+let scrollLayouts = $derived(manualEdit ? null : scrollForPicks(takenLines));
 let headerCentres = $derived(
 	conflictIndices.map(
 		(r) => aligned.regionTops[r] + CONFLICT_HEADER_HEIGHT / 2,
@@ -317,22 +358,46 @@ let headerCentres = $derived(
 // ---------- Data loading ----------
 const sourcePath = $derived(filePath);
 const sourceRepo = $derived(repoPath);
+const sourceUnlisted = $derived(unlistedDraft);
 $effect(() => {
 	const path = sourcePath;
 	const repo = sourceRepo;
-	untrack(() => loadSides({ repo, path }));
+	const missing = sourceUnlisted;
+	untrack(() => {
+		const text = missing ? picks.draftText(repo, path) : undefined;
+		if (text === undefined) {
+			loadSides({ repo, path });
+			return;
+		}
+
+		loadVersion++;
+		baseView = null;
+		view = {
+			kind: "recover",
+			repo,
+			path,
+			text,
+			reason: "This file is no longer conflicted.",
+		};
+		loading = false;
+	});
 });
 
 $effect(() => {
-	const picked = { taken: takenLines, typed: manualEdit ? manualText : null };
-	if (displayed)
-		picks.set(displayed.repo, displayed.path, displayed.signature, picked);
+	if (!displayed || loading) return;
+	const picked = {
+		taken: takenLines,
+		typed: manualEdit ? manualText : null,
+		selectedOutput: !manualEdit && takenLines.size ? outputText : undefined,
+	};
+	picks.set(displayed.repo, displayed.path, displayed.revision, picked);
 });
 
 // A reply for a file the editor has since moved off is dropped. A file that is
 // no longer conflicted (a reset, or a resolve from elsewhere) closes the editor;
 // any other failure, a binary side among them, stays on screen with its reason.
 function loadSides({ repo, path }: { repo: string; path: string }) {
+	if (!loading) rememberPosition();
 	const version = ++loadVersion;
 	baseView = null;
 	loading = true;
@@ -343,22 +408,63 @@ function loadSides({ repo, path }: { repo: string; path: string }) {
 			if (version !== loadVersion || path !== filePath || repo !== repoPath)
 				return;
 
-			const signature = JSON.stringify([result.revision, result.regions]);
-			const kept = picks.get(repo, path, signature);
-			view = { kind: "ready", repo, path, sides: result, signature };
+			applyOutputEdit = createMergeEditHistory();
+			const revision = result.revision;
+			const draft = picks.get(repo, path);
+			const previous = picks.draftText(repo, path);
+			if (
+				draft &&
+				previous !== undefined &&
+				(draft.refused || draft.revision !== revision)
+			) {
+				view = {
+					kind: "recover",
+					repo,
+					path,
+					text: previous,
+					reason: "This conflict changed after you edited Output.",
+				};
+				loading = false;
+				return;
+			}
+			const kept = draft?.revision === revision ? draft.picks : undefined;
+			view = { kind: "ready", repo, path, sides: result, revision };
 			takenLines = new Set(kept?.taken);
 			lastClickedKey = null;
 			manualEdit = kept?.typed != null;
 			manualText = kept?.typed ?? "";
-			focusedConflictIdx = 0;
-			panelScrollTop = 0;
+			const position = kept?.position;
+			if (position) {
+				fullFile = position.fullFile;
+				expandedGaps = new Set(position.expanded);
+			}
+			focusedConflictIdx = position?.conflict ?? 0;
+			panelScrollTop = position?.sourceTop ?? 0;
+
 			loading = false;
-			tick().then(() => scrollToConflict(0));
+			tick().then(() => {
+				if (version === loadVersion) restorePosition(position);
+			});
 		})
 		.catch((e) => {
 			if (version !== loadVersion || path !== filePath || repo !== repoPath)
 				return;
 
+			const previous = picks.draftText(repo, path);
+			if (previous !== undefined) {
+				view = {
+					kind: "recover",
+					repo,
+					path,
+					text: previous,
+					reason: errorMessage(e, "The conflict can no longer be opened."),
+					retryable:
+						!isTrunkError(e) ||
+						(e.code !== "not_conflicted" && !UNRESOLVABLE_HERE.has(e.code)),
+				};
+				loading = false;
+				return;
+			}
 			if (isTrunkError(e) && e.code === "not_conflicted") {
 				onclose();
 				return;
@@ -377,6 +483,62 @@ function loadSides({ repo, path }: { repo: string; path: string }) {
 
 // ---------- Synchronized scroll ----------
 const OUTPUT_PANEL = 2;
+const syncSourcePan = createHorizontalScrollSync();
+const sourceColumns = $derived.by(() => {
+	if (sideWrap) return 0;
+	let width = 0;
+	for (const region of regions) {
+		for (const lines of [region.oursLines, region.theirsLines]) {
+			for (const line of lines) {
+				const columns = /[\t\u0080-\uFFFF]/.test(line)
+					? displayColumns(line, 4, false)
+					: line.length;
+				width = Math.max(width, columns);
+			}
+		}
+	}
+	return width;
+});
+
+function rememberPosition() {
+	if (!displayed) return;
+	const output = panelRefs[OUTPUT_PANEL];
+	if (!(output instanceof HTMLTextAreaElement)) return;
+
+	picks.rememberPosition(displayed.repo, displayed.path, displayed.revision, {
+		conflict: focusedConflictIdx,
+		fullFile,
+		expanded: [...expandedGaps],
+		sourceTop: panelRefs[0]?.scrollTop ?? 0,
+		sourceLeft: panelRefs[0]?.scrollLeft ?? 0,
+		outputTop: output.scrollTop,
+		outputLeft: output.scrollLeft,
+		start: output.selectionStart,
+		end: output.selectionEnd,
+		direction: output.selectionDirection,
+	});
+}
+
+function restorePosition(position: MergePosition | undefined) {
+	for (const pane of panelRefs.slice(0, OUTPUT_PANEL)) {
+		if (pane) pane.scrollLeft = position?.sourceLeft ?? 0;
+	}
+	if (!position) {
+		scrollToConflict(0);
+		return;
+	}
+
+	cancelAnimationFrame(scrollRaf);
+	holdScrollEvents();
+	scrollPanels(position.sourceTop);
+	const output = panelRefs[OUTPUT_PANEL];
+	if (output instanceof HTMLTextAreaElement) {
+		output.setSelectionRange(position.start, position.end, position.direction);
+		output.scrollTop = position.outputTop;
+		output.scrollLeft = position.outputLeft;
+	}
+}
+
 let scrolling = false;
 let readingSide: MergeSide = "ours";
 let scrollRaf = 0;
@@ -384,17 +546,17 @@ let scrollRaf = 0;
 function handleScroll(sourceIdx: number) {
 	if (scrolling) return;
 	const source = panelRefs[sourceIdx];
-	if (!source) return;
+	if (
+		!source ||
+		(sourceIdx !== OUTPUT_PANEL && source.scrollTop === panelScrollTop)
+	)
+		return;
 	let sideTop = source.scrollTop;
 	if (sourceIdx !== OUTPUT_PANEL)
 		readingSide = sourceIdx === 0 ? "ours" : "theirs";
 	if (sourceIdx === OUTPUT_PANEL) {
 		if (!scrollLayouts) return;
-		sideTop = mapOffset(
-			scrollLayouts.output,
-			scrollLayouts.side,
-			source.scrollTop,
-		);
+		sideTop = scrollLayouts.toSide(source.scrollTop);
 	}
 	scrolling = true;
 	// Sync other panels immediately (no DOM mutation, so no jitter)
@@ -420,17 +582,22 @@ function scrollPanels(sideTop: number, except = -1) {
 		if (!el || i === except) return;
 		if (i !== OUTPUT_PANEL) el.scrollTop = sideTop;
 		else if (scrollLayouts)
-			el.scrollTop = mapOffset(
-				scrollLayouts.side,
-				scrollLayouts.output,
-				sideTop,
-			);
+			el.scrollTop = scrollLayouts.toOutput(readingSide, sideTop);
 	});
 }
 
-function expandGap(row: FlatRow, side: MergeSide) {
+function expandGap(row: FlatRow, side: MergeSide, opener: HTMLElement) {
+	const moveFocus = document.activeElement === opener;
 	readingSide = side;
 	expandedGaps = new Set([...expandedGaps, row.regionIdx]);
+	if (moveFocus)
+		tick().then(() => {
+			const pane = panelRefs[side === "ours" ? 0 : 1];
+			const first = pane?.querySelector<HTMLElement>(
+				`[data-context="${row.regionIdx}-${row.slot}"]`,
+			);
+			(first ?? pane)?.focus({ preventScroll: true });
+		});
 }
 
 // Read the old scroll position before the browser clamps it to the new layout.
@@ -492,11 +659,7 @@ $effect(() => {
 	const side = panelRefs[0];
 	if (!output || !side) return;
 	holdScrollEvents();
-	output.scrollTop = mapOffset(
-		scrollLayouts.side,
-		scrollLayouts.output,
-		side.scrollTop,
-	);
+	output.scrollTop = scrollLayouts.toOutput(readingSide, side.scrollTop);
 });
 
 /** Ignore the scroll events a programmatic scroll raises until the next frame. */
@@ -572,7 +735,7 @@ function toggleLineFrom(key: string, extending: boolean) {
 			const selecting = !takenLines.has(key);
 			const result = new Set(takenLines);
 			for (let j = from; j <= to; j++) {
-				const k = `${side}-${regStr}-${j}`;
+				const k = pickKey(side, Number(regStr), j);
 				if (selecting) result.add(k);
 				else result.delete(k);
 			}
@@ -585,10 +748,21 @@ function toggleLineFrom(key: string, extending: boolean) {
 	lastClickedKey = key;
 }
 
-function handleOutputEdit(e: Event) {
+let applyOutputEdit = createMergeEditHistory();
+
+function handleOutputEdit(e: Event, previousStart?: number) {
 	if (loading || saving) return;
+	const editor = e.target as HTMLTextAreaElement;
+	manualText = applyOutputEdit(
+		outputText,
+		editor.value,
+		defaultEnding,
+		previousStart === undefined
+			? undefined
+			: { start: previousStart, end: editor.selectionEnd },
+		(e as InputEvent).inputType,
+	);
 	manualEdit = true;
-	manualText = (e.target as HTMLTextAreaElement).value;
 }
 
 function handleReset() {
@@ -625,8 +799,11 @@ async function handleSaveAndResolve() {
 	const version = loadVersion;
 	const { path, repo } = displayed;
 	const edited = manualText;
-	const expectedRevision = displayed.sides.revision;
-	saving = true;
+	const expectedRevision = displayed.revision;
+	const submitted = outputText;
+	const finish = picks.startSave(repo, path);
+	if (!finish) return;
+
 	try {
 		if (needsReview) {
 			const blocks =
@@ -651,16 +828,46 @@ async function handleSaveAndResolve() {
 			path: repo,
 			filePath: path,
 			expectedRevision,
-			content: manualEdit
-				? manualText.replace(/\r?\n/g, lineEndingOf(regions))
-				: outputText,
+			content: submitted,
 		});
 		picks.forget(repo, path);
 		if (version === loadVersion) onresolved();
 	} catch (e) {
+		if (isTrunkError(e) && typeof e.working_revision === "string") {
+			const revision = e.working_revision;
+			picks.set(repo, path, revision, { taken: new Set(), typed: submitted });
+			if (
+				displayed?.repo === repo &&
+				displayed.path === path &&
+				displayed.revision === expectedRevision
+			) {
+				view = {
+					...displayed,
+					revision,
+				};
+				manualEdit = true;
+				manualText = submitted;
+			}
+		} else if (isTrunkError(e) && e.code === "conflict_changed") {
+			picks.refused(repo, path, expectedRevision, submitted);
+			if (
+				!loading &&
+				displayed?.repo === repo &&
+				displayed.path === path &&
+				displayed.revision === expectedRevision
+			) {
+				view = {
+					kind: "recover",
+					repo,
+					path,
+					text: submitted,
+					reason: "This conflict changed before Git could stage your output.",
+				};
+			}
+		}
 		reportErrorToast(e, "Save failed");
 	} finally {
-		saving = false;
+		finish();
 	}
 }
 
@@ -686,11 +893,12 @@ registerUpdateBlocker(
 
 {#snippet conflictHeader(side: "ours" | "theirs", row: FlatRow)}
 	{@const taken = sideTaken(side, row.regionIdx)}
-	<div class="w-full conflict-header shrink-0">
+	<div class="source-divider conflict-header shrink-0">
 		<Row
 			variant="divider"
 			reveal="always"
 			tone="muted"
+			data-conflict-header={row.regionIdx}
 			aria-label="Take conflict {row.conflictNum} from {SIDE_LABEL[side]}"
 			aria-pressed={taken}
 			disabled={saving}
@@ -726,9 +934,8 @@ registerUpdateBlocker(
 		? trailingWhitespaceStart(text)
 		: text.length}
 	<span
-		class="syntax-highlight pl-1 flex-1 min-w-0 text-diff-text"
+		class="syntax-highlight select-text cursor-text pl-1 flex-1 min-w-0 text-diff-text"
 		class:whitespace-pre={!sideWrap}
-		class:overflow-x-auto={!sideWrap}
 		class:whitespace-break-spaces={sideWrap}
 		class:self-start={sideWrap}
 		use:watchWrap={line.key}
@@ -770,15 +977,21 @@ registerUpdateBlocker(
 	spans: readonly MergedSpan[] | undefined,
 )}
 	{@const taken = takenLines.has(line.key)}
-	<div class="merge-line shrink-0" style:height="{row.height}px">
-		<Row
-			variant="fill"
-			aria-pressed={taken}
-			aria-label={`${line.lineNum} ${line.text}`}
-			disabled={saving}
-			onclick={(e: MouseEvent) => handleToggleLine(line.key, e)}
-		>
-			<span class="flex-1 self-stretch flex min-w-0">
+	<div
+		class="merge-line shrink-0 flex min-w-0"
+		data-conflict={row.regionIdx}
+		style:height="{row.height}px"
+	>
+		<div class="source-gutter">
+			<GutterGrip
+				aria-pressed={taken}
+				aria-label={`${line.lineNum} ${line.text}`}
+				title={taken
+					? "Remove this line from Output"
+					: "Take this line into Output"}
+				disabled={saving}
+				onclick={(e: MouseEvent) => handleToggleLine(line.key, e)}
+			>
 				<span
 					class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
 					>{line.lineNum}</span
@@ -797,9 +1010,9 @@ registerUpdateBlocker(
 						>
 					{/if}
 				</span>
-				{@render sourceText(line, spans)}
-			</span>
-		</Row>
+			</GutterGrip>
+		</div>
+		{@render sourceText(line, spans)}
 	</div>
 {/snippet}
 
@@ -825,7 +1038,7 @@ registerUpdateBlocker(
 		</span>
 		<Button
 			size="sm"
-			disabled={saving}
+			disabled={saving || !hasConflicts}
 			onclick={take}
 			aria-label="Take All {label}"
 			tooltip="Take All {label}"
@@ -852,51 +1065,67 @@ registerUpdateBlocker(
 			<span class="flex-1 min-w-0" bind:clientWidth={theirsWidth}></span>
 		{/if}
 	</div>
-	<div class="shrink-0" style:height="{visible.offsetTop}px"></div>
-	{#each aligned.rows.slice(visible.start, visible.end) as row (row.regionIdx +
-		":" +
-		row.slot)}
-		{@const line = row[side]}
-		{#if row.type === "conflict-header"}
-			{@render conflictHeader(side, row)}
-		{:else if row.type === "gap"}
-			{@const count = row.hiddenBySide[side]}
-			{@const label = count
-				? `${count} hidden ${count === 1 ? "line" : "lines"}`
-				: "hidden context on other side"}
-			<div style:height="{row.height}px">
-				<Row
-					variant="divider"
-					tone="muted"
-					aria-label="Expand {label}"
-					onclick={() => expandGap(row, side)}
-				>
-					<ChevronDown size={14} />
-					{label}
-				</Row>
-			</div>
-		{:else if !line}
-			<div class="shrink-0" style:height="{row.height}px"></div>
-		{:else if row.type === "conflict-line"}
-			{@render conflictLine(row, line, highlights?.[line.lineNum])}
-		{:else}
-			<div class="flex shrink-0 bg-transparent" style:height="{row.height}px">
-				<span
-					class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
-					>{line.lineNum}</span
-				>
-				<span class="w-5 shrink-0"></span>
-				{@render sourceText(line, highlights?.[line.lineNum])}
-			</div>
-		{/if}
-	{/each}
 	<div
-		class="shrink-0"
-		style:height="{visible.totalHeight - aligned.offsets[visible.end]}px"
-	></div>
+		class:min-w-full={!sideWrap}
+		style:width={!sideWrap
+			? `calc(${sourceColumns}ch + 18 * var(--u))`
+			: undefined}
+	>
+		<div class="shrink-0" style:height="{visible.offsetTop}px"></div>
+		{#each aligned.rows.slice(
+			visible.start,
+			visible.end,
+		) as row (`${row.regionIdx}:${row.slot}`)}
+			{@const line = row[side]}
+			{#if row.type === "conflict-header"}
+				{@render conflictHeader(side, row)}
+			{:else if row.type === "gap"}
+				{@const count = row.hiddenBySide[side]}
+				{@const label = count
+					? `${count} hidden ${count === 1 ? "line" : "lines"}`
+					: "hidden context on other side"}
+				<div class="source-divider" style:height="{row.height}px">
+					<Row
+						variant="divider"
+						tone="muted"
+						aria-label="Expand {label}"
+						onclick={(e) => expandGap(row, side, e.currentTarget)}
+					>
+						<ChevronDown size={14} />
+						{label}
+					</Row>
+				</div>
+			{:else if !line}
+				<div class="shrink-0" style:height="{row.height}px"></div>
+			{:else if row.type === "conflict-line"}
+				{@render conflictLine(row, line, highlights?.[line.lineNum])}
+			{:else}
+				<div
+					tabindex="-1"
+					data-context={`${row.regionIdx}-${row.slot}`}
+					class="flex shrink-0 bg-transparent"
+					style:height="{row.height}px"
+				>
+					<span class="source-gutter flex bg-bg">
+						<span
+							class="line-no shrink-0 text-right pr-2 text-text-muted select-none"
+							>{line.lineNum}</span
+						>
+						<span class="w-5 shrink-0"></span>
+					</span>
+					{@render sourceText(line, highlights?.[line.lineNum])}
+				</div>
+			{/if}
+		{/each}
+		<div
+			class="shrink-0"
+			style:height="{visible.totalHeight - aligned.offsets[visible.end]}px"
+		></div>
+	</div>
 {/snippet}
 
-<div
+<section
+	aria-label="Merge editor"
 	class="h-full flex flex-col bg-bg"
 	aria-busy={loading}
 	inert={loading && !!view}
@@ -908,12 +1137,63 @@ registerUpdateBlocker(
 		>
 			Loading merge editor...
 		</div>
+	{:else if view.kind === "recover"}
+		{@const draft = view}
+		<section
+			class="flex flex-1 min-h-0 flex-col gap-2 p-2"
+			aria-label="Recover merge draft"
+		>
+			<div class="flex items-center justify-between gap-2">
+				<span class="text-callout text-text"
+					><FilePathLabel path={draft.path} /></span
+				>
+				<Button size="sm" aria-label="Close merge editor" onclick={onclose}
+					>Close</Button
+				>
+			</div>
+			<p class="text-body text-text"
+				>{draft.reason} Your previous Output is available to copy.</p
+			>
+			<textarea
+				readonly
+				aria-label="Previous merge draft"
+				class="flex-1 min-h-0 w-full resize-none bg-bg text-text p-2 font-mono text-callout leading-code"
+				value={draft.text}
+			></textarea>
+			<div class="flex flex-wrap justify-end gap-2">
+				{#if draft.retryable}
+					<Button
+						size="sm"
+						onclick={() => loadSides({ repo: draft.repo, path: draft.path })}
+						>Retry</Button
+					>
+				{/if}
+				<Button size="sm" onclick={() => copyText(draft.text, "merge draft")}
+					>Copy draft</Button
+				>
+				<Button
+					size="sm"
+					onclick={() => {
+						const close = unlistedDraft;
+						picks.forget(draft.repo, draft.path);
+						if (close) onclose();
+						else loadSides({ repo: draft.repo, path: draft.path });
+					}}
+					>{unlistedDraft
+						? "Discard draft"
+						: "Discard draft and reopen"}</Button
+				>
+			</div>
+		</section>
 	{:else if view.kind === "error"}
 		<!-- Error state -->
 		<div
 			class="flex-1 flex flex-col items-center justify-center gap-2 text-text-muted text-body"
 		>
 			<span class="text-diff-delete">{view.message}</span>
+			<Button size="sm" aria-label="Close merge editor" onclick={onclose}
+				>Close</Button
+			>
 			{#if view.retryable}
 				<Button
 					size="sm"
@@ -962,10 +1242,13 @@ registerUpdateBlocker(
 			/>
 		</section>
 		<!-- Top row: Current + Incoming side by side (50% height) -->
-		<div class="flex-1 flex min-h-0">
+		<div
+			class="merge-sources flex flex-1 min-h-0"
+			class:has-revision={sources?.current_label || sources?.incoming_label}
+		>
 			<!-- Current (Ours) Panel -->
 			<section
-				class="current-side flex-1 flex flex-col min-w-0 border-r border-border"
+				class="current-side flex-1 flex flex-col min-w-0 min-h-0 border-r border-border"
 				aria-label={SIDE_LABEL.ours}
 			>
 				{@render sourceHeader(
@@ -976,13 +1259,15 @@ registerUpdateBlocker(
 
 				<!-- Virtualized scrollable content -->
 				<div
+					tabindex="-1"
 					bind:this={panelRefs[0]}
 					bind:clientHeight={panelViewportHeight}
 					onscroll={() => handleScroll(0)}
-					class="flex-1 overflow-y-auto font-mono text-callout"
+					class="flex-1 min-w-0 overflow-auto overscroll-x-none font-mono text-callout"
+					use:syncSourcePan
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					{#key displayed}
+					{#key displayed.path}
 						{@render sideRows("ours", sources?.ours_spans)}
 					{/key}
 				</div>
@@ -990,7 +1275,7 @@ registerUpdateBlocker(
 
 			<!-- Incoming (Theirs) Panel -->
 			<section
-				class="incoming-side flex-1 flex flex-col min-w-0"
+				class="incoming-side flex-1 flex flex-col min-w-0 min-h-0"
 				aria-label={SIDE_LABEL.theirs}
 			>
 				{@render sourceHeader(
@@ -1001,12 +1286,14 @@ registerUpdateBlocker(
 
 				<!-- Virtualized scrollable content -->
 				<div
+					tabindex="-1"
 					bind:this={panelRefs[1]}
 					onscroll={() => handleScroll(1)}
-					class="flex-1 overflow-y-auto font-mono text-callout"
+					class="flex-1 min-w-0 overflow-auto overscroll-x-none font-mono text-callout"
+					use:syncSourcePan
 					style:line-height="{LINE_HEIGHT}px"
 				>
-					{#key displayed}
+					{#key displayed.path}
 						{@render sideRows("theirs", sources?.theirs_spans)}
 					{/key}
 				</div>
@@ -1098,7 +1385,7 @@ registerUpdateBlocker(
 				</div>
 			</div>
 
-			{#key displayed}
+			{#key displayed.path}
 				<MergeOutput
 					filePath={displayed.path}
 					text={outputText}
@@ -1114,7 +1401,7 @@ registerUpdateBlocker(
 			{/key}
 		</div>
 	{/if}
-</div>
+</section>
 
 {#if baseView}
 	<Dialog
@@ -1133,7 +1420,7 @@ registerUpdateBlocker(
 					>{baseView.error}</p
 				>
 			{:else if baseView.content}
-				{#if baseView.content.text}
+				{#if baseView.content.scope === "conflict" || baseView.content.text}
 					<textarea
 						readonly
 						wrap={diffPreferences.wordWrap ? "soft" : "off"}
@@ -1168,6 +1455,25 @@ registerUpdateBlocker(
 .merge-base-code {
 	max-height: 60vh;
 }
+
+.source-divider,
+.source-gutter {
+	position: sticky;
+	left: 0;
+}
+.source-divider {
+	width: 100cqi;
+}
+.merge-line .source-gutter {
+	display: flex;
+	background-color: var(--color-bg);
+	background-image: linear-gradient(var(--merge-line-bg), var(--merge-line-bg));
+	box-shadow: inset 4px 0 var(--merge-source);
+}
+.merge-sources {
+	container: merge-sources / inline-size;
+}
+
 .current-side,
 .incoming-side {
 	container-type: inline-size;
@@ -1180,7 +1486,10 @@ registerUpdateBlocker(
 .take-all-icon {
 	display: none;
 }
-@container (max-width: 10rem) {
+@container merge-sources (max-width: 20rem) {
+	.has-revision .source-label {
+		min-height: calc(2 * var(--text-callout--line-height));
+	}
 	.source-header {
 		height: auto;
 		min-height: var(--bar-h);
@@ -1204,7 +1513,7 @@ registerUpdateBlocker(
 .merge-line .icon-add {
 	display: none;
 }
-.merge-line:hover .icon-add {
+.merge-line .source-gutter:is(:hover, :focus-within) .icon-add {
 	display: inline-flex;
 }
 
@@ -1212,10 +1521,10 @@ registerUpdateBlocker(
 .merge-line .icon-remove {
 	display: none;
 }
-.merge-line:hover .icon-taken {
+.merge-line .source-gutter:is(:hover, :focus-within) .icon-taken {
 	display: none;
 }
-.merge-line:hover .icon-remove {
+.merge-line .source-gutter:is(:hover, :focus-within) .icon-remove {
 	display: inline-flex;
 }
 
@@ -1252,7 +1561,6 @@ registerUpdateBlocker(
 
 .merge-line {
 	background: var(--merge-line-bg);
-	box-shadow: inset 4px 0 var(--merge-source);
 }
 
 .merge-word {

@@ -47,9 +47,10 @@ fn merge_sides_highlight_the_displayed_code_and_the_changed_shortcut() {
     std::fs::write(ctx.repo_path().join(path), &working).unwrap();
 
     let sides = ctx.get_merge_sides(path).unwrap();
+    assert_eq!(sides.presentation.conflict_partners[&0], [None, Some(0)]);
     for (line, spans, changed) in [
-        (current, &sides.ours_spans[&2], "O"),
-        (incoming, &sides.theirs_spans[&1], "K"),
+        (current, &sides.presentation.ours_spans[&2], "O"),
+        (incoming, &sides.presentation.theirs_spans[&1], "K"),
     ] {
         let units: Vec<_> = line.encode_utf16().collect();
         let text = |span: &trunk_lib::types::MergedSpan| {
@@ -66,7 +67,7 @@ fn merge_sides_highlight_the_displayed_code_and_the_changed_shortcut() {
         assert_eq!(spans.iter().map(text).collect::<String>(), line);
     }
     assert!(
-        sides.ours_spans[&1]
+        sides.presentation.ours_spans[&1]
             .iter()
             .any(|s| s.syntax_class == "syn-comment")
     );
@@ -75,6 +76,25 @@ fn merge_sides_highlight_the_displayed_code_and_the_changed_shortcut() {
         working
     );
     assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn sidebar_resolution_reads_the_same_conflict_without_editor_presentation() {
+    let ctx = conflicted_file_txt();
+    let path = "file.txt";
+    let sides = ctx.get_merge_sides(path).unwrap();
+    let resolution = trunk_lib::commands::merge_editor::get_merge_sides_inner(
+        ctx.path(),
+        path,
+        trunk_lib::commands::merge_editor::MergeReadPurpose::Resolution,
+        ctx.state_map(),
+    )
+    .unwrap();
+    assert_eq!(resolution.regions, sides.regions);
+    assert_eq!(resolution.revision, sides.revision);
+    assert!(resolution.presentation.ours_spans.is_empty());
+    assert!(resolution.presentation.theirs_spans.is_empty());
+    assert!(resolution.presentation.conflict_partners.is_empty());
 }
 
 #[test]
@@ -124,9 +144,10 @@ fn indexed_ancestor_shows_only_a_verified_diff3_block() {
 }
 
 #[test]
-fn approved_output_can_be_staged_again_after_an_index_lock_failure() {
+fn an_index_lock_keeps_the_working_copy_and_allows_an_edited_retry() {
     let ctx = conflicted_file_txt();
     let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
+    let original = std::fs::read(ctx.repo_path().join("file.txt")).unwrap();
     let lock = ctx.repo().path().join("index.lock");
     std::fs::File::create_new(&lock).unwrap();
     let err = ctx
@@ -136,19 +157,310 @@ fn approved_output_can_be_staged_again_after_an_index_lock_failure() {
     assert!(ctx.repo().index().unwrap().has_conflicts());
     assert_eq!(
         std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
-        b"approved draft"
+        original
     );
     std::fs::remove_file(lock).unwrap();
-    ctx.save_merge_draft("file.txt", "approved draft", &revision)
+    ctx.save_merge_draft("file.txt", "edited retry", &revision)
         .unwrap();
     let repo = ctx.repo();
     let index = repo.index().unwrap();
     assert!(!index.has_conflicts());
     let entry = index.get_path(std::path::Path::new("file.txt"), 0).unwrap();
+    assert_eq!(repo.find_blob(entry.id).unwrap().content(), b"edited retry");
+}
+
+#[test]
+fn a_binary_index_side_refuses_read_and_save_even_with_a_text_working_file() {
+    let ctx = conflicted_file_txt();
+    let repo = ctx.repo();
+    let path = std::path::Path::new("file.txt");
+    let working = std::fs::read(ctx.repo_path().join(path)).unwrap();
+    let mut index = repo.index().unwrap();
+    let binary = repo.blob(b"incoming\0version").unwrap();
+    index
+        .add(&git2::IndexEntry {
+            id: binary,
+            ..index.get_path(path, 3).unwrap()
+        })
+        .unwrap();
+    index.write().unwrap();
+
+    assert_eq!(
+        ctx.get_merge_sides("file.txt").unwrap_err().code,
+        "binary_conflict"
+    );
+    assert_eq!(
+        ctx.save_merge_draft("file.txt", "chosen", "")
+            .unwrap_err()
+            .code,
+        "binary_conflict"
+    );
+    assert_eq!(std::fs::read(ctx.repo_path().join(path)).unwrap(), working);
+    assert_eq!(repo.index().unwrap().get_path(path, 3).unwrap().id, binary);
+    assert_eq!(
+        repo.index()
+            .unwrap()
+            .iter()
+            .filter(|entry| entry.path == b"file.txt")
+            .count(),
+        3
+    );
+}
+
+#[test]
+fn the_approved_working_text_uses_the_paths_git_clean_conversion_when_staged() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt text eol=crlf\n",
+    )
+    .unwrap();
+
+    ctx.save_merge_result("file.txt", "chosen\r\n").unwrap();
+
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"chosen\r\n"
+    );
+    let repo = ctx.repo();
+    let index = repo.index().unwrap();
+    let entry = index.get_path(std::path::Path::new("file.txt"), 0).unwrap();
+    assert_eq!(repo.find_blob(entry.id).unwrap().content(), b"chosen\n");
+}
+
+#[test]
+fn a_staged_resolution_keeps_the_current_executable_mode_when_filemode_is_disabled() {
+    let ctx = conflicted_file_txt();
+    record_both_sides_as(&ctx, "file.txt", 0o100_755);
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("core.filemode", false)
+        .unwrap();
+
+    ctx.save_merge_result("file.txt", "edited").unwrap();
+
+    assert_eq!(ctx.staged_mode("file.txt"), 0o100_755);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_configured_clean_filter_receives_the_approved_draft() {
+    let ctx = conflicted_file_txt();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("filter.uppercase.clean", "tr a-z A-Z")
+        .unwrap();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=uppercase\n",
+    )
+    .unwrap();
+
+    ctx.save_merge_result("file.txt", "approved\n").unwrap();
+
+    assert_eq!(ctx.staged_bytes("file.txt"), b"APPROVED\n");
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"approved\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn stage_all_stages_a_utf8_sibling_of_a_non_utf8_conflict_path() {
+    use std::os::unix::ffi::OsStrExt;
+    let ctx = conflicted_file_txt();
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    let name = b"version-\xff.txt";
+    let file = std::path::Path::new(std::ffi::OsStr::from_bytes(name));
+    let text = std::path::Path::new("file.txt");
+    for stage in 1..=3 {
+        index
+            .add(&git2::IndexEntry {
+                path: name.to_vec(),
+                ..index.get_path(text, stage).unwrap()
+            })
+            .unwrap();
+    }
+    index.write().unwrap();
+    let sibling = "version-�.txt";
+    std::fs::write(ctx.repo_path().join(sibling), "new file").unwrap();
+
+    ctx.stage_all().unwrap();
+
+    index.read(true).unwrap();
+    assert_eq!(ctx.staged_bytes(sibling), b"new file");
+    assert!(index.get_path(file, 0).is_none());
+    for stage in 1..=3 {
+        assert_eq!(
+            index.get_path(file, stage).unwrap().id,
+            index.get_path(text, stage).unwrap().id
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_clean_filter_can_stage_an_independent_file_before_index_publication() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(ctx.repo_path().join("notes"), "independent").unwrap();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=stage-notes\n",
+    )
+    .unwrap();
+    let mut config = ctx.repo().config().unwrap();
+    config
+        .set_bool("filter.stage-notes.required", true)
+        .unwrap();
+    config
+        .set_str("filter.stage-notes.clean", "git add -- notes && cat")
+        .unwrap();
+
+    ctx.save_merge_result("file.txt", "chosen").unwrap();
+
+    assert_eq!(ctx.staged_bytes("notes"), b"independent");
+    assert_eq!(ctx.staged_bytes("file.txt"), b"chosen");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_working_edit_during_cleaning_is_preserved_without_a_stale_retry_revision() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=late-edit\n",
+    )
+    .unwrap();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str(
+            "filter.late-edit.clean",
+            "printf 'new edit' > file.txt && cat",
+        )
+        .unwrap();
+
+    let error = ctx.save_merge_result("file.txt", "chosen").unwrap_err();
+
+    assert_eq!(error.code, "conflict_changed");
+    assert!(error.working_revision.is_none());
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"new edit"
+    );
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[cfg(unix)]
+#[test]
+fn the_resolved_attributes_file_selects_its_own_clean_filter() {
+    let file = ".gitattributes";
+    let ctx = TestContext::builder()
+        .with_file(file, "# base\n")
+        .with_commit("base")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file(file, "# theirs\n")
+        .with_commit("feature")
+        .checkout("main")
+        .with_file(file, "# ours\n")
+        .with_commit("main")
+        .with_conflict("feature")
+        .build();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("filter.upper.clean", "tr a-z A-Z")
+        .unwrap();
+
+    ctx.save_merge_result(file, ".gitattributes filter=upper\n")
+        .unwrap();
+
+    assert_eq!(ctx.staged_bytes(file), b".GITATTRIBUTES FILTER=UPPER\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn staging_keeps_a_private_index_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let ctx = conflicted_file_txt();
+    let index = ctx.repo().path().join("index");
+    std::fs::set_permissions(&index, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    ctx.save_merge_result("file.txt", "private").unwrap();
+
+    assert_eq!(
+        std::fs::metadata(index).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[test]
+fn a_marker_attribute_change_invalidates_picks_built_for_the_old_regions() {
+    let ctx = conflicted_file_txt();
+    let revision = ctx.get_merge_sides("file.txt").unwrap().revision;
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt conflict-marker-size=12\n",
+    )
+    .unwrap();
+
+    assert_ne!(ctx.get_merge_sides("file.txt").unwrap().revision, revision);
+    assert_eq!(
+        ctx.save_merge_draft("file.txt", "draft", &revision)
+            .unwrap_err()
+            .code,
+        "conflict_changed"
+    );
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn a_linked_worktree_publishes_only_its_own_resolution() {
+    use trunk_lib::commands::merge_editor::save_merge_result_inner;
+    use trunk_lib::state::OpenRepos;
+
+    let ctx = conflicted_file_txt();
+    let dir = ctx.add_linked_worktree("linked", "feature");
+    let repo = git2::Repository::open(&dir).unwrap();
+    let head = repo.find_reference("refs/heads/main").unwrap();
+    repo.merge(
+        &[&repo.reference_to_annotated_commit(&head).unwrap()],
+        None,
+        None,
+    )
+    .unwrap();
+    let path = dir.to_str().unwrap();
+    let opened = OpenRepos::from_iter([(path.to_owned(), dir.clone())]);
+    let sides = trunk_lib::commands::merge_editor::get_merge_sides_inner(
+        path,
+        "file.txt",
+        trunk_lib::commands::merge_editor::MergeReadPurpose::Editor,
+        &opened,
+    )
+    .unwrap();
+
+    save_merge_result_inner(
+        path,
+        "file.txt",
+        "linked resolution",
+        &sides.revision,
+        &opened,
+    )
+    .unwrap();
+
+    let mut index = repo.index().unwrap();
+    index.read(true).unwrap();
+    let entry = index.get_path(std::path::Path::new("file.txt"), 0).unwrap();
     assert_eq!(
         repo.find_blob(entry.id).unwrap().content(),
-        b"approved draft"
+        b"linked resolution"
     );
+    assert!(ctx.repo().index().unwrap().has_conflicts());
 }
 
 #[test]
@@ -341,6 +653,15 @@ fn get_merge_sides_reads_a_file_the_user_resolved_to_the_current_side_as_merged(
 
     let sides = ctx.get_merge_sides("file.txt").unwrap();
 
+    let sidebar = trunk_lib::commands::merge_editor::get_merge_sides_inner(
+        ctx.path(),
+        "file.txt",
+        trunk_lib::commands::merge_editor::MergeReadPurpose::Resolution,
+        ctx.state_map(),
+    );
+    assert_eq!(sidebar.unwrap_err().code, "no_conflict_regions");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+
     assert_eq!(
         sides.regions,
         [MergeRegion::Merged {
@@ -453,6 +774,10 @@ fn get_merge_sides_refuses_a_conflict_between_two_links() {
 
     let err = ctx.get_merge_sides("file.txt").unwrap_err();
 
+    assert_eq!(
+        ctx.get_status().unwrap().conflicted[0].can_take_sides,
+        Some(false)
+    );
     assert_eq!(err.code, "link_conflict");
 }
 
@@ -733,6 +1058,10 @@ fn get_merge_sides_refuses_a_conflict_where_one_side_deleted_the_file() {
 
     let err = ctx.get_merge_sides("file.txt").unwrap_err();
 
+    assert_eq!(
+        ctx.get_status().unwrap().conflicted[0].can_take_sides,
+        Some(false)
+    );
     assert_eq!(err.code, "delete_conflict");
 }
 
@@ -838,39 +1167,200 @@ fn conflicted_file() -> TestContext {
         .build()
 }
 
+fn prepare_mark(
+    ctx: &TestContext,
+    paths: &[&str],
+) -> trunk_lib::commands::merge_editor::mark::MarkConfirmation {
+    trunk_lib::commands::merge_editor::mark::prepare_mark_resolved_inner(
+        ctx.path(),
+        &paths.iter().map(|p| (*p).to_owned()).collect::<Vec<_>>(),
+        ctx.state_map(),
+    )
+    .unwrap()
+}
+
+fn mark(
+    ctx: &TestContext,
+    confirmation: &trunk_lib::commands::merge_editor::mark::MarkConfirmation,
+) -> Result<(), trunk_git::error::TrunkError> {
+    trunk_lib::commands::merge_editor::mark::mark_conflicts_resolved_inner(
+        ctx.path(),
+        &confirmation.files,
+        ctx.state_map(),
+    )
+}
+
 #[test]
-fn conflict_marker_files_lists_a_file_that_still_holds_the_merge_markers() {
+fn approving_a_marker_warning_cannot_stage_an_unrelated_edit_after_external_resolution() {
+    let ctx = conflicted_file();
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+    assert_eq!(confirmation.marked, ["file.txt"]);
+    ctx.merge_abort().unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), b"unrelated edit").unwrap();
+
+    assert_eq!(
+        mark(&ctx, &confirmation).unwrap_err().code,
+        "not_conflicted"
+    );
+    assert_eq!(ctx.staged_bytes("file.txt"), b"main content");
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"unrelated edit"
+    );
+}
+
+#[test]
+fn changing_one_file_rejects_the_whole_confirmed_conflict_batch() {
+    let ctx = TestContext::builder()
+        .with_file("a", "original")
+        .with_file("b", "original")
+        .with_commit("base")
+        .with_branch("topic")
+        .checkout("topic")
+        .with_file("a", "theirs")
+        .with_file("b", "theirs")
+        .with_commit("topic")
+        .checkout("main")
+        .with_file("a", "ours")
+        .with_file("b", "ours")
+        .with_commit("main")
+        .with_conflict("topic")
+        .build();
+    let confirmation = prepare_mark(&ctx, &["a", "b"]);
+    assert_eq!(confirmation.marked, ["a", "b"]);
+    std::fs::write(ctx.repo_path().join("b"), "external replacement").unwrap();
+
+    assert_eq!(
+        mark(&ctx, &confirmation).unwrap_err().code,
+        "conflict_changed"
+    );
+    let repo = ctx.repo();
+    assert_eq!(repo.index().unwrap().conflicts().unwrap().count(), 2);
+
+    let reviewed = prepare_mark(&ctx, &["a", "b"]);
+    mark(&ctx, &reviewed).unwrap();
+    assert_eq!(ctx.staged_bytes("b"), b"external replacement");
+    assert!(!ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn marking_the_confirmed_deletion_removes_all_conflict_stages() {
+    let ctx = conflicted_file_txt();
+    std::fs::remove_file(ctx.repo_path().join("file.txt")).unwrap();
+
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+    assert_eq!(confirmation.marked, Vec::<String>::new());
+    mark(&ctx, &confirmation).unwrap();
+
+    let index = ctx.repo().index().unwrap();
+    assert!(!index.has_conflicts());
+    assert!(
+        index
+            .get_path(std::path::Path::new("file.txt"), 0)
+            .is_none()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn marking_a_link_stages_the_target_bytes_without_filtering() {
+    let ctx = conflicted_file_txt();
+    record_both_sides_as(&ctx, "file.txt", 0o120_000);
+    let path = ctx.repo_path().join("file.txt");
+    std::fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink("missing target", path).unwrap();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=upper\n",
+    )
+    .unwrap();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("filter.upper.clean", "tr a-z A-Z")
+        .unwrap();
+
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+    assert_eq!(confirmation.marked, Vec::<String>::new());
+    mark(&ctx, &confirmation).unwrap();
+
+    assert_eq!(ctx.staged_bytes("file.txt"), b"missing target");
+    assert_eq!(ctx.staged_mode("file.txt"), 0o120_000);
+}
+
+#[cfg(unix)]
+#[test]
+fn marking_the_working_file_runs_its_clean_filter_with_the_confirmed_bytes() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=upper\n",
+    )
+    .unwrap();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("filter.upper.clean", "tr a-z A-Z")
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "chosen text").unwrap();
+
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+    mark(&ctx, &confirmation).unwrap();
+
+    assert_eq!(ctx.staged_bytes("file.txt"), b"CHOSEN TEXT");
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        b"chosen text"
+    );
+}
+
+#[test]
+fn replacing_a_confirmed_file_with_an_identical_copy_requires_new_confirmation() {
+    let ctx = conflicted_file_txt();
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+    let path = ctx.repo_path().join("file.txt");
+    let replacement = ctx.repo_path().join("replacement");
+    std::fs::copy(&path, &replacement).unwrap();
+    std::fs::rename(replacement, path).unwrap();
+
+    assert_eq!(
+        mark(&ctx, &confirmation).unwrap_err().code,
+        "conflict_changed"
+    );
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+}
+
+#[test]
+fn the_confirmation_lists_a_file_that_still_holds_the_merge_markers() {
     let ctx = conflicted_file();
 
-    let found = ctx
-        .conflict_marker_files(&["file.txt", "other.txt"])
-        .unwrap();
+    let found = prepare_mark(&ctx, &["file.txt"]).marked;
 
     assert_eq!(found, vec!["file.txt".to_string()]);
 }
 
 #[test]
-fn conflict_marker_files_omits_a_file_whose_markers_were_edited_out() {
+fn the_confirmation_omits_a_file_whose_markers_were_edited_out() {
     let ctx = conflicted_file();
     std::fs::write(ctx.repo_path().join("file.txt"), "main content\n").unwrap();
 
-    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+    let found = prepare_mark(&ctx, &["file.txt"]).marked;
 
     assert_eq!(found, Vec::<String>::new());
 }
 
 #[test]
-fn conflict_marker_files_omits_a_file_that_was_deleted() {
+fn the_confirmation_omits_a_file_that_was_deleted() {
     let ctx = conflicted_file();
     std::fs::remove_file(ctx.repo_path().join("file.txt")).unwrap();
 
-    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+    let found = prepare_mark(&ctx, &["file.txt"]).marked;
 
     assert_eq!(found, Vec::<String>::new());
 }
 
 #[test]
-fn conflict_marker_files_lists_a_file_holding_markers_of_the_size_the_attributes_set() {
+fn the_confirmation_lists_a_file_holding_markers_of_the_size_the_attributes_set() {
     let ctx = conflicted_file();
     std::fs::write(
         ctx.repo_path().join(".gitattributes"),
@@ -883,7 +1373,7 @@ fn conflict_marker_files_lists_a_file_holding_markers_of_the_size_the_attributes
     )
     .unwrap();
 
-    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+    let found = prepare_mark(&ctx, &["file.txt"]).marked;
 
     assert_eq!(found, vec!["file.txt".to_string()]);
 }
@@ -891,11 +1381,11 @@ fn conflict_marker_files_lists_a_file_holding_markers_of_the_size_the_attributes
 /// A Markdown heading underlined with `=======` is not a conflict, so only a
 /// file holding the opening and closing markers too is listed.
 #[test]
-fn conflict_marker_files_omits_a_file_with_only_a_separator_line() {
+fn the_confirmation_omits_a_file_with_only_a_separator_line() {
     let ctx = conflicted_file();
     std::fs::write(ctx.repo_path().join("file.txt"), "Title\n=======\n").unwrap();
 
-    let found = ctx.conflict_marker_files(&["file.txt"]).unwrap();
+    let found = prepare_mark(&ctx, &["file.txt"]).marked;
 
     assert_eq!(found, Vec::<String>::new());
 }
