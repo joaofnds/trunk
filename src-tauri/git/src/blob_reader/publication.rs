@@ -1,20 +1,24 @@
+#[cfg(target_os = "macos")]
+mod macos;
 use super::WorkingTreeEdit;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use super::{ValidatedRelativePath, open_regular_file};
 use crate::error::TrunkError;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use cap_std::fs::Dir;
 use cap_std::fs::File;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use std::ffi::OsStr;
-use std::io::{self, Read, Seek, Write};
+#[cfg(not(target_os = "macos"))]
+use std::io::{self, Write};
+use std::io::{Read, Seek};
 
 fn write_error(error: impl std::fmt::Display) -> TrunkError {
     TrunkError::new("write_error", error.to_string())
 }
 
 impl WorkingTreeEdit<'_> {
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     pub(super) fn publish(self, bytes: &[u8]) -> Result<(), TrunkError> {
         use cap_std::fs::{DirBuilder, DirBuilderExt};
         let parent = self.directory.try_clone().map_err(write_error)?;
@@ -51,7 +55,7 @@ impl WorkingTreeEdit<'_> {
         private.remove_open_dir_all().map_err(write_error)
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     fn install_displaced(
         self,
         private: &Dir,
@@ -74,10 +78,6 @@ impl WorkingTreeEdit<'_> {
             .map_err(write_error)?;
         #[cfg(target_os = "linux")]
         linux_exclusive(&exclusive).map_err(write_error)?;
-        #[cfg(target_os = "macos")]
-        let reservation = exclusive.try_clone().map_err(write_error)?.into_std();
-        #[cfg(target_os = "macos")]
-        reservation.try_lock().map_err(write_error)?;
         let current = exclusive.metadata().map_err(write_error)?;
         if metadata.dev() != current.dev()
             || metadata.ino() != current.ino()
@@ -168,10 +168,10 @@ impl WorkingTreeEdit<'_> {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 use cap_fs_ext::DirExt;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn restore_after_failure(
     private: Dir,
     parent: &Dir,
@@ -206,7 +206,7 @@ fn restore_after_failure(
     Err(error)
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn install_new(from: &Dir, source: &OsStr, into: &Dir, target: &OsStr) -> io::Result<()> {
     use rustix::fs::{RenameFlags, renameat_with};
     match renameat_with(from, source, into, target, RenameFlags::NOREPLACE) {
@@ -237,6 +237,7 @@ fn linux_exclusive(file: &File) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_os = "macos"))]
 fn overwrite(file: &mut File, bytes: &[u8]) -> io::Result<()> {
     file.rewind()?;
     file.write_all(bytes)?;
@@ -260,12 +261,14 @@ mod tests {
             .set_permissions(std::fs::Permissions::from_mode(0o640))
             .unwrap();
         drop(before);
+        #[cfg(not(target_os = "macos"))]
         let expected_ino = std::os::unix::fs::MetadataExt::ino(&std::fs::metadata(&path).unwrap());
         let edit = WorkingTreeEdit::open(&repo, "doc.md").unwrap();
 
         edit.replace(&repo, b"updated").unwrap();
 
         let after = std::fs::File::open(path).unwrap();
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             std::os::unix::fs::MetadataExt::ino(&after.metadata().unwrap()),
             expected_ino
@@ -280,6 +283,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn a_failed_byte_rollback_keeps_the_verified_backup_when_the_name_can_be_restored() {
         let (root, repo, _) = super::super::test_repo::with_three_revs();
@@ -312,6 +316,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
     fn a_new_destination_wins_and_the_displaced_contents_remain_recoverable() {
         let (root, repo, _) = super::super::test_repo::with_three_revs();

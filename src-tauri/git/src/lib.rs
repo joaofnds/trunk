@@ -9,6 +9,8 @@ pub mod fetch;
 pub mod graph;
 pub mod graph_input;
 pub mod layout_dump;
+#[cfg(target_os = "macos")]
+pub mod macos_metadata;
 pub mod placement;
 pub mod pull_safety;
 pub mod ref_state;

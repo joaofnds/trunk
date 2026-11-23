@@ -26,6 +26,10 @@ cap-fs-ext = "4.0.3"
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["fs"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+sha2 = "0.10"
+xattr = "1"
+
 [target.'cfg(unix)'.dev-dependencies]
 xattr = "1"
 

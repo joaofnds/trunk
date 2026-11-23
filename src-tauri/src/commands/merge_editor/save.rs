@@ -15,6 +15,26 @@ fn stage_error(error: impl std::fmt::Display) -> TrunkError {
     )
 }
 
+mod conversion;
+pub(super) use conversion::CleanConversions;
+
+fn path_git(repo: &git2::Repository, index: &Path) -> Result<UserGit, TrunkError> {
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
+    let mut git = UserGit::in_dir(workdir);
+    git.env("GIT_DIR", repo.path())
+        .env("GIT_WORK_TREE", workdir)
+        .env("GIT_INDEX_FILE", index);
+    Ok(git)
+}
+
+async fn bounded_output(git: UserGit) -> io::Result<std::process::Output> {
+    git.spawn()?
+        .wait_bounded(std::time::Duration::from_secs(30))
+        .await
+}
+
 /// Hold the actual Git lock before refreshing the index, including while a
 /// private libgit2 index is serialized. The lock file itself stays empty.
 pub(super) fn index_lock(
@@ -45,7 +65,6 @@ pub(super) fn index_lock(
 /// Configured clean filters and working-tree encodings belong to the user's Git.
 pub(super) fn clean_blob(
     repo: &git2::Repository,
-    workdir: &Path,
     index: &Path,
     path: &str,
     content: &[u8],
@@ -53,18 +72,10 @@ pub(super) fn clean_blob(
     let mut input = tempfile::tempfile().map_err(stage_error)?;
     input.write_all(content).map_err(stage_error)?;
     input.rewind().map_err(stage_error)?;
-    let mut git = UserGit::in_dir(workdir);
-    git.env("GIT_DIR", repo.path())
-        .env("GIT_WORK_TREE", workdir)
-        .env("GIT_INDEX_FILE", index)
-        .args(["hash-object", "-w", "--stdin", "--path", path])
+    let mut git = path_git(repo, index)?;
+    git.args(["hash-object", "-w", "--stdin", "--path", path])
         .stdin(input.into());
-    let output = tauri::async_runtime::block_on(async {
-        git.spawn()?
-            .wait_bounded(std::time::Duration::from_secs(30))
-            .await
-    })
-    .map_err(stage_error)?;
+    let output = tauri::async_runtime::block_on(bounded_output(git)).map_err(stage_error)?;
     if !output.status.success() {
         return Err(stage_error(refusal(&output)));
     }
@@ -99,21 +110,24 @@ pub(super) fn resolve(
         ));
     }
     let approved = content.as_bytes();
-    let written = trunk_git::write_gate::hold(repo, |repo| {
+    let (written, workspace) = trunk_git::write_gate::hold(repo, |repo| {
         let _lock = index_lock(repo, &index_path)?;
         let (working, conflict, revision) = snapshot(repo, path)?;
         if revision != expected {
             return Err(WorkingTreeEdit::changed());
         }
 
+        let workspace = index_workspace(&index_path)?;
         working.replace(repo, approved)?;
-        revision_of(repo, path, approved, &conflict)
+        Ok((revision_of(repo, path, approved, &conflict)?, workspace))
     })?;
 
     let stage = || {
-        let id = clean_blob(repo, workdir, &index_path, path, approved)?;
+        let conversion = CleanConversions::read(repo, &index_path, [path])?;
+        let id = clean_blob(repo, &index_path, path, approved)?;
         trunk_git::write_gate::hold(repo, |repo| {
             let _lock = index_lock(repo, &index_path)?;
+            conversion.validate(repo, &index_path, &[path])?;
             let (working, conflict, revision) = snapshot(repo, path)?;
             if revision != written {
                 return Err(WorkingTreeEdit::changed());
@@ -129,7 +143,7 @@ pub(super) fn resolve(
             } else {
                 ours.mode
             };
-            publish_index(repo, &index_path, |index| {
+            write_index(repo, &index_path, workspace.as_ref(), |index| {
                 stage_entry(index, path, Some((id, mode)))
             })
         })
@@ -176,20 +190,46 @@ fn snapshot<'a>(
     Ok((working, conflict, revision))
 }
 
+#[cfg(target_os = "macos")]
+mod index_workspace;
+
+fn index_workspace(index_path: &Path) -> Result<impl AsRef<Path>, TrunkError> {
+    #[cfg(target_os = "macos")]
+    {
+        index_workspace::Workspace::new(index_path).map_err(stage_error)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("trunk-merge-index-");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o700));
+        }
+        let parent = index_path
+            .parent()
+            .ok_or_else(|| stage_error("Missing index directory."))?;
+        builder.tempdir_in(parent).map_err(stage_error)
+    }
+}
+
 pub(super) fn publish_index(
     repo: &git2::Repository,
     index_path: &Path,
     update: impl FnOnce(&mut git2::Index) -> Result<(), TrunkError>,
 ) -> Result<(), TrunkError> {
-    let mut builder = tempfile::Builder::new();
-    builder.prefix("trunk-merge-index-");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        builder.permissions(std::fs::Permissions::from_mode(0o700));
-    }
-    let dir = builder.tempdir_in(repo.path()).map_err(stage_error)?;
-    let shadow = dir.path().join("index");
+    let workspace = index_workspace(index_path)?;
+    write_index(repo, index_path, workspace.as_ref(), update)
+}
+
+fn write_index(
+    repo: &git2::Repository,
+    index_path: &Path,
+    directory: &Path,
+    update: impl FnOnce(&mut git2::Index) -> Result<(), TrunkError>,
+) -> Result<(), TrunkError> {
+    let shadow = directory.join("index");
     let mut source = File::open(index_path).map_err(stage_error)?;
     let metadata = source.metadata().map_err(stage_error)?;
     {
@@ -203,6 +243,16 @@ pub(super) fn publish_index(
     update(&mut index)?;
     index.write().map_err(stage_error)?;
 
+    #[cfg(target_os = "macos")]
+    {
+        // libgit2 replaces the shadow on write, so apply the original index access rules now.
+        let serialized = File::options()
+            .write(true)
+            .open(&shadow)
+            .map_err(stage_error)?;
+        trunk_git::macos_metadata::copy_file_access(&source, &serialized).map_err(stage_error)?;
+    }
+    #[cfg(not(target_os = "macos"))]
     std::fs::set_permissions(&shadow, metadata.permissions()).map_err(stage_error)?;
     std::fs::rename(shadow, index_path).map_err(stage_error)
 }

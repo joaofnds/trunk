@@ -643,6 +643,7 @@ async function resolveConflictedFile(
 	const repo = repoPath;
 	const finish = mergePicks.startSave(repo, filePath);
 	if (!finish) return;
+	let submitted: { revision: string; content: string } | undefined;
 	try {
 		const sides = await safeInvoke<MergeSides>("get_merge_sides", {
 			purpose: "resolution",
@@ -672,6 +673,7 @@ async function resolveConflictedFile(
 				? takeAllCurrent(sides.regions)
 				: takeAllIncoming(sides.regions);
 		const content = computeOutput(sides.regions, taken);
+		submitted = { revision: sides.revision, content };
 		await safeInvoke("save_merge_result", {
 			expectedRevision: sides.revision,
 			path: repo,
@@ -683,7 +685,30 @@ async function resolveConflictedFile(
 		onfileadvance?.(filePath, "conflicted");
 		await loadStatus();
 	} catch (e) {
-		reportErrorToast(e, "Resolution failed");
+		if (submitted && isTrunkError(e) && e.code === "merge_recovery_volume") {
+			mergePicks.set(repo, filePath, submitted.revision, {
+				taken: new Set(),
+				typed: submitted.content,
+			});
+			mergePicks.refused(
+				repo,
+				filePath,
+				submitted.revision,
+				submitted.content,
+				e.message,
+			);
+			showToast(
+				`Open ${filePath} in the merge editor and choose Copy draft. The working file and Git directory are on different volumes.`,
+				"error",
+			);
+		} else if (isTrunkError(e) && typeof e.working_revision === "string") {
+			showToast(
+				`${e.message} Your resolution is in ${filePath}. Use + on that file to stage it when ready.`,
+				"error",
+			);
+		} else {
+			reportErrorToast(e, "Resolution failed");
+		}
 	} finally {
 		finish();
 	}

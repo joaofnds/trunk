@@ -396,6 +396,11 @@ impl<'a> WorkingTreeEdit<'a> {
         }
 
         drop(current);
+        #[cfg(target_os = "macos")]
+        {
+            self.publish_recoverable(repo, bytes)
+        }
+        #[cfg(not(target_os = "macos"))]
         self.publish(bytes)
     }
 

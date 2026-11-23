@@ -92,7 +92,6 @@ impl Snapshot {
     fn object(
         &self,
         repo: &git2::Repository,
-        workdir: &Path,
         index: &Path,
         path: &str,
     ) -> Result<Option<(git2::Oid, u32)>, TrunkError> {
@@ -100,7 +99,7 @@ impl Snapshot {
             0 => return Ok(None),
             0o120_000 => repo.blob(&self.working.bytes)?,
             0o160_000 => git2::Oid::from_bytes(&self.working.bytes)?,
-            _ => save::clean_blob(repo, workdir, index, path, &self.working.bytes)?,
+            _ => save::clean_blob(repo, index, path, &self.working.bytes)?,
         };
         Ok(Some((oid, self.mode)))
     }
@@ -144,21 +143,25 @@ pub fn mark_conflicts_resolved_inner(
     if files.is_empty() {
         return Ok(());
     }
-    let workdir = repo
-        .workdir()
-        .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
     let index_path = repo
         .index()?
         .path()
         .ok_or_else(|| TrunkError::new("stage_failed", "Missing index path"))?
         .to_owned();
+    let conversions =
+        save::CleanConversions::read(&repo, &index_path, files.iter().map(|f| f.path.as_str()))?;
+    let mut regular_paths = Vec::new();
     let mut objects = Vec::with_capacity(files.len());
     for file in files {
         let snapshot = Snapshot::validate(&repo, file)?;
-        objects.push(snapshot.object(&repo, workdir, &index_path, &file.path)?);
+        if matches!(snapshot.mode, 0o100_644 | 0o100_755) {
+            regular_paths.push(file.path.as_str());
+        }
+        objects.push(snapshot.object(&repo, &index_path, &file.path)?);
     }
     trunk_git::write_gate::hold(&repo, |repo| {
         let _lock = save::index_lock(repo, &index_path)?;
+        conversions.validate(repo, &index_path, &regular_paths)?;
         for file in files {
             Snapshot::validate(repo, file)?;
         }

@@ -998,6 +998,42 @@ describe("MergeEditor", () => {
 			).toHaveValue("first draft");
 		});
 
+		it("copies the original line endings when recovery cannot cross volumes", async () => {
+			mockInvoke.mockImplementation(async (cmd) => {
+				if (cmd === "get_merge_sides")
+					return sidesOf(
+						merged("first\r"),
+						conflict(["ours"], ["theirs"]),
+						merged("last"),
+					);
+				if (cmd === "save_merge_result")
+					throw {
+						code: "merge_recovery_volume",
+						message:
+							"The working file and Git directory are on different volumes.",
+					};
+			});
+			const view = render(MergeEditor, { props });
+			await output();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Take All Current" }),
+			);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Save and Mark Resolved" }),
+			);
+			await screen.findByRole("button", { name: "Copy draft" });
+			await view.rerender({ filePath: "other" });
+			await screen.findByLabelText("Path actions for other");
+			await view.rerender({ filePath: props.filePath });
+			expect(await screen.findByText(/are on different volumes/)).toBeVisible();
+			await fireEvent.click(screen.getByRole("button", { name: "Copy draft" }));
+
+			expect(copyPath).toHaveBeenCalledWith(
+				"first\r\nours\nlast",
+				"merge draft",
+			);
+		});
+
 		it("opens the draft for recovery immediately when Git refuses a stale save", async () => {
 			const commit = Promise.withResolvers<void>();
 			mockInvoke.mockImplementation(async (cmd) => {

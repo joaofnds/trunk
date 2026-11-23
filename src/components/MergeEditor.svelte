@@ -415,14 +415,16 @@ function loadSides({ repo, path }: { repo: string; path: string }) {
 			if (
 				draft &&
 				previous !== undefined &&
-				(draft.refused || draft.revision !== revision)
+				(draft.refusalReason !== undefined || draft.revision !== revision)
 			) {
 				view = {
 					kind: "recover",
 					repo,
 					path,
 					text: previous,
-					reason: "This conflict changed after you edited Output.",
+					reason:
+						draft.refusalReason ??
+						"This conflict changed after you edited Output.",
 				};
 				loading = false;
 				return;
@@ -848,8 +850,11 @@ async function handleSaveAndResolve() {
 				manualEdit = true;
 				manualText = submitted;
 			}
-		} else if (isTrunkError(e) && e.code === "conflict_changed") {
-			picks.refused(repo, path, expectedRevision, submitted);
+		} else if (
+			isTrunkError(e) &&
+			(e.code === "conflict_changed" || e.code === "merge_recovery_volume")
+		) {
+			picks.refused(repo, path, expectedRevision, submitted, e.message);
 			if (
 				!loading &&
 				displayed?.repo === repo &&
@@ -861,7 +866,7 @@ async function handleSaveAndResolve() {
 					repo,
 					path,
 					text: submitted,
-					reason: "This conflict changed before Git could stage your output.",
+					reason: e.message,
 				};
 			}
 		}

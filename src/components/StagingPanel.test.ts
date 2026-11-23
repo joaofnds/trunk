@@ -1183,6 +1183,69 @@ describe("StagingPanel merge-continue", () => {
 				);
 			},
 		);
+
+		async function takeIncomingWithSaveError(error: {
+			code: string;
+			message: string;
+			working_revision?: string;
+		}) {
+			const path = "src/a.ts";
+			const mergePicks = createMergePicks();
+			mockMergeState([
+				{ path, status: "Conflicted", is_binary: false, can_take_sides: true },
+			]);
+			const read = mockInvoke.getMockImplementation();
+			if (!read) throw new Error("missing merge state");
+			mockInvoke.mockImplementation((command, args) => {
+				if (command === "get_merge_sides") return Promise.resolve(sides);
+				if (command === "save_merge_result") return Promise.reject(error);
+				return read(command, args);
+			});
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo", mergePicks },
+			});
+			vi.mocked(MenuItem.new).mockClear();
+			await fireEvent.contextMenu(
+				stagingRowFor(await screen.findByTitle(path)),
+			);
+			const action = await waitFor(() => {
+				const item = vi
+					.mocked(MenuItem.new)
+					.mock.calls.find(([item]) => item.text === "Take All Incoming")?.[0];
+				expect(item?.action).toBeDefined();
+				return item?.action;
+			});
+			action?.("Take All Incoming");
+			await waitFor(() => expect(toasts.items.at(-1)?.kind).toBe("error"));
+			return mergePicks;
+		}
+
+		it("makes the selected side available to copy in the editor after a cross-volume refusal", async () => {
+			const picks = await takeIncomingWithSaveError({
+				code: "merge_recovery_volume",
+				message: "Different volumes.",
+			});
+			expect(picks.draftText("/repo", "src/a.ts")).toBe(
+				"a\nB-theirs\nc\nd-ours\ne\nf-theirs\n",
+			);
+			expect(picks.get("/repo", "src/a.ts")?.refusalReason).toBe(
+				"Different volumes.",
+			);
+			expect(toasts.items.at(-1)?.message).toContain(
+				"Open src/a.ts in the merge editor and choose Copy draft.",
+			);
+		});
+
+		it("points to the file's stage action when Take All saved the working file", async () => {
+			await takeIncomingWithSaveError({
+				code: "stage_failed",
+				message: "Filter failed.",
+				working_revision: "after write",
+			});
+			expect(toasts.items.at(-1)?.message).toContain(
+				"Your resolution is in src/a.ts. Use + on that file",
+			);
+		});
 	});
 
 	describe("when resolving conflicted files in bulk", () => {

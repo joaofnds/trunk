@@ -357,6 +357,147 @@ fn a_working_edit_during_cleaning_is_preserved_without_a_stale_retry_revision() 
 
 #[cfg(unix)]
 #[test]
+fn a_changed_clean_conversion_keeps_the_conflict_and_allows_a_fresh_save() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt -text filter=change-rules\n",
+    )
+    .unwrap();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str(
+            "filter.change-rules.clean",
+            "echo 'file.txt text' > .gitattributes && cat",
+        )
+        .unwrap();
+    let draft = "resolved\r\n";
+
+    let error = ctx.save_merge_result("file.txt", draft).unwrap_err();
+
+    assert_eq!(error.code, "stage_failed");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("file.txt")).unwrap(),
+        draft.as_bytes()
+    );
+    ctx.save_merge_draft("file.txt", draft, &error.working_revision.unwrap())
+        .unwrap();
+    assert_eq!(ctx.staged_bytes("file.txt"), b"resolved\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn mark_keeps_the_conflict_when_its_clean_filter_changes_configuration() {
+    let ctx = conflicted_file_txt();
+    std::fs::write(ctx.repo_path().join("file.txt"), "chosen\n").unwrap();
+    std::fs::write(
+        ctx.repo_path().join(".gitattributes"),
+        "file.txt filter=change-rules\n",
+    )
+    .unwrap();
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str(
+            "filter.change-rules.clean",
+            "git config filter.change-rules.clean 'tr a-z A-Z' && cat",
+        )
+        .unwrap();
+    let confirmation = prepare_mark(&ctx, &["file.txt"]);
+
+    let error = mark(&ctx, &confirmation).unwrap_err();
+
+    assert_eq!(error.code, "stage_failed");
+    assert!(ctx.repo().index().unwrap().has_conflicts());
+    mark(&ctx, &prepare_mark(&ctx, &["file.txt"])).unwrap();
+    assert_eq!(ctx.staged_bytes("file.txt"), b"CHOSEN\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn drivers_named_like_git_attribute_states_remain_distinct() {
+    for (driver, new_rule) in [
+        ("unspecified", "!filter"),
+        ("set", "filter"),
+        ("unset", "-filter"),
+    ] {
+        let ctx = conflicted_file_txt();
+        std::fs::write(
+            ctx.repo_path().join(".gitattributes"),
+            format!("file.txt filter={driver}\n"),
+        )
+        .unwrap();
+        let mut config = ctx.repo().config().unwrap();
+        config
+            .set_str(
+                "includeIf.hasconfig:remote.*.url:https://example.invalid/**.path",
+                "optional-rules",
+            )
+            .unwrap();
+        config
+            .set_str(
+                &format!("filter.{driver}.clean"),
+                &format!("echo 'file.txt {new_rule}' > .gitattributes && tr a-z A-Z"),
+            )
+            .unwrap();
+
+        let error = ctx.save_merge_result("file.txt", "lowercase").unwrap_err();
+
+        assert!(ctx.repo().index().unwrap().has_conflicts());
+        ctx.save_merge_draft("file.txt", "lowercase", &error.working_revision.unwrap())
+            .unwrap();
+        assert_eq!(ctx.staged_bytes("file.txt"), b"lowercase");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_literal_and_a_boolean_attribute_survive_git_displaying_the_same_name() {
+    for (before, after, content) in [
+        ("ident", "ident=set", "$Id: earlier $\n"),
+        ("text", "text=set", "chosen\r\n"),
+    ] {
+        let ctx = conflicted_file_txt();
+        let mut config = ctx.repo().config().unwrap();
+        config
+            .set_str(
+                "includeIf.hasconfig:remote.*.url:https://example.invalid/**.path",
+                "optional-rules",
+            )
+            .unwrap();
+        config.set_bool("core.autocrlf", false).unwrap();
+        config
+            .set_str(
+                "filter.change.clean",
+                &format!(
+                    "echo 'file.txt {after} filter=change' > .gitattributes && echo ran >> .git/calls && cat"
+                ),
+            )
+            .unwrap();
+        std::fs::write(
+            ctx.repo_path().join(".gitattributes"),
+            format!("file.txt {before} filter=change\n"),
+        )
+        .unwrap();
+
+        let error = ctx.save_merge_result("file.txt", content).unwrap_err();
+
+        assert_eq!(error.code, "stage_failed");
+        assert!(ctx.repo().index().unwrap().has_conflicts());
+        assert_eq!(
+            std::fs::read(ctx.repo_path().join(".git/calls")).unwrap(),
+            b"ran\n"
+        );
+        ctx.save_merge_draft("file.txt", content, &error.working_revision.unwrap())
+            .unwrap();
+        assert_eq!(ctx.staged_bytes("file.txt"), content.as_bytes());
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn the_resolved_attributes_file_selects_its_own_clean_filter() {
     let file = ".gitattributes";
     let ctx = TestContext::builder()
@@ -386,17 +527,71 @@ fn the_resolved_attributes_file_selects_its_own_clean_filter() {
 #[cfg(unix)]
 #[test]
 fn staging_keeps_a_private_index_private() {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    #[cfg(target_os = "macos")]
+    fn acl(path: &std::path::Path) -> Vec<String> {
+        let output = std::process::Command::new("/bin/ls")
+            .arg("-led")
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .skip(1)
+            .map(str::to_owned)
+            .collect()
+    }
+
     let ctx = conflicted_file_txt();
-    let index = ctx.repo().path().join("index");
+    let git_dir = ctx.repo().path().to_owned();
+    let index = git_dir.join("index");
     std::fs::set_permissions(&index, std::fs::Permissions::from_mode(0o600)).unwrap();
+    #[cfg(target_os = "macos")]
+    let expected_acl = {
+        for (target, flag, rule) in [
+            (&index, "+a", "everyone allow readattr"),
+            (&index, "+ai", "everyone allow readextattr"),
+            (
+                &git_dir,
+                "+a",
+                "everyone allow read,file_inherit,directory_inherit",
+            ),
+        ] {
+            assert!(
+                std::process::Command::new("/bin/chmod")
+                    .args([flag, rule])
+                    .arg(target)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        acl(&index)
+    };
+    let before = std::fs::metadata(&index).unwrap();
 
     ctx.save_merge_result("file.txt", "private").unwrap();
 
-    assert_eq!(
-        std::fs::metadata(index).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
+    let after = std::fs::metadata(&index).unwrap();
+    assert_eq!(after.permissions().mode() & 0o777, 0o600);
+    assert_eq!((after.uid(), after.gid()), (before.uid(), before.gid()));
+    #[cfg(target_os = "macos")]
+    {
+        assert_eq!(acl(&index), expected_acl);
+        let recovery = git_dir.join(format!("trunk-merge-recovery-{}", unsafe {
+            libc::geteuid()
+        }));
+        assert_eq!(acl(&recovery), Vec::<String>::new());
+        let entries: Vec<_> = std::fs::read_dir(recovery)
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(acl(&entries[0].path()), Vec::<String>::new());
+    }
 }
 
 #[test]
@@ -436,6 +631,11 @@ fn a_linked_worktree_publishes_only_its_own_resolution() {
     .unwrap();
     let path = dir.to_str().unwrap();
     let opened = OpenRepos::from_iter([(path.to_owned(), dir.clone())]);
+    #[cfg(target_os = "macos")]
+    let mut other_editor = std::fs::File::options()
+        .append(true)
+        .open(dir.join("file.txt"))
+        .unwrap();
     let sides = trunk_lib::commands::merge_editor::get_merge_sides_inner(
         path,
         "file.txt",
@@ -452,6 +652,33 @@ fn a_linked_worktree_publishes_only_its_own_resolution() {
         &opened,
     )
     .unwrap();
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        other_editor.write_all(b"late editor change").unwrap();
+        drop(other_editor);
+        assert_eq!(
+            std::fs::read(dir.join("file.txt")).unwrap(),
+            b"linked resolution"
+        );
+
+        let recovery = format!("trunk-merge-recovery-{}", unsafe { libc::geteuid() });
+        assert!(!ctx.repo().path().join(&recovery).exists());
+        let folders: Vec<_> = std::fs::read_dir(repo.path().join(recovery))
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        let [save] = folders.as_slice() else {
+            panic!("expected one recovery entry for the linked worktree, found {folders:?}");
+        };
+        assert_eq!(std::fs::read(save.join("path")).unwrap(), b"file.txt");
+        assert!(
+            std::fs::read(save.join("original"))
+                .unwrap()
+                .ends_with(b"late editor change")
+        );
+    }
 
     let mut index = repo.index().unwrap();
     index.read(true).unwrap();

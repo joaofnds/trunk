@@ -23,7 +23,7 @@ export interface MergePicks {
 
 interface FileDraft {
 	readonly revision: string;
-	readonly refused?: boolean;
+	readonly refusalReason?: string;
 	picks: MergePicks;
 }
 
@@ -37,7 +37,13 @@ export interface MergePicksStore {
 	draftPaths(repo: string): string[];
 	isSaving(repo: string, path: string): boolean;
 	startSave(repo: string, path: string): (() => void) | undefined;
-	refused(repo: string, path: string, revision: string, text: string): void;
+	refused(
+		repo: string,
+		path: string,
+		revision: string,
+		text: string,
+		reason: string,
+	): void;
 	set(repo: string, path: string, sides: string, picks: MergePicks): void;
 	rememberPosition(
 		repo: string,
@@ -80,7 +86,7 @@ export function createMergePicks(): MergePicksStore {
 				saving.delete(key);
 			};
 		},
-		refused(repo, path, revision, text) {
+		refused(repo, path, revision, text, reason) {
 			const key = keyOf(repo, path);
 			const entry = kept.get(key);
 			if (entry?.revision !== revision) return;
@@ -88,7 +94,7 @@ export function createMergePicks(): MergePicksStore {
 			drafts.add(key);
 			kept.set(key, {
 				...entry,
-				refused: true,
+				refusalReason: reason,
 				picks: { ...entry.picks, typed: text },
 			});
 		},
