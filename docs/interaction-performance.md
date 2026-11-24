@@ -2008,6 +2008,31 @@ the 3 ms limit. The short native variant used 72 history commits and a 56 px
 origin to fit the same gestures. The short-repository comparison is limited to
 the rAF replay. Process admission samples activity at entry and exit.
 
+#### Paging-boundary replay
+
+On 2026-11-24 three fresh drive launches tested the paging that the matched
+cohort kept outside its phases. Each opened one tab on a copy of the 4,187-commit
+long fixture at the 120 FPS window, with debug Rust and a production frontend
+matching `3b87b857` in everything but one renamed function. The probe set
+`scrollTop` 14 px further on every rAF callback from the top for 12 s, which
+travelled about 20,100 px. It then stayed 3 s idle at that depth and scrolled back
+and forth through the loaded range for 12 s. The one-minute load average was
+2.5 to 4.9 across the three runs.
+
+| Launch | Page appends crossed | Paging scroll max (ms, count above 25) | Deep idle max | Loaded scroll max |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 4 | 32 (1) | 18 (0) | 29 (1) |
+| 2 | 4 | 31 (1) | 17 (0) | 20 (0) |
+| 3 | 4 | 22 (0) | 15 (0) | 30 (1) |
+
+The probe saw each append as a growth in the viewport's scroll height. No phase
+had a burst. Every interval above 25 ms was a single one, 39 to 43 ms into the
+phase, on the first scroll steps, and none fell within 250 ms of an append. The
+median interval was 8 ms in every phase. These runs leave scrolling after a
+Message pan, physical trackpad input and actual presentation unmeasured, as
+before. The probe, runner, analyzer and raw results are in
+`.boris/trunk-281-native/paging-2026-11-24/`.
+
 #### Replay and evidence
 
 Run from a fresh scratch checkout pinned to `345af69e`. The rAF wrapper
