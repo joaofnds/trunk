@@ -2,11 +2,18 @@
 import Plus from "@lucide/svelte/icons/plus";
 import X from "@lucide/svelte/icons/x";
 import type Sortable from "sortablejs";
+import { keyChord } from "../lib/keyboard.js";
 import {
 	displayPath,
 	repositoryParts,
 	repositorySeparator,
 } from "../lib/path.js";
+import {
+	canMoveTab,
+	moveTab,
+	moveTabTo,
+	type TabStep,
+} from "../lib/tab-order.js";
 import type { TabInfo } from "../lib/tab-types.js";
 import { showToast } from "../lib/toast.svelte.js";
 import Button from "../lib/ui/Button.svelte";
@@ -129,8 +136,12 @@ function reveal(item: Element) {
 // The strip narrows with the window and when a repository's toolbar appears
 // beside it, and the active tab widens when a repository opens in it: either
 // can push the active tab out of view without a change of tab.
+function itemFor(tabId: string): Element | null {
+	return tabBarEl.querySelector(`[data-tab-id="${tabId}"]`);
+}
+
 $effect(() => {
-	const active = tabBarEl.querySelector(`[data-tab-id="${activeTabId}"]`);
+	const active = itemFor(activeTabId);
 	if (!active) return;
 
 	reveal(active);
@@ -194,6 +205,32 @@ function scrollSideways(e: WheelEvent) {
 	tabBarEl.scrollLeft += e.deltaY;
 }
 
+// Reordering takes a tab item out of the page and puts it back, and the page
+// drops the focus of anything inside an item it takes out.
+let focusedInStrip: HTMLElement | null = null;
+
+$effect.pre(() => {
+	void tabs;
+	const focused = document.activeElement;
+	focusedInStrip =
+		focused instanceof HTMLElement && tabBarEl?.contains(focused)
+			? focused
+			: null;
+});
+
+// A tab the keys move can pass the edge of a strip that overflows.
+let movedByKey: string | null = null;
+
+$effect(() => {
+	void tabs;
+	if (focusedInStrip?.isConnected && document.activeElement === document.body)
+		focusedInStrip.focus({ preventScroll: true });
+
+	const moved = movedByKey && itemFor(movedByKey);
+	movedByKey = null;
+	if (moved) reveal(moved);
+});
+
 const canReorder = $derived(tabs.length > 1);
 
 $effect(() => {
@@ -224,10 +261,7 @@ $effect(() => {
 					)
 						return;
 
-					const updated = [...tabs];
-					const [moved] = updated.splice(e.oldIndex, 1);
-					updated.splice(e.newIndex, 0, moved);
-					onreorder(updated);
+					onreorder(moveTabTo(tabs, e.oldIndex, e.newIndex));
 				},
 			});
 		})
@@ -243,6 +277,29 @@ $effect(() => {
 		sortable?.destroy();
 	};
 });
+
+const MOVE_CHORDS = new Map<string, TabStep>([
+	["Meta+Shift+ArrowLeft", -1],
+	["Meta+Shift+ArrowRight", 1],
+	["Ctrl+Shift+ArrowLeft", -1],
+	["Ctrl+Shift+ArrowRight", 1],
+]);
+
+function activateOrMoveOnKey(e: KeyboardEvent, tabId: string) {
+	if (e.key === "Enter" || e.key === " ") {
+		onactivate(tabId);
+		return;
+	}
+
+	const step = MOVE_CHORDS.get(keyChord(e));
+	if (step === undefined) return;
+
+	e.preventDefault();
+	if (!canMoveTab(tabs, tabId, step)) return;
+
+	movedByKey = tabId;
+	onreorder(moveTab(tabs, tabId, step));
+}
 
 function activateOnPrimary(e: MouseEvent, tabId: string) {
 	if (e.button === 0) onactivate(tabId);
@@ -313,9 +370,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 					selected={tab.id === activeTabId}
 					{title}
 					onmousedown={(e) => activateOnPrimary(e, tab.id)}
-					onkeydown={(e) => {
-						if (e.key === "Enter" || e.key === " ") onactivate(tab.id);
-					}}
+					onkeydown={(e) => activateOrMoveOnKey(e, tab.id)}
 					oncontextmenu={(e) => openMenu(e, tab.id)}
 					onauxclick={(e) => closeOnMiddle(e, tab.id)}
 				>

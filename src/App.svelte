@@ -77,6 +77,7 @@ import {
 	type TabSession,
 	type TabSnapshot,
 } from "./lib/store.js";
+import { canMoveTab, moveTab } from "./lib/tab-order.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
 import { showToast } from "./lib/toast.svelte.js";
@@ -405,6 +406,12 @@ async function handleDiffContentModeChange(mode: ContentMode) {
 
 // Tab state
 let tabs = $state<TabInfo[]>([]);
+// The repository views stack in one place, so their page order shows nothing.
+// Keeping it fixed when the strip reorders spares each view the move that would
+// drop its scroll offsets and the focus inside it.
+const tabViews = $derived(
+	[...tabs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+);
 let activeTabId = $state<string>("");
 let initialActiveId: string | null = null;
 const scheduler = getScheduler();
@@ -671,6 +678,12 @@ function closeOtherTabs(keepTabId: string) {
 	persistTabs();
 }
 
+function reorderTabs(order: TabInfo[]) {
+	if (updateFrozen) return;
+	tabs = order;
+	persistTabs();
+}
+
 function closeAllTabs() {
 	if (updateFrozen) return;
 	const toClose = tabs;
@@ -710,6 +723,17 @@ async function showTabContextMenu(tabId: string, _event: MouseEvent) {
 				action: () => {
 					if (tab?.repoPath) copyText(tab.repoPath);
 				},
+			}),
+			await PredefinedMenuItem.new({ item: "Separator" }),
+			await MenuItem.new({
+				text: "Move Left",
+				enabled: canMoveTab(tabs, tabId, -1),
+				action: () => reorderTabs(moveTab(tabs, tabId, -1)),
+			}),
+			await MenuItem.new({
+				text: "Move Right",
+				enabled: canMoveTab(tabs, tabId, 1),
+				action: () => reorderTabs(moveTab(tabs, tabId, 1)),
 			}),
 		],
 	});
@@ -1449,10 +1473,7 @@ $effect(() => {
 			onnew={addNewTab}
 			oncontextmenu={showTabContextMenu}
 			onauxclose={(id) => closeTab(id)}
-			onreorder={(newTabs) => {
-				tabs = newTabs;
-				persistTabs();
-			}}
+			onreorder={reorderTabs}
 		/>
 		<div data-tauri-drag-region class="flex-1 min-w-6 h-full"></div>
 		{#if activeTab?.repoPath && repositories.isReady(activeTab)}
@@ -1560,7 +1581,7 @@ $effect(() => {
 				<Button onclick={() => void restoreTabs()}>Retry opening tabs</Button>
 			</div>
 		{/if}
-		{#each tabs as tab (tab.id)}
+		{#each tabViews as tab (tab.id)}
 			<div
 				class="absolute inset-0 flex flex-col"
 				class:invisible={tab.id !== activeTabId}

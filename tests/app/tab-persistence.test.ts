@@ -2,6 +2,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PersistedTab } from "../../src/lib/tab-types.js";
+import { openContextMenu } from "./drivers/dom.js";
+import type { AppDriver } from "./drivers/index.js";
 import { remount, setup, teardown } from "./harness/index.js";
 
 async function restoreSavedTabs(...names: string[]) {
@@ -161,4 +163,119 @@ describe("tab restoration", () => {
 			selected: "Stay",
 		});
 	});
+});
+
+function openTabs(): (string | undefined)[] {
+	return screen.getAllByRole("tab").map((tab) => tab.textContent?.trim());
+}
+
+describe("moving a tab", () => {
+	afterEach(teardown);
+
+	async function openTabMenu(app: AppDriver, name: string) {
+		await openContextMenu(
+			screen.getByRole("tab", { name }),
+			app.contextMenu,
+			`the ${name} tab`,
+		);
+	}
+
+	function pressOn(name: string, key: "ArrowLeft" | "ArrowRight") {
+		return fireEvent.keyDown(screen.getByRole("tab", { name }), {
+			key,
+			metaKey: true,
+			shiftKey: true,
+		});
+	}
+
+	const gestures: Record<
+		string,
+		(app: AppDriver, name: string) => Promise<unknown>
+	> = {
+		"Move Left": async (app, name) => {
+			await openTabMenu(app, name);
+			app.contextMenu.choose("Move Left");
+		},
+		"Move Right": async (app, name) => {
+			await openTabMenu(app, name);
+			app.contextMenu.choose("Move Right");
+		},
+		"Cmd+Shift+Left": (_app, name) => pressOn(name, "ArrowLeft"),
+		"Cmd+Shift+Right": (_app, name) => pressOn(name, "ArrowRight"),
+	};
+
+	async function moveWith(gesture: string, name: string) {
+		const app = await restoreSavedTabs("First", "Second", "Third");
+		await gestures[gesture](app, name);
+		await app.settled();
+		return app;
+	}
+
+	it.each([
+		{ gesture: "Move Left", order: ["Second", "First", "Third"] },
+		{ gesture: "Move Right", order: ["First", "Third", "Second"] },
+		{ gesture: "Cmd+Shift+Left", order: ["Second", "First", "Third"] },
+		{ gesture: "Cmd+Shift+Right", order: ["First", "Third", "Second"] },
+	])(
+		"puts the tab one place over with $gesture and restores that order",
+		async ({ gesture, order }) => {
+			const app = await moveWith(gesture, "Second");
+			const moved = openTabs();
+
+			await remount();
+			await app.settled();
+
+			expect({ moved, restored: openTabs() }).toEqual({
+				moved: order,
+				restored: order,
+			});
+		},
+	);
+
+	it.each([
+		{ gesture: "Move Left", name: "Third" },
+		{ gesture: "Move Right", name: "Second" },
+		{ gesture: "Cmd+Shift+Left", name: "Third" },
+		{ gesture: "Cmd+Shift+Right", name: "Second" },
+	])(
+		"keeps the selected repository when $gesture moves the $name tab",
+		async ({ gesture, name }) => {
+			await moveWith(gesture, name);
+
+			expect(selectedTab()).toBe("First");
+		},
+	);
+
+	it("keeps the focus inside the selected repository when its tab moves", async () => {
+		const app = await restoreSavedTabs("First", "Second", "Third");
+		const [firstView] = screen.getAllByRole("button", {
+			name: "Open Repository",
+		});
+		firstView.focus();
+
+		await gestures["Move Right"](app, "First");
+		await app.settled();
+
+		expect(openTabs()).toEqual(["Second", "First", "Third"]);
+		expect(document.activeElement).toBe(firstView);
+	});
+
+	it.each([
+		{ name: "First", left: false, right: true },
+		{ name: "Third", left: true, right: false },
+	])(
+		"offers only the moves the $name tab can make",
+		async ({ name, left, right }) => {
+			const app = await restoreSavedTabs("First", "Second", "Third");
+
+			await openTabMenu(app, name);
+
+			expect(
+				app.contextMenu.items().filter(({ label }) => label.startsWith("Move")),
+			).toEqual([
+				{ label: "Move Left", enabled: left },
+				{ label: "Move Right", enabled: right },
+			]);
+		},
+	);
 });

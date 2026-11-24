@@ -734,4 +734,138 @@ describe("TabBar", () => {
 			expect(tabEl?.getAttribute("title")).toBe("New Tab");
 		});
 	});
+
+	describe("on a focused tab's move keys", () => {
+		const strip: TabInfo[] = [
+			...tabs,
+			{ id: "3", repoPath: "/path/to/third", repoName: "third", dirty: false },
+		];
+
+		async function pressOn(name: string, key: Record<string, unknown>) {
+			const orders: string[][] = [];
+			const activated: string[] = [];
+			render(TabBar, {
+				props: {
+					...defaultProps,
+					tabs: strip,
+					onactivate: (id) => activated.push(id),
+					onreorder: (order) =>
+						orders.push(order.map(({ repoName }) => repoName ?? "")),
+				},
+			});
+			const tab = screen.getByRole("tab", { name });
+			tab.focus();
+
+			const unhandled = await fireEvent.keyDown(tab, key);
+			return { orders, activated, unhandled };
+		}
+
+		const chords = [
+			{
+				chord: "Cmd+Shift+Left",
+				key: "ArrowLeft",
+				metaKey: true,
+				order: ["other", "trunk", "third"],
+			},
+			{
+				chord: "Cmd+Shift+Right",
+				key: "ArrowRight",
+				metaKey: true,
+				order: ["trunk", "third", "other"],
+			},
+			{
+				chord: "Ctrl+Shift+Left",
+				key: "ArrowLeft",
+				ctrlKey: true,
+				order: ["other", "trunk", "third"],
+			},
+			{
+				chord: "Ctrl+Shift+Right",
+				key: "ArrowRight",
+				ctrlKey: true,
+				order: ["trunk", "third", "other"],
+			},
+		];
+
+		it.each(chords)(
+			"moves the tab one place over on $chord, in place of the key's own action",
+			async ({ order, chord: _, ...key }) => {
+				const { orders, unhandled } = await pressOn("other", {
+					...key,
+					shiftKey: true,
+				});
+
+				expect({ orders, unhandled }).toEqual({
+					orders: [order],
+					unhandled: false,
+				});
+			},
+		);
+
+		it.each(chords)(
+			"moves the tab without selecting it on $chord",
+			async ({ order: _, chord: __, ...key }) => {
+				const { activated } = await pressOn("other", {
+					...key,
+					shiftKey: true,
+				});
+
+				expect(activated).toEqual([]);
+			},
+		);
+
+		it.each([
+			{ name: "trunk", key: "ArrowLeft" },
+			{ name: "third", key: "ArrowRight" },
+		])(
+			"leaves the $name tab at its end of the strip on $key",
+			async ({ name, key }) => {
+				const { orders } = await pressOn(name, {
+					key,
+					metaKey: true,
+					shiftKey: true,
+				});
+
+				expect(orders).toEqual([]);
+			},
+		);
+
+		it.each([
+			{ way: "left", order: [strip[1], strip[0], strip[2]] },
+			{ way: "right", order: [strip[0], strip[2], strip[1]] },
+		])("keeps the focus on a tab the strip moves $way", async ({ order }) => {
+			const view = render(TabBar, { props: { ...defaultProps, tabs: strip } });
+			screen.getByRole("tab", { name: "other" }).focus();
+
+			await view.rerender({ ...defaultProps, tabs: order });
+
+			expect(document.activeElement).toBe(
+				screen.getByRole("tab", { name: "other" }),
+			);
+		});
+
+		it("brings the moved tab into view", async () => {
+			const moves: TabInfo[][] = [];
+			const view = render(TabBar, {
+				props: {
+					...defaultProps,
+					tabs: strip,
+					onreorder: (order) => moves.push(order),
+				},
+			});
+			const tab = screen.getByRole("tab", { name: "other" });
+			tab.focus();
+			const scrollIntoView = vi.mocked(Element.prototype.scrollIntoView);
+			scrollIntoView.mockClear();
+
+			await fireEvent.keyDown(tab, {
+				key: "ArrowRight",
+				metaKey: true,
+				shiftKey: true,
+			});
+			await view.rerender({ ...defaultProps, tabs: moves[0] });
+
+			expect(scrollIntoView.mock.contexts).toContain(itemOf("other"));
+		});
+	});
 });
