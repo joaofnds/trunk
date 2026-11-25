@@ -35,6 +35,15 @@ retrying every 2.5 seconds, stalling WindowServer's main thread after a reboot.
 Removing the probe entries from that root-owned file brought a request to 4 ms,
 and the retries stopped. The fixed probe serial keeps the probe to one entry there.
 
+Each identity also leaves a color profile in `/Library/ColorSync/Profiles/Displays`,
+a collapsed space in `~/Library/Preferences/com.apple.spaces.plist`, and entries
+in `/Library/Preferences/com.apple.windowserver.displays.plist` and its per-host
+copy under `~/Library/Preferences/ByHost`. Remove them with `defaults import`
+rather than by editing the files, and pause the Dock with `SIGSTOP` before
+importing Spaces and kill it with `SIGKILL` afterwards, which worked on
+2026-11-25. The kill keeps the Dock from saving the list it holds in memory over
+the import, and whether a normal quit would do that is untested.
+
 The manifest records `display_kind`, `requested_refresh_rate` (null on the main
 display), the `native_display` response and the window's reported maximum frame
 rate. A native display rate of zero means unspecified. A painting pass at the 60 Hz
