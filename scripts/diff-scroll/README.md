@@ -16,12 +16,19 @@ The default `--profile slow` requests a peak of 3,750 input pixels per second.
 The optional `--profile fast` requests 30,000 input pixels per second. Both profiles use 216 events. The manifest and input artifact record
 which trace ran; compare runs with the same profile and initial position.
 
-`run.py` and `renderer_pause.py` default to a requested 60 Hz virtual mode. Pass
-`--refresh-rate 120` to exercise the faster condition used by the cadence
-comparison. The manifest records `requested_refresh_rate`, the `native_display`
-response and the window's reported maximum frame rate. A native display rate of
-zero means unspecified. A painting pass at the 60 Hz request does not establish
-the same behavior at the 120 Hz request.
+`run.py`, `renderer_pause.py` and `cadence.py` place the test window on the main
+display by default, where it must stay uncovered for the whole run. `--display
+virtual` creates a private 1280 × 800 display at a requested 60 Hz instead, and
+`--refresh-rate 120` requests the faster condition used by the cadence comparison.
+Use the virtual display only when a run needs it. WindowServer keeps a backstop
+window for every virtual display created after the run ends, and on macOS 27.2
+eight runs raised ColorSync's display profile rebuilds from 24 to about 215 a
+minute, which stayed after the runs ended.
+
+The manifest records `display_kind`, `requested_refresh_rate` (null on the main
+display), the `native_display` response and the window's reported maximum frame
+rate. A native display rate of zero means unspecified. A painting pass at the 60 Hz
+request does not establish the same behavior at the 120 Hz request.
 
 A strict one-shot timer delivers each event against a shared origin, with zero
 requested leeway. Scheduling is still best effort. `native-input.json` records
@@ -66,8 +73,8 @@ itself; other capture tools must be coordinated separately.
 The harness creates its own temporary repository and app data, keeps HEAD
 detached, and adds a fixture tag so the graph can show the commit. Commit authors
 are literal fixture object data. It does not change Git identity or the working
-repository. It starts a private virtual display, checks that the test window is
-visible there, and verifies native wheel coordinates against the browser's wheel
+repository. It places the test window on the chosen display, checks that the
+window is visible there, and verifies native wheel coordinates against the browser's wheel
 event and the event's window number before recording. It quits only the app and
 recorder it started, and removes its temporary repository and app data on exit.
 
@@ -213,9 +220,9 @@ mise exec -- python3 scripts/diff-scroll/cadence.py \
 ```
 
 Use `--mode graph` for the graph comparison. `--refresh-rate` requires either 60
-or 120 and records the requested virtual mode. `--display virtual` is the default;
-`--display main` places the window on `CGMainDisplayID()` and verifies its display
-ID and visibility. This can be a hardware or virtual display. The returned
+or 120 and records the requested virtual mode. `--display main` is the default and
+places the window on `CGMainDisplayID()` and verifies its display ID and
+visibility. This can be a hardware or virtual display. The returned
 `builtIn` field records `CGDisplayIsBuiltin`; `mainDisplay` alone does not establish
 hardware provenance. In main-display mode the refresh-rate argument is recorded
 but not applied, and `requested_refresh_rate` is null. Read the returned display metadata:

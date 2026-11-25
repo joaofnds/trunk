@@ -38,6 +38,7 @@ class HostFake:
 class NativeDriverFake:
     def __init__(self):
         self.recorder_starts = 0
+        self.requests = []
 
     def wait_ready(self, directory, app):
         return True
@@ -49,6 +50,7 @@ class NativeDriverFake:
         return {'pid': 7, 'window': 70, 'displayID': 1, 'visible': True, 'occlusion': 2}
 
     def request(self, directory, body, native=False):
+        self.requests.append(body)
         if body['op'] == 'processes':
             return {'host': 7, 'web': 8, 'gpu': 9}
         if body['op'] == 'wheel':
@@ -66,7 +68,7 @@ class NativeDriverFake:
         raise Inconclusive('fake capture stops at recorder startup')
 
 
-def trial_arguments(directory):
+def trial_arguments(directory, display='virtual'):
     output = directory / 'artifacts'
     output.mkdir()
     binary = directory / 'drive-app'
@@ -77,4 +79,4 @@ def trial_arguments(directory):
 
     return SimpleNamespace(output=output, binary=binary, native_probe=probe, recorder=recorder,
                            source_revision='test revision', lines=146, start_scroll=0, profile='fast',
-                           refresh_rate=120, display='virtual', mode='graph', resources=False, geometry=False)
+                           refresh_rate=120, display=display, mode='graph', resources=False, geometry=False)

@@ -106,20 +106,6 @@ def calibrate_cpu(usage):
     return result
 
 
-def prepare_display(directory, *, kind, refresh_rate, driver=runtime):
-    if kind == 'main':
-        display = driver.request(directory, {'op': 'place-on-main-display'}, native=True)
-    else:
-        display = driver.request(directory, {'op': 'virtual-display', 'refreshRate': refresh_rate}, native=True)
-        driver.place_window(directory)
-
-    info = driver.visible_window(directory)
-    if kind == 'main' and (not info['visible'] or not info['occlusion'] & 2 or info['displayID'] != display['displayID']):
-        raise Inconclusive('test window is not visible on the main display')
-
-    return display, info
-
-
 def prepare_viewport(directory, mode, *, driver=runtime):
     if mode == 'diff':
         driver.evaluate(directory, '([...document.querySelectorAll("[data-testid=commit-row-summary]")].find(x=>x.textContent.trim()==="native scroll fixture").click(),true)')
@@ -228,7 +214,7 @@ def run(args, harness_hashes, *, host=subprocess, driver=runtime, snapshot=inven
             try:
                 driver.wait_ready(directory, app)
                 driver.until(directory, '[...document.querySelectorAll("[data-testid=commit-row-summary]")].some(x=>x.textContent.trim()==="native scroll fixture")')
-                manifest['display'], manifest['info'] = prepare_display(directory, kind=args.display, refresh_rate=args.refresh_rate, driver=driver)
+                manifest['display'], manifest['info'] = runtime.prepare_display(directory, kind=args.display, refresh_rate=args.refresh_rate, driver=driver)
                 selector, manifest['box'] = prepare_viewport(directory, args.mode, driver=driver)
                 from cadence_analysis import default_crops
                 manifest['crops'] = default_crops(manifest)
@@ -273,7 +259,8 @@ def parser():
     arguments.add_argument('--source-revision', default='unspecified', help='recorded as supplied, not inferred from the checkout')
     arguments.add_argument('--output', type=Path, required=True, help='exclusive new artifact directory')
     arguments.add_argument('--mode', choices=['graph', 'diff'], required=True)
-    arguments.add_argument('--display', choices=['main', 'virtual'], default='virtual')
+    arguments.add_argument('--display', choices=['main', 'virtual'], default='main',
+                           help='virtual creates a private display, whose WindowServer state outlives the run')
     arguments.add_argument('--refresh-rate', type=int, choices=[60, 120], required=True,
                            help='requested virtual display rate; recorded but not applied in main mode')
     measurement = arguments.add_mutually_exclusive_group(required=True)

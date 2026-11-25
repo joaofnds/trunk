@@ -10,7 +10,7 @@ import unittest
 import zlib
 
 from analysis import Inconclusive
-from cadence import freeze_harness, frozen_harness, load_resource_runtime, parse_args, parser, prepare_display, prepare_viewport, resource_run, run, sha256, trace
+from cadence import freeze_harness, frozen_harness, load_resource_runtime, parse_args, parser, prepare_viewport, resource_run, run, sha256, trace
 from fixture import create_fixture
 from native_runner_test_support import HostFake, NativeDriverFake, trial_arguments
 from test_process_admission import BUSY, CLEAN, InventoryFake
@@ -93,17 +93,17 @@ def classify_inventory(inventory):
             self.assertTrue(json.loads((args.output / 'manifest.json').read_text())['process_admission_required'])
             self.assertEqual(host.app.returncode, 0)
 
-    def test_defaults_to_a_virtual_display(self):
+    def test_defaults_to_the_main_display(self):
         arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
                                 '--mode', 'diff', '--refresh-rate', '60', '--resources'])
 
-        self.assertEqual(arguments.display, 'virtual')
-
-    def test_accepts_an_explicit_main_display(self):
-        arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                                '--mode', 'diff', '--refresh-rate', '60', '--display', 'main', '--resources'])
-
         self.assertEqual(arguments.display, 'main')
+
+    def test_accepts_an_explicit_virtual_display(self):
+        arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
+                                '--mode', 'diff', '--refresh-rate', '60', '--display', 'virtual', '--resources'])
+
+        self.assertEqual(arguments.display, 'virtual')
 
     def test_keeps_four_1200_pixel_gestures_inside_3800_milliseconds(self):
         events = trace({'left': 100, 'top': 50, 'width': 400, 'height': 300})
@@ -204,59 +204,6 @@ class NativeDriverStub:
             raise OSError('browser stopped during tail')
 
         return True
-
-
-class DisplayDriverFake:
-    def __init__(self, observed_display=1, visible=True):
-        self.observed_display = observed_display
-        self.visible = visible
-        self.virtual_displays = []
-
-    def request(self, directory, body, native=False):
-        if body['op'] == 'virtual-display':
-            self.virtual_displays.append(body['refreshRate'])
-            return {'displayID': 100, 'applied': True, 'requestedRefreshRate': body['refreshRate'], 'actualRefreshRate': 0}
-
-        return {'displayID': 1, 'mainDisplay': True, 'builtIn': True, 'maximumFramesPerSecond': 120}
-
-    def place_window(self, directory):
-        self.observed_display = 100
-
-    def visible_window(self, directory):
-        return {'displayID': self.observed_display, 'visible': self.visible,
-                'occlusion': 2 if self.visible else 0, 'window': 7, 'maximumFramesPerSecond': 120}
-
-
-class DisplayPlacement(unittest.TestCase):
-    def test_keeps_the_requested_virtual_display_rate(self):
-        driver = DisplayDriverFake()
-
-        display, window = prepare_display(Path('/unused'), kind='virtual', refresh_rate=60, driver=driver)
-
-        self.assertEqual(display, {'displayID': 100, 'applied': True, 'requestedRefreshRate': 60, 'actualRefreshRate': 0})
-        self.assertEqual(window['displayID'], 100)
-        self.assertEqual(driver.virtual_displays, [60])
-
-    def test_records_the_main_maximum_without_requesting_a_display_rate(self):
-        driver = DisplayDriverFake()
-
-        display, window = prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
-
-        self.assertEqual(display, {'displayID': 1, 'mainDisplay': True, 'builtIn': True, 'maximumFramesPerSecond': 120})
-        self.assertEqual(window['displayID'], 1)
-        self.assertEqual(driver.virtual_displays, [])
-
-    def test_rejects_a_window_that_is_visible_on_another_display(self):
-        driver = DisplayDriverFake(observed_display=2)
-
-        with self.assertRaises(Inconclusive):
-            prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
-
-    def test_rejects_a_hidden_main_window(self):
-        driver = DisplayDriverFake(visible=False)
-
-        with self.assertRaises(Inconclusive):
-            prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
 
 
 class ViewportScriptSpy:
