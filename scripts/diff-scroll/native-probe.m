@@ -30,6 +30,7 @@
 - (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
 @end
 static CGVirtualDisplay *probeDisplay;
+static const unsigned int ProbeDisplaySerial = 0x0001;
 
 @interface WKPreferences (ContractProbe)
 + (NSArray *)_features;
@@ -163,13 +164,14 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         descriptor.sizeInMillimeters = CGSizeMake(320,200);
         descriptor.vendorID = 0xF0F0;
         descriptor.productID = 0xB1A0;
-        descriptor.serialNum = (unsigned int)getpid();
+        descriptor.serialNum = ProbeDisplaySerial;
+        probeDisplay = nil;
         probeDisplay = [[NSClassFromString(@"CGVirtualDisplay") alloc] initWithDescriptor:descriptor];
         CGVirtualDisplaySettings *settings = [NSClassFromString(@"CGVirtualDisplaySettings") new];
         settings.hiDPI = 0;
         settings.modes = @[[[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:1280 height:800 refreshRate:refreshRate]];
         BOOL applied = [probeDisplay applySettings:settings];
-        if (!applied) { done(@{@"error": @"virtual display creation failed"}); return; }
+        if (!applied) { probeDisplay = nil; done(@{@"error": @"virtual display creation failed"}); return; }
         CGDisplayModeRef mode = CGDisplayCopyDisplayMode(probeDisplay.displayID);
         double actualRefreshRate = mode ? CGDisplayModeGetRefreshRate(mode) : 0;
         if (mode) CGDisplayModeRelease(mode);
@@ -253,6 +255,10 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         return;
     }
     done(@{@"error": @"unknown operation"});
+}
+
+__attribute__((destructor)) static void stopProbe(void) {
+    probeDisplay = nil;
 }
 
 __attribute__((constructor)) static void startProbe(void) {
