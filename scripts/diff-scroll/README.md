@@ -20,10 +20,12 @@ which trace ran; compare runs with the same profile and initial position.
 display by default, where it must stay uncovered for the whole run. `--display
 virtual` creates a private 1280 × 800 display at a requested 60 Hz instead, and
 `--refresh-rate 120` requests the faster condition used by the cadence comparison.
-Use the virtual display only when a run needs it. WindowServer keeps a backstop
-window for every virtual display created after the run ends, and on macOS 27.2
-eight runs raised ColorSync's display profile rebuilds from 24 to about 215 a
-minute, which stayed after the runs ended.
+Use the virtual display only when a run needs it. On macOS 27.2 WindowServer
+keeps every virtual display it has created until it restarts, with a backstop
+window and a color restore timer that blocks its main thread on ColorSync twice
+every five seconds. Eight runs raised those requests from 24 to about 215 a minute
+and lagged the whole machine. Restarting ColorSync, sleeping the display and
+reconfiguring it did not clear them, and a reboot does.
 
 The manifest records `display_kind`, `requested_refresh_rate` (null on the main
 display), the `native_display` response and the window's reported maximum frame
