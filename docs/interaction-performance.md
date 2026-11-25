@@ -2068,13 +2068,13 @@ missing content.
 Every baseline blank had the mounted rows covering the whole viewport, so the list's
 range was complete and the paint was missing, as in the diff pane. They clustered
 where one fling reversed the last. One-way flings showed none in either build.
-Moving the rows and the lane overlay into a viewport-high sticky surface, the
-design of `0dccb409`, left none in four runs. An earlier candidate whose surface covered
+Moving the rows and the lane overlay into a viewport-high sticky surface, the design
+of `0dccb409`, left none in four runs. An earlier candidate whose surface covered
 only the viewport's content box had one 86 px blank in 1,475 frames, in which the
-rows jumped about 60 px past their path for one frame and came back on the next. The final surface spans
-the viewport's padding. Neither build showed a bounce at the top under this
-synthetic input, so the bounce is unverified here. The runner and raw captures are
-in `.boris/trunk-523/`.
+rows jumped about 60 px past their path for one frame and came back on the next. The
+final surface spans the viewport's padding. Neither build showed a bounce at the top
+under this synthetic input, so the bounce is unverified here. The runner and raw
+captures are in `.boris/trunk-523/`.
 
 #### Replay and evidence
 

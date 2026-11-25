@@ -65,6 +65,15 @@ did retaining previously mounted rows or rendering the entire file. Full-file DO
 also made a 90,000-line experiment take seconds to become ready. The stationary
 surface adds one element while keeping the row window bounded.
 
+The commit graph's list (`src/components/VirtualList.svelte`) paints its rows and
+lane overlay inside the same kind of surface, after fast trackpad flings blanked the
+graph the same way (TRUNK-523). Its viewport is padded and rows scroll through that
+padding, so its surface sits at `top: -P_top` with height
+`min(H + P_top + P_bottom, T)`, where `H` is the viewport's content box, and its
+offset is `clamp(scrollTop - P_top, 0, T - surface)`. A surface limited to
+the content box left a band empty at each edge. A change to the surface's rules
+here applies to both lists.
+
 ## Why split view pans the way it does
 
 Split view shows two halves that must stay side by side while a wide line is panned

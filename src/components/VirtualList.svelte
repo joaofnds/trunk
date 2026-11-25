@@ -477,10 +477,7 @@ const renderedScrollTop = $derived(
 	),
 );
 
-/**
- * The visible items' offset from the top of the document.
- */
-const transformY = $derived.by(() => {
+const itemsTop = $derived.by(() => {
 	const viewportHeight = height || measuredFallbackHeight || 0;
 	const visibleRange = visibleItems;
 	const effectiveHeight = viewportHeight === 0 ? 400 : viewportHeight;
@@ -762,11 +759,13 @@ function autoObserveItemResize(element: HTMLElement) {
 </script>
 
 <!--
-    Four-layer DOM structure:
+    DOM structure:
     1. Container - Overall boundary
     2. Viewport - Scrollable area
-    3. Content - Full height container (+ overlay snippet)
-    4. Items - Translated list of visible items
+    3. Content - Full height container, which sets the scroll extent
+    4. Surface - Sticky, viewport-tall clip that stays in view while scrolling
+    5. Document - Offset by the scroll position the list last read (+ overlay snippet)
+    6. Items - The visible items, placed at their offset in the document
 -->
 <div class="virtual-list-container" bind:this={heightManager.containerElement}>
 	<div
@@ -800,7 +799,7 @@ function autoObserveItemResize(element: HTMLElement) {
 							visibleItems.end,
 						)}
 					{/if}
-					<div class="virtual-list-items" style:top="{transformY}px">
+					<div class="virtual-list-items" style:top="{itemsTop}px">
 						{#each displayItems as currentItemWithIndex, _i (currentItemWithIndex.originalIndex)}
 							<div
 								bind:this={itemElements[currentItemWithIndex.sliceIndex]}

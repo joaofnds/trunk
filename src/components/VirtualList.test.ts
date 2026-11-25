@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/svelte";
 import type { Snippet } from "svelte";
-import { tick } from "svelte";
+import { createRawSnippet, tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	restoreVirtualListLayout,
@@ -22,8 +22,8 @@ describe("VirtualList", () => {
 	// - scrollTop, offsetHeight, scrollHeight are all 0 in jsdom
 	// - ResizeObserver is stubbed in vitest-setup.ts (observe/unobserve/disconnect are no-ops)
 	// - getBoundingClientRect returns zero-sized rects
-	// These limitations mean we cannot test scroll behavior or viewport-based rendering.
-	// Tests verify the component mounts without errors and renders basic DOM structure.
+	// Tests here verify the component mounts and renders its basic DOM structure.
+	// The native-scroll suite below stubs the layout to test viewport-based rendering.
 
 	it("renders without crashing with empty items", () => {
 		const { container } = render(VirtualList, {
@@ -292,12 +292,17 @@ describe("VirtualList scrolled by the native scroller", () => {
 		return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 	}
 
-	async function mountScrolledTo(scrollTop: number) {
+	const overlaySnippet = createRawSnippet(() => ({
+		render: () => `<svg data-testid="overlay"></svg>`,
+	}));
+
+	async function mountScrolledTo(scrollTop: number, rows = ROWS) {
 		stubVirtualListLayout({ viewportHeight: VIEWPORT, rowHeight: ROW });
 		const { container } = render(VirtualList, {
 			props: {
-				items: Array.from({ length: ROWS }, (_, i) => `item-${i}`),
+				items: Array.from({ length: rows }, (_, i) => `item-${i}`),
 				renderItem: (() => {}) as unknown as Snippet,
+				overlaySnippet,
 				defaultEstimatedItemHeight: ROW,
 				hasMore: false,
 			},
@@ -358,12 +363,14 @@ describe("VirtualList scrolled by the native scroller", () => {
 		expect(y).toBe(index * ROW - 600);
 	});
 
-	it("places the rows by offset, leaving no transform for a layer of its own", async () => {
+	it("paints the overlay inside the surface with the rows", async () => {
 		const container = await mountScrolledTo(600);
 
-		const items = container.querySelector<HTMLElement>(".virtual-list-items");
+		const surface = container.querySelector(".virtual-list-surface");
 
-		expect(items?.style.transform).toBe("");
+		expect(surface).toContainElement(
+			container.querySelector("[data-testid=overlay]"),
+		);
 	});
 
 	// CommitGraph pads its viewport, and rows scroll through that padding.
@@ -400,6 +407,19 @@ describe("VirtualList scrolled by the native scroller", () => {
 			const { index, y } = firstRowPaintsAt(container);
 
 			expect(y).toBe(PADDING + index * ROW - 600);
+		});
+
+		it("keeps a list that fits no taller than its content", async () => {
+			const container = await mountScrolledTo(0, 5);
+
+			const content = container.querySelector<HTMLElement>(
+				".virtual-list-content",
+			);
+			const surface = content?.querySelector<HTMLElement>(
+				".virtual-list-surface",
+			);
+
+			expect(surface?.style.height).toBe(content?.style.height);
 		});
 	});
 
