@@ -2033,6 +2033,27 @@ Message pan, physical trackpad input and actual presentation unmeasured, as
 before. The probe, runner, analyzer and raw results are in
 `.boris/trunk-281-native/paging-2026-11-24/`.
 
+#### Physical trackpad session
+
+On 2026-11-25 João scrolled the long fixture by trackpad for 24 s in a `just perf`
+build at `37505c22` and recorded the window with the macOS screen recorder.
+No hitch was felt. The scroll crossed 21 page appends. Of the 2,819 rAF intervals,
+two were 58 and 59 ms, each alone, and seven were 21 to 27 ms, each about 9 ms after
+an append, which is one dropped frame at 120 Hz. None of these formed a burst.
+The recording showed no freeze, so presentation agreed with the rAF clock.
+
+The recording did show a different defect. During the fastest flicks, 12 times in
+24 s, the lower part of the graph was blank for 17 to 67 ms, up to nine tenths of
+its height, with history continuing below it. A drive probe
+scrolling the same fixture by script, at up to 600 px per rAF, never left a row
+missing from the viewport, so the list's own range and paging keep up with every
+offset the page sees. The blank band therefore appears only when the compositor
+draws trackpad offsets ahead of the page. That is the symptom the diff pane had
+before `0dccb409`, which moved its rows into a stationary viewport. The graph's
+virtual list still positions its rows with a transform. Whether the same layer is
+the cause here is unmeasured; `scripts/diff-scroll` can drive the native input
+that would show it.
+
 #### Replay and evidence
 
 Run from a fresh scratch checkout pinned to `345af69e`. The rAF wrapper
