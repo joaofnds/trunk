@@ -27,6 +27,14 @@ every five seconds. Eight runs raised those requests from 24 to about 215 a minu
 and lagged the whole machine. Restarting ColorSync, sleeping the display and
 reconfiguring it did not clear them, and a reboot does.
 
+A reboot does not clear the ColorSync device cache,
+`/Library/Caches/ColorSync/com.apple.colorsync.devices`, which gains one entry
+per display identity and is reread several times per request. With 360 probe
+entries each request took about 90 ms, and the main display's restore timer kept
+retrying every 2.5 seconds, stalling WindowServer's main thread after a reboot.
+Removing the probe entries from that root-owned file brought a request to 4 ms,
+and the retries stopped. The fixed probe serial keeps the probe to one entry there.
+
 The manifest records `display_kind`, `requested_refresh_rate` (null on the main
 display), the `native_display` response and the window's reported maximum frame
 rate. A native display rate of zero means unspecified. A painting pass at the 60 Hz
