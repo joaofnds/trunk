@@ -81,13 +81,15 @@ any width they ask for (João, 2026-09-22).
 stored width, or the budget's yield. It is sized for what the cell must show, never for the
 header word, which gives way to an icon when the column is too narrow for it: Graph's floor
 is one lane, Branch/Tag's is HEAD's `main` pill whole, measured in the font it is drawn in
-(João, 2026-09-23), and each other sized column's is the width of its header icon. The
-slack column has a floor of its own.
+(João, 2026-09-23), SHA's and Date's are their whole text (João, 2026-11-25), and Diff's
+and Author's are the width of the header icon and the avatar. The slack column has a floor
+of its own.
 
 **Budget** — the width the sized columns' fits share: the list's width less the slack
-column's floor. Each fit is laid into it in order up to its cap, and when the fits together
-exceed it they yield toward their floors, rightmost first, so a layout the app chose fits
-the list whenever the list is at least the floors' sum. A user width sits outside the
+column's floor. Each fit is laid into it up to its cap. Author narrows toward its avatar
+until the slack column has its fit, and when the fits together still exceed the budget they
+yield toward their floors, Author first, so a layout the app chose fits the list whenever
+the list is at least the floors' sum. A user width sits outside the
 budget, which is how a dragged column can push the row past the list and into a scroll.
 
 **Center floor**: the narrowest the center pane is drawn between the sidebar and the

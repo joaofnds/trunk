@@ -363,7 +363,9 @@ const rowShadow = $derived(
 					class="flex items-center gap-2 min-w-0 w-full"
 					use:cutTooltip={commit.author_name}
 					><Avatar name={commit.author_name} />
-					<span class="overflow-hidden text-ellipsis whitespace-nowrap"
+					<span
+						data-author-name
+						class="overflow-hidden text-ellipsis whitespace-nowrap"
 						>{commit.author_name}</span
 					></span
 				>

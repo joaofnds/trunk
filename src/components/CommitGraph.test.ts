@@ -2021,26 +2021,26 @@ describe("CommitGraph", () => {
 			}
 
 			it("fits the sized columns into what Message's floor leaves of the row", async () => {
-				observeListAt(448);
+				observeListAt(528);
 				const { container } = mountWithPrefs(new Map());
 				await flush();
 
 				expect(sizedTotal(container)).toBe(
-					448 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
+					528 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
 			// A user width sits outside the budget, so the fits yield to it
 			// rather than pushing Message under its floor.
 			it("narrows the fits to make room for a dragged column", async () => {
-				observeListAt(608);
+				observeListAt(648);
 				const { container } = mountWithPrefs(new Map());
 				await flush();
 
 				await drag(resizeHandle(container, "ref"), 60);
 
 				expect(sizedTotal(container)).toBe(
-					608 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
+					648 - 2 * TABLE_INSET_X - MESSAGE_FLOOR,
 				);
 			});
 
@@ -2346,6 +2346,31 @@ describe("CommitGraph", () => {
 				expect(clicked).toBe(
 					renderedWidth(headerCell(fresh.container, "author")),
 				);
+			});
+		});
+
+		describe("when Author is too narrow for a few letters of a name", () => {
+			const named = [
+				makeCommit({ oid: "c".repeat(40), author_name: "Grace Hopper" }),
+			];
+
+			it("shows the avatar alone", async () => {
+				const { container } = mountWithPrefs(new Map(), { commits: named });
+				await flush();
+
+				await drag(resizeHandle(container, "author"), 3000);
+
+				expect(within(container).getByText("Grace Hopper")).not.toBeVisible();
+			});
+
+			it("shows the name again once a few letters fit", async () => {
+				const { container } = mountWithPrefs(new Map(), { commits: named });
+				await flush();
+				await drag(resizeHandle(container, "author"), 3000);
+
+				await drag(resizeHandle(container, "author"), -100);
+
+				expect(within(container).getByText("Grace Hopper")).toBeVisible();
 			});
 		});
 

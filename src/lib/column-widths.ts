@@ -84,7 +84,8 @@ export type ColumnFloors = Record<keyof ColumnWidths, number>;
  * alone, its name then on hover. Branch/Tag's is HEAD's
  * `main` pill whole, its label measured in the bold font HEAD draws in and
  * rounded up as the pill rounds its label's box; narrower, every pill is cut to a
- * sliver of capsule and icon.
+ * sliver of capsule and icon. SHA's and Date's are their whole text, since a
+ * cut hash or age reads as nothing.
  */
 export function columnFloors(measure: MeasureText): ColumnFloors {
 	return {
@@ -92,9 +93,21 @@ export function columnFloors(measure: MeasureText): ColumnFloors {
 		graph: LANE_WIDTH + CELL_PAD,
 		diff: HEADER_ICON_WIDTH + CELL_PAD,
 		author: AUTHOR_AVATAR_WIDTH + CELL_PAD,
-		date: HEADER_ICON_WIDTH + CELL_PAD,
-		sha: HEADER_ICON_WIDTH + CELL_PAD,
+		date: dateContentWidth(measure),
+		sha: shaContentWidth(measure),
 	};
+}
+
+/**
+ * Whether the author cell has room for a few letters of the name beside the
+ * avatar. Narrower, the cell shows the avatar alone rather than a letter and
+ * an ellipsis.
+ */
+export function authorShowsName(width: number, measure: MeasureText): boolean {
+	return (
+		width >=
+		AUTHOR_AVATAR_WIDTH + CELL_PAD + measure("Abc…", AUTHOR_CONTENT_FONT)
+	);
 }
 
 /**
@@ -107,6 +120,17 @@ export const MESSAGE_FLOOR = 180;
 /** What Message's floor takes from the row: the whole floor while Message shows. */
 export function messageReserve(visible: ColumnVisibility): number {
 	return visible.message ? MESSAGE_FLOOR : 0;
+}
+
+/**
+ * The width Message holds before Author's name gives way to it: about the
+ * fifty characters git asks a summary line to stay within.
+ */
+export const MESSAGE_FIT = 320;
+
+/** What Message's fit asks of the row: the whole fit while Message shows. */
+export function messageFit(visible: Pick<ColumnVisibility, "message">): number {
+	return visible.message ? MESSAGE_FIT : 0;
 }
 
 /**
@@ -143,7 +167,7 @@ export function authorContentWidth(
 	for (const commit of commits) {
 		if (commit.oid === "__wip__" || commit.is_stash) continue;
 		const width =
-			measure(commit.author_name, AUTHOR_CONTENT_FONT) +
+			Math.ceil(measure(commit.author_name, AUTHOR_CONTENT_FONT)) +
 			CELL_PAD +
 			AUTHOR_AVATAR_WIDTH;
 		if (width > widest) widest = width;
@@ -160,7 +184,7 @@ export function dateContentWidth(measure: MeasureText): number {
 	const widest = Math.max(
 		...WIDEST_LABELS.map((label) => measure(label, DATE_CONTENT_FONT)),
 	);
-	return widest + CELL_PAD;
+	return Math.ceil(widest) + CELL_PAD;
 }
 
 export function shaContentWidth(measure: MeasureText): number {
@@ -213,15 +237,14 @@ const GRAPH_CAP_SHARE = 1 / 3;
 
 /**
  * The order fits give up width in when together they overrun the budget:
- * rightmost first, with Diff ahead of Date and Author because its bar scales and
- * loses no text while theirs are cut, and Branch/Tag ahead of Graph because a cut
- * pill's name is a hover away while a lane past the edge is not.
+ * Author first, since its avatar still names who wrote the commit, then Diff,
+ * whose bar scales and loses no text, and Branch/Tag ahead of Graph because a
+ * cut pill's name is a hover away while a lane past the edge is not. SHA and
+ * Date fit at their floors and have nothing to give.
  */
 const YIELD_ORDER: readonly (keyof ColumnWidths)[] = [
-	"sha",
-	"diff",
-	"date",
 	"author",
+	"diff",
 	"ref",
 	"graph",
 ];
@@ -235,18 +258,25 @@ export interface BudgetRequest {
 	rowWidth: number;
 	/** The part of the row the fits may not use: user widths and Message's floor. */
 	reserved: number;
+	/**
+	 * What Message holds before Author's name gives way, counted against the
+	 * fits alone: a user width never moves Author, so the edge of a column
+	 * dragged into Message stays under the pointer.
+	 */
+	messageFit: number;
 	floors: ColumnFloors;
 }
 
 /**
- * The widths of the fitted columns. Each takes its fit up to its cap, and when
- * together they overrun the budget they yield toward their floors in
+ * The widths of the fitted columns. Each takes its fit up to its cap. Author
+ * then narrows toward its avatar to leave Message its fit, and when together
+ * the fits still overrun the budget they yield toward their floors in
  * YIELD_ORDER, so a layout the app chose fits the list whenever the list has
- * room for the floors. An unmeasured list has no budget, and only the pixel
- * caps apply.
+ * room for the floors. Every width moves with the row, a pixel at a time. An
+ * unmeasured list has no budget, and only the pixel caps apply.
  */
 export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
-	const { wanted, fitted, rowWidth, reserved, floors } = request;
+	const { wanted, fitted, rowWidth, reserved, messageFit, floors } = request;
 	const caps = fitCaps(rowWidth);
 	const widths: Partial<ColumnWidths> = {};
 
@@ -258,11 +288,24 @@ export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
 	}
 	if (rowWidth <= 0) return widths;
 
+	yieldWidth(widths, floors, ["author"], rowWidth - messageFit);
+	yieldWidth(widths, floors, YIELD_ORDER, rowWidth - reserved);
+
+	return widths;
+}
+
+/** Narrows the columns toward their floors, in order, until they fit the budget. */
+function yieldWidth(
+	widths: Partial<ColumnWidths>,
+	floors: ColumnFloors,
+	order: readonly (keyof ColumnWidths)[],
+	budget: number,
+): void {
 	let overrun =
-		Object.values(widths).reduce((sum, width) => sum + width, 0) -
-		(rowWidth - reserved);
-	for (const column of YIELD_ORDER) {
-		if (overrun <= 0) break;
+		Object.values(widths).reduce((sum, width) => sum + width, 0) - budget;
+
+	for (const column of order) {
+		if (overrun <= 0) return;
 		const width = widths[column];
 		if (width === undefined) continue;
 
@@ -270,8 +313,6 @@ export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
 		widths[column] = width - given;
 		overrun -= given;
 	}
-
-	return widths;
 }
 
 function fitCaps(rowWidth: number): ColumnWidths {

@@ -28,6 +28,7 @@ import {
 } from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
+	authorShowsName,
 	columnFloors,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
@@ -35,6 +36,7 @@ import {
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	MESSAGE_FLOOR,
+	messageFit,
 	messageReserve,
 	refContentWidth,
 	SIZED_COLUMNS,
@@ -664,6 +666,7 @@ $effect(() => {
 		fitted,
 		rowWidth,
 		reserved: userSizedWidth + messageReserve(columnVisibility),
+		messageFit: messageFit(columnVisibility),
 		floors,
 	});
 
@@ -2546,6 +2549,10 @@ $effect(() => {
 
 <div
 	class="h-full overflow-hidden flex flex-col bg-surface outline-none"
+	class:author-avatar-only={!authorShowsName(
+		columnWidths.author,
+		measureTextWidth,
+	)}
 	style:--column-ref-width="{columnWidths.ref}px"
 	style:--column-graph-width="{columnWidths.graph}px"
 	style:--column-diff-width="{columnWidths.diff}px"
@@ -3287,6 +3294,11 @@ $effect(() => {
 }
 [role="listbox"] :global([data-column="sha"]) {
 	width: var(--column-sha-width);
+}
+/* Hidden rather than removed, so the name still overruns its cell and the
+   avatar's hover still names the author. */
+.author-avatar-only :global([data-author-name]) {
+	visibility: hidden;
 }
 /* GRAPH-01: visible padding above first and below last commit row */
 :global(.virtual-list-viewport) {

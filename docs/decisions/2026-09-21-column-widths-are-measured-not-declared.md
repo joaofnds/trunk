@@ -48,15 +48,26 @@ caps are starting values, not measurements.
 Caps alone cannot keep the layout inside the list. At the 720px window minimum with
 the default side panes the list is 244px, while the default sized columns alone sum
 to 390. So the fits share a budget: the row's width less Message's floor and less
-every user width. `shareBudget` lays each capped fit into it, and when together they
-overrun it they yield toward their floors in this order: SHA, Diff, Date, Author,
-Branch/Tag, Graph. That is rightmost first, as GitKraken's graph component shrinks
-its zones and NSTableView's sequential style does, with two moves: Diff yields ahead
-of Date and Author because its bar scales where their text is cut, and Branch/Tag
-ahead of Graph because a cut pill's name is a hover away while a lane past the edge
-is not. A layout the app chose therefore fits the list whenever the row, the list
-less its two 4px gutters, holds the six floors and Message's floor, 346px on macOS;
-below that the row is wider than the list and the surplus scrolls sideways.
+every user width. `shareBudget` lays each capped fit into it. Author first narrows
+toward its avatar until Message has its fit, `MESSAGE_FIT`, 320px, about the fifty
+characters git asks a summary line to keep within: the product owner approved
+letting Message take the flexible width and shrinking Author to the avatar
+(2026-11-25). That step counts Message's fit against the fits alone, so a user
+width never narrows Author, whose edge would carry the edge of a column dragged
+into Message away from the pointer. When the fits still overrun the budget they
+yield toward their floors in this order: Author, Diff, Branch/Tag, Graph. Diff
+yields before Branch/Tag because its bar scales where their text is cut, and
+Branch/Tag ahead of Graph because a cut pill's name is a hover away while a lane past
+the edge is not. SHA and Date fit at their floors, their whole text, and have nothing
+to give: a SHA cut to one character and an ellipsis said nothing, and the product
+owner asked for the column to hold its whole header word (2026-11-25), which the
+seven characters always do. Every width moves with the row a pixel at a time, with
+no breakpoints, which the product owner asked for in the same review: "The screen
+should be able to flow." A layout the app chose therefore fits the list whenever the
+row, the list less its two 4px gutters, holds the six floors and Message's floor,
+483px on macOS, measured in the running app on 2026-11-25 (346px while SHA and Date
+could shrink to their header icons); below that the row is wider than the list and
+the surplus scrolls sideways.
 
 MUI's outlier exclusion was considered and rejected: a page with three refs has no
 distribution to exclude from.
@@ -77,8 +88,8 @@ Once the shown sized columns and Message's floor add up to more than the list, t
 is laid out at that sum, `tableMinWidth`, and the surplus scrolls sideways. Message gives
 up its slack first, so a layout that fits never scrolls. What scrolls is a user width
 dragged past the budget, or a list narrower than the floors: measured in WebKit at a
-252px list, whose row is 244px, every column at its floor adds to 346px, and the table
-scrolls 102px to bring SHA whole into view.
+252px list, whose row is 244px, every column at its floor added to 346px, and the table
+scrolled 102px to bring SHA whole into view. The floors now add to 483px.
 
 The list's own viewport is the sideways scroller. VirtualList takes the table's width as
 `minContentWidth`, lays its content out at least that wide and lets its viewport scroll
@@ -332,10 +343,14 @@ An author's name ends in a trailing ellipsis beside the avatar, and hovering any
 the avatar or the name shows the whole name when it is cut. Author's floor is the avatar
 and its gap plus the cell's padding, so at the floor the avatar shows alone and the name
 is on hover. Measured in headless WebKit on 2026-09-27: at the 34px floor the name's box is
-0px wide and the tooltip carries the whole name. Just above the floor the name shows as an
-ellipsis and a letter or two, since the floor is the one point where the avatar stands
-alone. GitLens's help page describes its Author column showing avatars instead of text at
-its minimum width.
+0px wide and the tooltip carries the whole name. Until 2026-11-25 the name showed just
+above the floor as an ellipsis and a letter or two. Now a cell without room for three
+letters and an ellipsis hides the name, `authorShowsName`, and keeps it laid out, so it
+still overruns the cell and the hover still names the author. GitLens's help page
+describes its Author column showing avatars instead of text at its minimum width.
+The author and date fits round their measurement up, as the SHA fit does: WebKit lays
+a box out in 64ths of a pixel, and a fit 0.006px short of the name ended every name in
+an ellipsis, measured in the running app on 2026-11-25.
 
 A ref name too long for its pill keeps as much of its head and its tail as fits around one
 added ellipsis, the tail taking the odd character, and the pill shows the whole name on

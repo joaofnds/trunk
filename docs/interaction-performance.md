@@ -1346,12 +1346,13 @@ covered. The walker pressed it through the drive route, which never reaches the
 menu, so the report came from the wrong route, and the code confirms it. TRUNK-29
 holds the find over a diff.
 
-One finding waits on a product decision, on TRUNK-452. At the default window on a repository with
-wide branch labels, the SHA column shrinks to its 28 px floor and shows one or two
-characters.
-[The column-width decision](decisions/2026-09-21-column-widths-are-measured-not-declared.md)
-accepts that clip and cuts SHA first in its yield order, so showing more of the SHA
-means changing that order or raising SHA's floor.
+One finding waited on a product decision, on TRUNK-452. At the default window on a
+repository with wide branch labels, the SHA column shrank to its 28 px floor and showed
+one or two characters. The product owner first kept the clip, and the card was archived
+as designed. On 2026-11-25 they asked for the column to hold its whole header word, so
+SHA's floor is now its seven characters, and
+[the column-width decision](decisions/2026-09-21-column-widths-are-measured-not-declared.md)
+records the new yield order.
 
 The walk reported behaviors that were ruled by design. Four rest on a source. A stash
 pops its staged changes into the working tree, as TRUNK-231 designs it. "Interactive

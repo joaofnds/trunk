@@ -3,13 +3,16 @@ import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
+	authorShowsName,
 	columnFloors,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	FIT_CAPS,
 	graphTargetWidth,
 	headerMinWidths,
+	MESSAGE_FIT,
 	MESSAGE_FLOOR,
+	messageFit,
 	refContentWidth,
 	sanitizeLegacyColumnWidths,
 	shaContentWidth,
@@ -101,6 +104,17 @@ describe("authorContentWidth", () => {
 		);
 	});
 
+	// WebKit lays a box out in 64ths of a pixel, so a fit a hair short of the
+	// name ends it in an ellipsis.
+	it("rounds a fractional measurement up so the name is not cut", () => {
+		const fractional = (text: string) => text.length * 6.5;
+		const commits = [makeCommit({ oid: "a".repeat(40), author_name: "Ada" })];
+
+		expect(authorContentWidth(commits, fractional)).toBe(
+			20 + PADDING + AUTHOR_AVATAR_WIDTH,
+		);
+	});
+
 	describe("when the page holds nothing measurable", () => {
 		it("asks for no width", () => {
 			expect(authorContentWidth([], measure)).toBe(0);
@@ -114,6 +128,12 @@ describe("dateContentWidth", () => {
 	// whatever it happens to say right now.
 	it("fits the widest label the relative clock can produce", () => {
 		expect(dateContentWidth(measure)).toBe(measure("12mo ago") + PADDING);
+	});
+
+	it("rounds a fractional measurement up so the label is not cut", () => {
+		const fractional = (text: string) => text.length * 6.3;
+
+		expect(dateContentWidth(fractional)).toBe(51 + PADDING);
 	});
 
 	it("is wider than the label showing at this moment", () => {
@@ -231,16 +251,56 @@ describe("columnFloors", () => {
 		});
 	});
 
-	// The floor is what the cell needs to show anything at all, so it must not
-	// depend on the header word — that dependency is what kept the graph two
-	// lanes wide.
-	it("is narrower than the header label needs", () => {
-		const floors = columnFloors(measure);
-		const labelMins = headerMinWidths(measure);
+	it("keeps every character of a seven-character sha", () => {
+		expect(columnFloors(measure).sha).toBe(shaContentWidth(measure));
+	});
 
-		for (const column of Object.keys(floors) as (keyof typeof floors)[]) {
-			expect(floors[column]).toBeLessThan(labelMins[column]);
-		}
+	it("keeps the widest date label whole", () => {
+		expect(columnFloors(measure).date).toBe(dateContentWidth(measure));
+	});
+
+	it.each(["sha", "date"] as const)(
+		"leaves the %s header its word at the floor",
+		(column) => {
+			expect(columnFloors(measure)[column]).toBeGreaterThanOrEqual(
+				headerMinWidths(measure)[column],
+			);
+		},
+	);
+
+	// A cell that still shows something narrower than its header word shows the
+	// header's icon there, so the word must not set its floor: that dependency
+	// is what kept the graph two lanes wide.
+	it.each(["ref", "graph", "diff", "author"] as const)(
+		"lets %s narrow past its header word",
+		(column) => {
+			expect(columnFloors(measure)[column]).toBeLessThan(
+				headerMinWidths(measure)[column],
+			);
+		},
+	);
+});
+
+describe("authorShowsName", () => {
+	const floor = columnFloors(measure).author;
+	const shortest = measure("Abc…");
+
+	it("shows the name beside the avatar when a few letters of it fit", () => {
+		expect(authorShowsName(floor + shortest, measure)).toBe(true);
+	});
+
+	it("leaves the avatar alone when fewer letters would fit", () => {
+		expect(authorShowsName(floor + shortest - 1, measure)).toBe(false);
+	});
+});
+
+describe("messageFit", () => {
+	it("asks for Message's fit while Message shows", () => {
+		expect(messageFit({ message: true })).toBe(MESSAGE_FIT);
+	});
+
+	it("asks for nothing while Message is hidden", () => {
+		expect(messageFit({ message: false })).toBe(0);
 	});
 });
 
@@ -343,11 +403,11 @@ describe("shareBudget", () => {
 		graph: 60,
 		diff: 96,
 		author: 90,
-		date: 50,
-		sha: 56,
+		date: floors.date,
+		sha: floors.sha,
 	};
-	const wantedTotal = 452;
-	const roomy = { rowWidth: 1600, reserved: MESSAGE_FLOOR };
+	const wantedTotal = Object.values(wanted).reduce((sum, w) => sum + w, 0);
+	const roomy = { rowWidth: 1600, reserved: MESSAGE_FLOOR, messageFit: 0 };
 
 	it("gives each column its fit when the row has room for them all", () => {
 		expect(
@@ -381,6 +441,7 @@ describe("shareBudget", () => {
 			fitted: everyColumn,
 			rowWidth: 900,
 			reserved: 0,
+			messageFit: 0,
 		});
 
 		expect(widths.graph).toBe(300);
@@ -409,14 +470,7 @@ describe("shareBudget", () => {
 	});
 
 	describe("when the fits overrun the budget", () => {
-		const yieldOrder = [
-			"sha",
-			"diff",
-			"date",
-			"author",
-			"ref",
-			"graph",
-		] as const;
+		const yieldOrder = ["author", "diff", "ref", "graph"] as const;
 
 		// One pixel more than the columns ahead of it can give, so those reach
 		// their floors and this one gives exactly that pixel.
@@ -434,6 +488,7 @@ describe("shareBudget", () => {
 					fitted: everyColumn,
 					rowWidth: 1600,
 					reserved: 1600 - budget,
+					messageFit: 0,
 				});
 
 				expect(widths).toEqual({
@@ -451,9 +506,53 @@ describe("shareBudget", () => {
 				fitted: everyColumn,
 				rowWidth: 1600,
 				reserved: 1590,
+				messageFit: 0,
 			});
 
 			expect(widths).toEqual(floors);
+		});
+	});
+
+	describe("when the fits leave Message less than its fit", () => {
+		const exactFit = 1600 - wantedTotal;
+
+		it("narrows Author toward its avatar first", () => {
+			const widths = shareBudget({
+				floors,
+				wanted,
+				fitted: everyColumn,
+				...roomy,
+				messageFit: exactFit + 10,
+			});
+
+			expect(widths).toEqual({ ...wanted, author: wanted.author - 10 });
+		});
+
+		it("takes nothing more for it once Author is at its avatar", () => {
+			const widths = shareBudget({
+				floors,
+				wanted,
+				fitted: everyColumn,
+				...roomy,
+				messageFit: exactFit + 500,
+			});
+
+			expect(widths).toEqual({ ...wanted, author: floors.author });
+		});
+
+		// A column dragged into Message must not narrow Author, whose edge would
+		// then carry the dragged edge away from the pointer.
+		it("leaves Author alone for a user width the row still has room for", () => {
+			const widths = shareBudget({
+				floors,
+				wanted,
+				fitted: everyColumn,
+				rowWidth: 1600,
+				reserved: exactFit,
+				messageFit: exactFit,
+			});
+
+			expect(widths).toEqual(wanted);
 		});
 	});
 
@@ -465,6 +564,7 @@ describe("shareBudget", () => {
 				fitted: everyColumn,
 				rowWidth: 0,
 				reserved: MESSAGE_FLOOR,
+				messageFit: 0,
 			});
 
 			expect(widths).toEqual({ ...wanted, ref: FIT_CAPS.ref, graph: 900 });
