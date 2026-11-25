@@ -17,15 +17,14 @@ The optional `--profile fast` requests 30,000 input pixels per second. Both prof
 which trace ran; compare runs with the same profile and initial position.
 
 `run.py`, `renderer_pause.py` and `cadence.py` place the test window on the main
-display by default, where it must stay uncovered for the whole run. `--display
-virtual` creates a private 1280 × 800 display at a requested 60 Hz instead, and
-`--refresh-rate 120` requests the faster condition used by the cadence comparison.
-Use the virtual display only when a run needs it. On macOS 27.2 WindowServer
-keeps every virtual display it has created until it restarts, with a backstop
-window and a color restore timer that blocks its main thread on ColorSync twice
-every five seconds. Eight runs raised those requests from 24 to about 215 a minute
-and lagged the whole machine. Restarting ColorSync, sleeping the display and
-reconfiguring it did not clear them, and a reboot does.
+display, where it must stay uncovered for the whole run, and they run at that
+display's own refresh rate. No tool in this repository creates a virtual display,
+and `just machine-hygiene` fails any tracked source that names `CGVirtualDisplay`.
+On macOS 27.2 WindowServer keeps every virtual display it has created until it
+restarts, with a backstop window and a color restore timer that blocks its main
+thread on ColorSync twice every five seconds. Eight runs raised those requests
+from 24 to about 215 a minute and lagged the whole machine. Restarting ColorSync,
+sleeping the display and reconfiguring it did not clear them, and a reboot does.
 
 A reboot does not clear the ColorSync device cache,
 `/Library/Caches/ColorSync/com.apple.colorsync.devices`, which gains one entry
@@ -33,7 +32,7 @@ per display identity and is reread several times per request. With 360 probe
 entries each request took about 90 ms, and the main display's restore timer kept
 retrying every 2.5 seconds, stalling WindowServer's main thread after a reboot.
 Removing the probe entries from that root-owned file brought a request to 4 ms,
-and the retries stopped. The fixed probe serial keeps the probe to one entry there.
+and the retries stopped.
 
 Each identity also leaves a color profile in `/Library/ColorSync/Profiles/Displays`,
 a collapsed space in `~/Library/Preferences/com.apple.spaces.plist`, and entries
@@ -44,10 +43,9 @@ importing Spaces and kill it with `SIGKILL` afterwards, which worked on
 2026-11-25. The kill keeps the Dock from saving the list it holds in memory over
 the import, and whether a normal quit would do that is untested.
 
-The manifest records `display_kind`, `requested_refresh_rate` (null on the main
-display), the `native_display` response and the window's reported maximum frame
-rate. A native display rate of zero means unspecified. A painting pass at the 60 Hz
-request does not establish the same behavior at the 120 Hz request.
+The manifest records the `native_display` response and the window's reported
+maximum frame rate. A native display rate of zero means unspecified. A painting
+pass on a 60 Hz display does not establish the same behavior on a 120 Hz one.
 
 A strict one-shot timer delivers each event against a shared origin, with zero
 requested leeway. Scheduling is still best effort. `native-input.json` records
@@ -78,9 +76,8 @@ Requirements: Python 3.11 or later, Xcode command-line tools (`clang`, `swiftc`)
 `ffmpeg`, `ffprobe`, and macOS Screen Recording permission for the launching
 process. The normal drive route needs no Screen Recording permission; this
 experiment additionally records actual window pixels through ScreenCaptureKit.
-The injected helper uses the private `CGVirtualDisplay` and window-relative
-`NSEvent` APIs. An unavailable API, covered window or recording failure makes
-the experiment inconclusive.
+The injected helper uses window-relative `NSEvent` APIs. An unavailable API,
+covered window or recording failure makes the experiment inconclusive.
 
 The default fixture has 146 simple added TypeScript lines. `--lines 1500` and
 `--lines 90000` select larger fixtures with the same bounded input trace. Large
@@ -92,7 +89,7 @@ itself; other capture tools must be coordinated separately.
 The harness creates its own temporary repository and app data, keeps HEAD
 detached, and adds a fixture tag so the graph can show the commit. Commit authors
 are literal fixture object data. It does not change Git identity or the working
-repository. It places the test window on the chosen display, checks that the
+repository. It places the test window on the main display, checks that the
 window is visible there, and verifies native wheel coordinates against the browser's wheel
 event and the event's window number before recording. It quits only the app and
 recorder it started, and removes its temporary repository and app data on exit.
@@ -170,7 +167,7 @@ fling trace by 125 ms, so input begins while the renderer is stopped:
 mise exec -- python3 scripts/diff-scroll/renderer_pause.py \
   --binary .boris/cadence-baseline \
   --source-revision baseline-source-label --profile fast \
-  --lines 1500 --start-scroll 12000 --refresh-rate 120 \
+  --lines 1500 --start-scroll 12000 \
   --output .boris/diff-scroll-pause-baseline
 ```
 
@@ -234,17 +231,14 @@ mise exec -- python3 scripts/diff-scroll/cadence.py \
   --binary .boris/cadence-baseline \
   --native-probe .boris/cadence-tools/native-probe.dylib \
   --recorder .boris/cadence-tools/native-capture \
-  --source-revision baseline-source-label --mode diff --refresh-rate 120 \
+  --source-revision baseline-source-label --mode diff \
   --output .boris/cadence-capture-1-baseline
 ```
 
-Use `--mode graph` for the graph comparison. `--refresh-rate` requires either 60
-or 120 and records the requested virtual mode. `--display main` is the default and
-places the window on `CGMainDisplayID()` and verifies its display ID and
-visibility. This can be a hardware or virtual display. The returned
+Use `--mode graph` for the graph comparison. The runner places the window on
+`CGMainDisplayID()` and verifies its display ID and visibility. The returned
 `builtIn` field records `CGDisplayIsBuiltin`; `mainDisplay` alone does not establish
-hardware provenance. In main-display mode the refresh-rate argument is recorded
-but not applied, and `requested_refresh_rate` is null. Read the returned display metadata:
+hardware provenance. Read the returned display metadata:
 an `actualRefreshRate` of zero means unspecified, not verified 120 Hz. The recorder
 requests a maximum cadence; its frame timestamps establish the observed capture
 coverage, not the physical display's presentations. A screen's reported
@@ -257,7 +251,7 @@ mise exec -- python3 scripts/diff-scroll/cadence.py \
   --binary .boris/cadence-baseline \
   --native-probe .boris/cadence-tools/native-probe.dylib \
   --resources --source-revision baseline-source-label \
-  --mode diff --refresh-rate 120 \
+  --mode diff \
   --output .boris/cadence-resources-1-baseline
 ```
 
@@ -351,7 +345,7 @@ mise exec -- python3 scripts/diff-scroll/cadence.py \
   --binary .boris/cadence-baseline \
   --native-probe .boris/cadence-tools/native-probe.dylib \
   --geometry --source-revision baseline-source-label \
-  --mode diff --refresh-rate 120 --output .boris/cadence-geometry-baseline
+  --mode diff --output .boris/cadence-geometry-baseline
 ```
 
 The frozen `geometry.js` checks hunk/full-file, inline/split and wrap modes at

@@ -147,11 +147,11 @@ front: biome svelte-check vitest
 rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast visual probe-display-identity
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast visual machine-hygiene
 
-# The diff-scroll probe registers its virtual display under one fixed serial, since macOS keeps every display identity it is shown (milliseconds)
-probe-display-identity:
-    python3 scripts/diff-scroll/test_native_probe.py
+# No tool in the repo leaves state on the machine that outlives it, such as a virtual display WindowServer keeps until it restarts (milliseconds)
+machine-hygiene:
+    python3 scripts/test_machine_hygiene.py
 
 # Every audited text/background pair in src/tokens.css still clears its WCAG target (milliseconds)
 contrast:

@@ -93,17 +93,14 @@ def classify_inventory(inventory):
             self.assertTrue(json.loads((args.output / 'manifest.json').read_text())['process_admission_required'])
             self.assertEqual(host.app.returncode, 0)
 
-    def test_defaults_to_the_main_display(self):
-        arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                                '--mode', 'diff', '--refresh-rate', '60', '--resources'])
+    def test_refuses_a_virtual_display(self):
+        arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
+                     '--mode', 'diff', '--display', 'virtual', '--resources']
 
-        self.assertEqual(arguments.display, 'main')
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            parse_args(arguments)
 
-    def test_accepts_an_explicit_virtual_display(self):
-        arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                                '--mode', 'diff', '--refresh-rate', '60', '--display', 'virtual', '--resources'])
-
-        self.assertEqual(arguments.display, 'virtual')
+        self.assertEqual(error.exception.code, 2)
 
     def test_keeps_four_1200_pixel_gestures_inside_3800_milliseconds(self):
         events = trace({'left': 100, 'top': 50, 'width': 400, 'height': 300})
@@ -116,14 +113,14 @@ def classify_inventory(inventory):
 
     def test_requires_an_explicit_resource_or_capture_mode(self):
         arguments = parser().parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                                         '--mode', 'diff', '--refresh-rate', '60', '--resources'])
+                                         '--mode', 'diff', '--resources'])
 
         self.assertTrue(arguments.resources)
         self.assertIsNone(arguments.recorder)
 
     def test_rejects_a_run_without_a_measurement_mode(self):
         arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                     '--mode', 'diff', '--refresh-rate', '60']
+                     '--mode', 'diff']
 
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             parser().parse_args(arguments)
@@ -132,7 +129,7 @@ def classify_inventory(inventory):
 
     def test_rejects_capture_and_resources_in_the_same_run(self):
         arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                     '--mode', 'diff', '--refresh-rate', '60', '--resources', '--recorder', '/capture']
+                     '--mode', 'diff', '--resources', '--recorder', '/capture']
 
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             parser().parse_args(arguments)
@@ -152,7 +149,7 @@ def classify_inventory(inventory):
 
     def test_accepts_geometry_for_the_diff_viewport(self):
         arguments = parse_args(['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                                '--mode', 'diff', '--refresh-rate', '120', '--geometry'])
+                                '--mode', 'diff', '--geometry'])
 
         self.assertTrue(arguments.geometry)
         self.assertFalse(arguments.resources)
@@ -160,7 +157,7 @@ def classify_inventory(inventory):
 
     def test_rejects_geometry_for_the_graph_viewport(self):
         arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                     '--mode', 'graph', '--refresh-rate', '120', '--geometry']
+                     '--mode', 'graph', '--geometry']
 
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             parse_args(arguments)
@@ -169,7 +166,7 @@ def classify_inventory(inventory):
 
     def test_rejects_geometry_with_a_recorder(self):
         arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                     '--mode', 'diff', '--refresh-rate', '120', '--geometry', '--recorder', '/capture']
+                     '--mode', 'diff', '--geometry', '--recorder', '/capture']
 
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             parse_args(arguments)
@@ -178,7 +175,7 @@ def classify_inventory(inventory):
 
     def test_rejects_geometry_with_resource_measurement(self):
         arguments = ['--binary', '/app', '--native-probe', '/probe', '--output', '/out',
-                     '--mode', 'diff', '--refresh-rate', '120', '--geometry', '--resources']
+                     '--mode', 'diff', '--geometry', '--resources']
 
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
             parse_args(arguments)

@@ -18,7 +18,8 @@ from processes import stop_app
 SOURCE = Path(__file__).resolve().parent
 sys.path.insert(0, str(SOURCE.parent / 'diff-scroll'))
 from analysis import Inconclusive, mach_ticks, validate_capture
-from run import evaluate, place_window, request, save, until, visible_window, wait_ready
+import run as runtime
+from run import evaluate, prepare_display, request, save, until, wait_ready
 
 
 class Timebase(ctypes.Structure):
@@ -199,7 +200,7 @@ def run(args):
                 'timebase': {'numer': TIMEBASE.numer, 'denom': TIMEBASE.denom},
                 'utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                 'inputMethod': 'Synthetic DOM click through the production row handler. A capture-phase listener records actual delivery in the page clock; host Mach timestamps bracket the same synchronous evaluation. This is not native pointer or physical-device input latency.',
-                'presentation': 'ScreenCaptureKit window recording on a requested 1280x800 60 Hz virtual display. No rAF-derived frame count or automatic OCR classification.',
+                'presentation': 'ScreenCaptureKit window recording of an uncovered window on the main display. No rAF-derived frame count or automatic OCR classification.',
                 'resourceMeasurements': 'None: recording and image decoding are separate from resource trials.'}
     save(output / 'manifest.json', manifest)
     with tempfile.TemporaryDirectory(prefix='trunk-selection-capture-', dir='/tmp') as temporary:
@@ -226,9 +227,7 @@ def run(args):
                     if len(matches) != 1 or matches[0]['oid'] != oid:
                         raise Inconclusive('graph row summary does not uniquely identify expected fixture OID')
 
-                manifest['virtualDisplay'] = request(directory, {'op': 'virtual-display'}, native=True)
-                manifest['placement'] = place_window(directory)
-                window = visible_window(directory)
+                manifest['display'], window = prepare_display(directory, driver=runtime)
                 if window['pid'] != app.pid:
                     raise Inconclusive('capture window belongs to another process')
                 manifest['window'] = window

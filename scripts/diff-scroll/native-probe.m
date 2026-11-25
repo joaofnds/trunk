@@ -7,31 +7,6 @@
 #import <unistd.h>
 #import <mach/mach_time.h>
 
-@interface CGVirtualDisplayDescriptor : NSObject
-@property dispatch_queue_t queue;
-@property(copy) NSString *name;
-@property unsigned int maxPixelsWide;
-@property unsigned int maxPixelsHigh;
-@property CGSize sizeInMillimeters;
-@property unsigned int vendorID;
-@property unsigned int productID;
-@property unsigned int serialNum;
-@end
-@interface CGVirtualDisplayMode : NSObject
-- (instancetype)initWithWidth:(unsigned int)width height:(unsigned int)height refreshRate:(double)rate;
-@end
-@interface CGVirtualDisplaySettings : NSObject
-@property unsigned int hiDPI;
-@property(copy) NSArray *modes;
-@end
-@interface CGVirtualDisplay : NSObject
-@property(readonly) unsigned int displayID;
-- (instancetype)initWithDescriptor:(CGVirtualDisplayDescriptor *)descriptor;
-- (BOOL)applySettings:(CGVirtualDisplaySettings *)settings;
-@end
-static CGVirtualDisplay *probeDisplay;
-static const unsigned int ProbeDisplaySerial = 0x0001;
-
 @interface WKPreferences (ContractProbe)
 + (NSArray *)_features;
 - (BOOL)_isEnabledForFeature:(id)feature;
@@ -146,39 +121,6 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
             @"screen": @(view.window.screen.frame.origin.x), @"frame": NSStringFromRect(view.window.frame)});
         return;
     }
-    if ([op isEqual:@"virtual-display"]) {
-        id requested = request[@"refreshRate"];
-        if (requested && ![requested isKindOfClass:NSNumber.class]) {
-            done(@{@"error": @"refreshRate must be 60 or 120"}); return;
-        }
-        double refreshRate = requested ? [requested doubleValue] : 60;
-        if (refreshRate != 60 && refreshRate != 120) {
-            done(@{@"error": @"refreshRate must be 60 or 120"}); return;
-        }
-        CGVirtualDisplayDescriptor *descriptor = [NSClassFromString(@"CGVirtualDisplayDescriptor") new];
-        if (!descriptor) { done(@{@"error":@"CGVirtualDisplayDescriptor unavailable"}); return; }
-        descriptor.queue = dispatch_get_main_queue();
-        descriptor.name = @"Trunk Blank Investigation";
-        descriptor.maxPixelsWide = 1280;
-        descriptor.maxPixelsHigh = 800;
-        descriptor.sizeInMillimeters = CGSizeMake(320,200);
-        descriptor.vendorID = 0xF0F0;
-        descriptor.productID = 0xB1A0;
-        descriptor.serialNum = ProbeDisplaySerial;
-        probeDisplay = nil;
-        probeDisplay = [[NSClassFromString(@"CGVirtualDisplay") alloc] initWithDescriptor:descriptor];
-        CGVirtualDisplaySettings *settings = [NSClassFromString(@"CGVirtualDisplaySettings") new];
-        settings.hiDPI = 0;
-        settings.modes = @[[[NSClassFromString(@"CGVirtualDisplayMode") alloc] initWithWidth:1280 height:800 refreshRate:refreshRate]];
-        BOOL applied = [probeDisplay applySettings:settings];
-        if (!applied) { probeDisplay = nil; done(@{@"error": @"virtual display creation failed"}); return; }
-        CGDisplayModeRef mode = CGDisplayCopyDisplayMode(probeDisplay.displayID);
-        double actualRefreshRate = mode ? CGDisplayModeGetRefreshRate(mode) : 0;
-        if (mode) CGDisplayModeRelease(mode);
-        done(@{@"displayID":@(probeDisplay.displayID), @"applied":@(applied),
-            @"requestedRefreshRate":@(refreshRate), @"actualRefreshRate":@(actualRefreshRate)});
-        return;
-    }
     if ([op isEqual:@"place-on-main-display"]) {
         CGDirectDisplayID displayID = CGMainDisplayID();
         NSScreen *main = nil;
@@ -188,7 +130,7 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
                 break;
             }
         }
-        if (!main || (probeDisplay && displayID == probeDisplay.displayID)) {
+        if (!main) {
             done(@{@"error": @"main display unavailable"}); return;
         }
         NSRect available = main.visibleFrame;
@@ -201,18 +143,6 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         [NSApp activateIgnoringOtherApps:YES];
         done(@{@"frame": NSStringFromRect(view.window.frame), @"mainDisplay": @YES, @"builtIn": @(CGDisplayIsBuiltin(displayID)),
             @"displayID": @(displayID), @"maximumFramesPerSecond": @(main.maximumFramesPerSecond)});
-        return;
-    }
-    if ([op isEqual:@"place-on-virtual-display"]) {
-        for (NSScreen *screen in NSScreen.screens) {
-            if ([screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue] == probeDisplay.displayID) {
-                [view.window setFrame:screen.frame display:YES];
-                [view.window orderBack:nil];
-                done(@{@"frame":NSStringFromRect(view.window.frame),@"screen":@(probeDisplay.displayID)});
-                return;
-            }
-        }
-        done(@{@"error":@"virtual display not present in NSScreen"});
         return;
     }
     if ([op isEqual:@"wheel"]) { done(sendWheel(view, request)); return; }
@@ -255,10 +185,6 @@ static void execute(NSDictionary *request, void (^done)(NSDictionary *)) {
         return;
     }
     done(@{@"error": @"unknown operation"});
-}
-
-__attribute__((destructor)) static void stopProbe(void) {
-    probeDisplay = nil;
 }
 
 __attribute__((constructor)) static void startProbe(void) {

@@ -11,33 +11,18 @@ from run import capture_with_admission, parse_args, parse_reply, prepare_display
 from test_process_admission import BUSY, CLEAN, InventoryFake
 
 
-class PaintOptions(unittest.TestCase):
-    def test_defaults_to_the_existing_sixty_hertz_display(self):
-        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output"])
-
-        self.assertEqual(args.refresh_rate, 60)
-
-    def test_accepts_an_explicit_one_hundred_twenty_hertz_display(self):
-        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
-                           "--refresh-rate", "120"])
-
-        self.assertEqual(args.refresh_rate, 120)
-
-    def test_defaults_to_the_main_display(self):
-        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output"])
-
-        self.assertEqual(args.display, "main")
-
-    def test_accepts_an_explicit_virtual_display(self):
-        args = parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
-                           "--display", "virtual"])
-
-        self.assertEqual(args.display, "virtual")
-
-    def test_refuses_an_unsupported_refresh_rate(self):
+class DisplayOptions(unittest.TestCase):
+    def test_refuses_a_virtual_display(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
             parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
-                        "--refresh-rate", "90"])
+                        "--display", "virtual"])
+
+        self.assertEqual(caught.exception.code, 2)
+
+    def test_refuses_a_requested_refresh_rate(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            parse_args(["--binary", "drive-app", "--source-revision", "supplied", "--output", "new-output",
+                        "--refresh-rate", "120"])
 
         self.assertEqual(caught.exception.code, 2)
 
@@ -46,7 +31,7 @@ class DisplayChoice(unittest.TestCase):
     def test_places_the_window_on_the_main_display_without_creating_one(self):
         host, driver = HostFake(), NativeDriverFake()
         with tempfile.TemporaryDirectory() as temporary:
-            args = trial_arguments(Path(temporary), display="main")
+            args = trial_arguments(Path(temporary))
 
             with self.assertRaises(Inconclusive):
                 run(args, host=host, driver=driver, snapshot=InventoryFake(BUSY))
@@ -55,37 +40,16 @@ class DisplayChoice(unittest.TestCase):
         operations = [body["op"] for body in driver.requests]
         self.assertIn("place-on-main-display", operations)
         self.assertNotIn("virtual-display", operations)
-        self.assertEqual((manifest["display_kind"], manifest["requested_refresh_rate"]), ("main", None))
-
-    def test_records_the_requested_rate_and_unmodified_virtual_display_response(self):
-        host, driver = HostFake(), NativeDriverFake()
-        with tempfile.TemporaryDirectory() as temporary:
-            args = trial_arguments(Path(temporary), display="virtual")
-
-            with self.assertRaises(Inconclusive):
-                run(args, host=host, driver=driver, snapshot=InventoryFake(BUSY))
-            manifest = json.loads((args.output / "manifest.json").read_text())
-
-        self.assertIn({"op": "virtual-display", "refreshRate": 120}, driver.requests)
-        self.assertEqual((manifest["display_kind"], manifest["requested_refresh_rate"], manifest["native_display"]),
-                         ("virtual", 120, {"displayID": 1}))
+        self.assertEqual(manifest["native_display"], {"displayID": 1})
 
 
 class DisplayDriverFake:
     def __init__(self, observed_display=1, visible=True):
         self.observed_display = observed_display
         self.visible = visible
-        self.virtual_displays = []
 
     def request(self, directory, body, native=False):
-        if body['op'] == 'virtual-display':
-            self.virtual_displays.append(body['refreshRate'])
-            return {'displayID': 100, 'applied': True, 'requestedRefreshRate': body['refreshRate'], 'actualRefreshRate': 0}
-
         return {'displayID': 1, 'mainDisplay': True, 'builtIn': True, 'maximumFramesPerSecond': 120}
-
-    def place_window(self, directory):
-        self.observed_display = 100
 
     def visible_window(self, directory):
         return {'displayID': self.observed_display, 'visible': self.visible,
@@ -93,35 +57,25 @@ class DisplayDriverFake:
 
 
 class DisplayPlacement(unittest.TestCase):
-    def test_keeps_the_requested_virtual_display_rate(self):
+    def test_records_the_main_display_and_its_maximum_rate(self):
         driver = DisplayDriverFake()
 
-        display, window = prepare_display(Path('/unused'), kind='virtual', refresh_rate=60, driver=driver)
-
-        self.assertEqual(display, {'displayID': 100, 'applied': True, 'requestedRefreshRate': 60, 'actualRefreshRate': 0})
-        self.assertEqual(window['displayID'], 100)
-        self.assertEqual(driver.virtual_displays, [60])
-
-    def test_records_the_main_maximum_without_requesting_a_display_rate(self):
-        driver = DisplayDriverFake()
-
-        display, window = prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
+        display, window = prepare_display(Path('/unused'), driver=driver)
 
         self.assertEqual(display, {'displayID': 1, 'mainDisplay': True, 'builtIn': True, 'maximumFramesPerSecond': 120})
         self.assertEqual(window['displayID'], 1)
-        self.assertEqual(driver.virtual_displays, [])
 
     def test_rejects_a_window_that_is_visible_on_another_display(self):
         driver = DisplayDriverFake(observed_display=2)
 
         with self.assertRaises(Inconclusive):
-            prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
+            prepare_display(Path('/unused'), driver=driver)
 
     def test_rejects_a_hidden_main_window(self):
         driver = DisplayDriverFake(visible=False)
 
         with self.assertRaises(Inconclusive):
-            prepare_display(Path('/unused'), kind='main', refresh_rate=60, driver=driver)
+            prepare_display(Path('/unused'), driver=driver)
 
 
 class CaptureFake:

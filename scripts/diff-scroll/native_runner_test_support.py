@@ -43,9 +43,6 @@ class NativeDriverFake:
     def wait_ready(self, directory, app):
         return True
 
-    def place_window(self, directory):
-        return True
-
     def visible_window(self, directory):
         return {'pid': 7, 'window': 70, 'displayID': 1, 'visible': True, 'occlusion': 2}
 
@@ -68,7 +65,7 @@ class NativeDriverFake:
         raise Inconclusive('fake capture stops at recorder startup')
 
 
-def trial_arguments(directory, display='virtual'):
+def trial_arguments(directory):
     output = directory / 'artifacts'
     output.mkdir()
     binary = directory / 'drive-app'
@@ -79,4 +76,4 @@ def trial_arguments(directory, display='virtual'):
 
     return SimpleNamespace(output=output, binary=binary, native_probe=probe, recorder=recorder,
                            source_revision='test revision', lines=146, start_scroll=0, profile='fast',
-                           refresh_rate=120, display=display, mode='graph', resources=False, geometry=False)
+                           mode='graph', resources=False, geometry=False)

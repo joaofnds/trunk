@@ -69,30 +69,13 @@ def wait_ready(directory, process):
         time.sleep(0.05)
 
 
-def prepare_display(directory, *, kind, refresh_rate, driver):
-    if kind == "main":
-        display = driver.request(directory, {"op": "place-on-main-display"}, native=True)
-    else:
-        display = driver.request(directory, {"op": "virtual-display", "refreshRate": refresh_rate}, native=True)
-        driver.place_window(directory)
-
+def prepare_display(directory, *, driver):
+    display = driver.request(directory, {"op": "place-on-main-display"}, native=True)
     info = driver.visible_window(directory)
-    if kind == "main" and (not info["visible"] or not info["occlusion"] & 2 or info["displayID"] != display["displayID"]):
+    if not info["visible"] or not info["occlusion"] & 2 or info["displayID"] != display["displayID"]:
         raise Inconclusive("test window is not visible on the main display")
 
     return display, info
-
-
-def place_window(directory):
-    deadline = time.monotonic() + 10
-    while True:
-        try:
-            return request(directory, {"op": "place-on-virtual-display"}, native=True)
-        except Inconclusive:
-            if time.monotonic() >= deadline:
-                raise
-
-            time.sleep(0.05)
 
 
 def visible_window(directory):
@@ -180,7 +163,6 @@ class NativeDriver:
     evaluate = staticmethod(evaluate)
     until = staticmethod(until)
     wait_ready = staticmethod(wait_ready)
-    place_window = staticmethod(place_window)
     visible_window = staticmethod(visible_window)
 
     def capture(self, directory, output, info, events):
@@ -199,8 +181,6 @@ def run(args, *, host=subprocess, driver=None, snapshot=inventory_snapshot):
                 "lines": args.lines, "flings": 8, "capture_seconds": 5,
                 "start_scroll": args.start_scroll,
                 "profile": args.profile,
-                "display_kind": args.display,
-                "requested_refresh_rate": args.refresh_rate if args.display == "virtual" else None,
                 "platform": host.check_output(["sw_vers"], text=True, timeout=5).strip()}
     save(output / "manifest.json", manifest)
     with (output / "compile.log").open("w") as log:
@@ -225,8 +205,7 @@ def run(args, *, host=subprocess, driver=None, snapshot=inventory_snapshot):
             try:
                 driver.wait_ready(directory, app)
                 driver.until(directory, '[...document.querySelectorAll("[data-testid=commit-row-summary]")].some(x=>x.textContent.trim()==="native scroll fixture")')
-                manifest["native_display"], info = prepare_display(directory, kind=args.display,
-                                                                   refresh_rate=args.refresh_rate, driver=driver)
+                manifest["native_display"], info = prepare_display(directory, driver=driver)
                 manifest["native_window"] = info
                 save(output / "manifest.json", manifest)
                 driver.evaluate(directory, '([...document.querySelectorAll("[data-testid=commit-row-summary]")].find(x=>x.textContent.trim()==="native scroll fixture").click(),true)')
@@ -272,10 +251,6 @@ def parse_args(argv=None):
     parser.add_argument("--lines", type=int, choices=[146, 1500, 90000], default=146)
     parser.add_argument("--start-scroll", type=int, default=0, help="initial scroll position in CSS pixels, within fixture bounds")
     parser.add_argument("--profile", choices=["slow", "fast"], default="slow", help="peak input 3750px/s or 30000px/s")
-    parser.add_argument("--display", choices=["main", "virtual"], default="main",
-                        help="virtual creates a private display, whose WindowServer state outlives the run")
-    parser.add_argument("--refresh-rate", type=int, choices=[60, 120], default=60,
-                        help="requested virtual display refresh rate, unused on the main display; the native mode is recorded separately")
     return parser.parse_args(argv)
 
 

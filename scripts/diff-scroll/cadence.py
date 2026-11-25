@@ -181,8 +181,6 @@ def run(args, harness_hashes, *, host=subprocess, driver=runtime, snapshot=inven
 
     manifest = {'schema': 1, 'mode': args.mode, 'resource_run': args.resources, 'geometry_run': args.geometry,
                 'process_admission_required': not args.geometry,
-                'display_kind': args.display, 'refresh_rate_argument': args.refresh_rate,
-                'requested_refresh_rate': args.refresh_rate if args.display == 'virtual' else None,
                 'source_revision_supplied': args.source_revision,
                 'files': {role: {'path': str(path), 'sha256': sha256(path)} for role, path in binaries.items()},
                 'harness_hashes': harness_hashes, 'lines': 1500, 'history': 400,
@@ -214,7 +212,7 @@ def run(args, harness_hashes, *, host=subprocess, driver=runtime, snapshot=inven
             try:
                 driver.wait_ready(directory, app)
                 driver.until(directory, '[...document.querySelectorAll("[data-testid=commit-row-summary]")].some(x=>x.textContent.trim()==="native scroll fixture")')
-                manifest['display'], manifest['info'] = runtime.prepare_display(directory, kind=args.display, refresh_rate=args.refresh_rate, driver=driver)
+                manifest['display'], manifest['info'] = runtime.prepare_display(directory, driver=driver)
                 selector, manifest['box'] = prepare_viewport(directory, args.mode, driver=driver)
                 from cadence_analysis import default_crops
                 manifest['crops'] = default_crops(manifest)
@@ -259,10 +257,6 @@ def parser():
     arguments.add_argument('--source-revision', default='unspecified', help='recorded as supplied, not inferred from the checkout')
     arguments.add_argument('--output', type=Path, required=True, help='exclusive new artifact directory')
     arguments.add_argument('--mode', choices=['graph', 'diff'], required=True)
-    arguments.add_argument('--display', choices=['main', 'virtual'], default='main',
-                           help='virtual creates a private display, whose WindowServer state outlives the run')
-    arguments.add_argument('--refresh-rate', type=int, choices=[60, 120], required=True,
-                           help='requested virtual display rate; recorded but not applied in main mode')
     measurement = arguments.add_mutually_exclusive_group(required=True)
     measurement.add_argument('--recorder', type=Path, help='existing native-capture executable')
     measurement.add_argument('--resources', action='store_true', help='CPU/memory/I/O window without a recorder')
