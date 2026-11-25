@@ -357,36 +357,55 @@ const atBottom = $derived(heightManager.scrollTop >= totalHeight - height - 1);
 let wasAtBottomBeforeHeightChange = false;
 let lastVisibleRange: SvelteVirtualListPreviousVisibleRange | null = null;
 
-/** The space the content actually gets: the viewport's content box, which is
- *  its border box less any padding a consumer put on it. Measuring the
- *  container instead leaves the content taller than its box by exactly that
- *  padding, and a list that fits keeps a scroll range it should not have. */
-function viewportContentHeight(): number {
+interface ViewportBox {
+	/** The space the content actually gets: the viewport's content box, which is
+	 *  its border box less any padding a consumer put on it. Measuring the
+	 *  container instead leaves the content taller than its box by exactly that
+	 *  padding, and a list that fits keeps a scroll range it should not have. */
+	contentHeight: number;
+	paddingTop: number;
+	paddingBottom: number;
+}
+
+function measureViewport(): ViewportBox | null {
 	const viewport = heightManager.viewportElement;
-	if (!viewport) return 0;
+	if (!viewport) return null;
 
-	const { paddingTop, paddingBottom } = getComputedStyle(viewport);
+	const style = getComputedStyle(viewport);
+	const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+	const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
 
-	return (
-		viewport.clientHeight -
-		(Number.parseFloat(paddingTop) || 0) -
-		(Number.parseFloat(paddingBottom) || 0)
-	);
+	return {
+		contentHeight: viewport.clientHeight - paddingTop - paddingBottom,
+		paddingTop,
+		paddingBottom,
+	};
+}
+
+let viewportPadding = $state({ top: 0, bottom: 0 });
+
+function recordViewport(): ViewportBox | null {
+	const box = measureViewport();
+	if (!box || !Number.isFinite(box.contentHeight) || box.contentHeight <= 0)
+		return null;
+
+	viewportPadding = { top: box.paddingTop, bottom: box.paddingBottom };
+	return box;
 }
 
 // Update container height continuously
 $effect(() => {
 	if (BROWSER && heightManager.isReady) {
-		const h = viewportContentHeight();
-		if (Number.isFinite(h) && h > 0) height = h;
+		const box = recordViewport();
+		if (box) height = box.contentHeight;
 	}
 });
 
 // One-time fallback measurement when height hasn't been established yet
 $effect(() => {
 	if (BROWSER && height === 0 && heightManager.isReady) {
-		const h = viewportContentHeight();
-		if (Number.isFinite(h) && h > 0) measuredFallbackHeight = h;
+		const box = recordViewport();
+		if (box) measuredFallbackHeight = box.contentHeight;
 	}
 });
 
@@ -437,8 +456,29 @@ const contentHeight = $derived.by(() => {
 	return raw;
 });
 
+/** The rows paint inside a surface that stays at the viewport, so the native
+ *  scroller cannot carry them out of view before the next render. It spans the
+ *  viewport's padding, which the rows scroll through. An unmeasured viewport
+ *  gets a surface as tall as the content, which never sticks. */
+const surfaceHeight = $derived.by(() => {
+	const measured = height || measuredFallbackHeight;
+	if (measured === 0) return contentHeight;
+
+	return Math.min(
+		measured + viewportPadding.top + viewportPadding.bottom,
+		contentHeight,
+	);
+});
+const renderedScrollTop = $derived(
+	clampValue(
+		heightManager.scrollTop - viewportPadding.top,
+		0,
+		contentHeight - surfaceHeight,
+	),
+);
+
 /**
- * Computed transform Y value for positioning the visible items.
+ * The visible items' offset from the top of the document.
  */
 const transformY = $derived.by(() => {
 	const viewportHeight = height || measuredFallbackHeight || 0;
@@ -581,8 +621,8 @@ onMount(() => {
 
 		resizeObserver = new ResizeObserver(() => {
 			// Always update height when container resizes — even before initialized.
-			const h = viewportContentHeight();
-			if (Number.isFinite(h) && h > 0) height = h;
+			const box = recordViewport();
+			if (box) height = box.contentHeight;
 
 			if (!heightManager.initialized) return;
 			updateHeightAndScroll(true);
@@ -743,29 +783,38 @@ function autoObserveItemResize(element: HTMLElement) {
 				: `${minContentWidth}px`}
 			style:overflow-x={minContentWidth === undefined ? undefined : "clip"}
 		>
-			{#if overlaySnippet}
-				{@render overlaySnippet(
-					contentHeight,
-					visibleItems.start,
-					visibleItems.end,
-				)}
-			{/if}
 			<div
-				class="virtual-list-items"
-				style:transform="translateY({transformY}px)"
+				class="virtual-list-surface sticky w-full overflow-clip"
+				style:top="{-viewportPadding.top}px"
+				style:height="{surfaceHeight}px"
 			>
-				{#each displayItems as currentItemWithIndex, _i (currentItemWithIndex.originalIndex)}
-					<div
-						bind:this={itemElements[currentItemWithIndex.sliceIndex]}
-						use:autoObserveItemResize
-						data-original-index={currentItemWithIndex.originalIndex}
-					>
-						{@render renderItem(
-							currentItemWithIndex.item,
-							currentItemWithIndex.originalIndex,
+				<div
+					class="virtual-list-document absolute left-0 w-full"
+					style:top="{-renderedScrollTop}px"
+					style:height="{contentHeight}px"
+				>
+					{#if overlaySnippet}
+						{@render overlaySnippet(
+							contentHeight,
+							visibleItems.start,
+							visibleItems.end,
 						)}
+					{/if}
+					<div class="virtual-list-items" style:top="{transformY}px">
+						{#each displayItems as currentItemWithIndex, _i (currentItemWithIndex.originalIndex)}
+							<div
+								bind:this={itemElements[currentItemWithIndex.sliceIndex]}
+								use:autoObserveItemResize
+								data-original-index={currentItemWithIndex.originalIndex}
+							>
+								{@render renderItem(
+									currentItemWithIndex.item,
+									currentItemWithIndex.originalIndex,
+								)}
+							</div>
+						{/each}
 					</div>
-				{/each}
+				</div>
 			</div>
 		</div>
 	</div>
@@ -800,7 +849,6 @@ function autoObserveItemResize(element: HTMLElement) {
 	position: absolute;
 	width: 100%;
 	left: 0;
-	top: 0;
 }
 
 .virtual-list-items > div {

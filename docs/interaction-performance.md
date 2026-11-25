@@ -2049,10 +2049,32 @@ scrolling the same fixture by script, at up to 600 px per rAF, never left a row
 missing from the viewport, so the list's own range and paging keep up with every
 offset the page sees. The blank band therefore appears only when the compositor
 draws trackpad offsets ahead of the page. That is the symptom the diff pane had
-before `0dccb409`, which moved its rows into a stationary viewport. The graph's
-virtual list still positions its rows with a transform. Whether the same layer is
-the cause here is unmeasured; `scripts/diff-scroll` can drive the native input
-that would show it.
+before `0dccb409`, which moved its rows into a stationary viewport.
+
+#### Native fling replay of the blank graph rows
+
+On 2026-11-25 the `scripts/diff-scroll` native input and capture drove the graph of
+a copy of the long fixture: eight alternating fast flings (the runner's `fast`
+profile) from 40,000 px, 120 Hz virtual display, a frame marker tying each captured
+frame to DOM geometry, and a pixel oracle that counts a dark run of 64 px or more in
+the Message column. Every row of that fixture has a message, so such a run is
+missing content.
+
+| Build | Runs | Captured frames | Blank frames | Largest dark run |
+| --- | ---: | ---: | ---: | ---: |
+| `ededd2fc`, rows moved by a transform in the scrolled document | 5 | 2,549 | 20 | 698 px, the whole graph |
+| Rows in a stationary surface | 4 | 1,661 | 0 | 40 px |
+
+Every baseline blank had the mounted rows covering the whole viewport, so the list's
+range was complete and the paint was missing, as in the diff pane. They clustered
+where one fling reversed the last. One-way flings showed none in either build.
+Moving the rows and the lane overlay into a viewport-high sticky surface, the
+design of `0dccb409`, left none in four runs. An earlier candidate whose surface covered
+only the viewport's content box had one 86 px blank in 1,475 frames, in which the
+rows jumped about 60 px past their path for one frame and came back on the next. The final surface spans
+the viewport's padding. Neither build showed a bounce at the top under this
+synthetic input, so the bounce is unverified here. The runner and raw captures are
+in `.boris/trunk-523/`.
 
 #### Replay and evidence
 

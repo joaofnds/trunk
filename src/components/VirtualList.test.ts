@@ -1,7 +1,11 @@
 import { fireEvent, render } from "@testing-library/svelte";
 import type { Snippet } from "svelte";
 import { tick } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	restoreVirtualListLayout,
+	stubVirtualListLayout,
+} from "../__tests__/helpers/virtual-list-layout.js";
 import VirtualList from "./VirtualList.svelte";
 
 // Shared Tauri mock
@@ -50,21 +54,6 @@ describe("VirtualList", () => {
 			container.querySelector(".virtual-list-content"),
 		).toBeInTheDocument();
 		expect(container.querySelector(".virtual-list-items")).toBeInTheDocument();
-	});
-
-	it("renders items div with transform style", () => {
-		const { container } = render(VirtualList, {
-			props: {
-				items: Array.from({ length: 10 }, (_, i) => `item-${i}`),
-				renderItem: (() => {}) as unknown as Snippet,
-				defaultEstimatedItemHeight: 40,
-			},
-		});
-		const itemsDiv = container.querySelector(".virtual-list-items");
-		expect(itemsDiv).toBeInTheDocument();
-		// The transform should be set (translateY)
-		const style = itemsDiv?.getAttribute("style") ?? "";
-		expect(style).toContain("transform");
 	});
 });
 
@@ -282,5 +271,151 @@ describe("VirtualList given the width its content needs", () => {
 			width: content.style.minWidth,
 			clip: content.style.overflowX,
 		}).toEqual({ scrolls: "hidden", width: "", clip: "" });
+	});
+});
+
+// Native scrolling moves the viewport before the list re-renders, so rows laid
+// out in the tall document can leave the view between two renders and WebKit
+// paints nothing there (TRUNK-523). The rows paint inside a surface that stays at
+// the viewport instead, offset by the position the list last read.
+describe("VirtualList scrolled by the native scroller", () => {
+	const VIEWPORT = 200;
+	const ROW = 20;
+	const ROWS = 100;
+	const END = ROWS * ROW - VIEWPORT;
+
+	afterEach(() => {
+		restoreVirtualListLayout();
+	});
+
+	function frame(): Promise<void> {
+		return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+	}
+
+	async function mountScrolledTo(scrollTop: number) {
+		stubVirtualListLayout({ viewportHeight: VIEWPORT, rowHeight: ROW });
+		const { container } = render(VirtualList, {
+			props: {
+				items: Array.from({ length: ROWS }, (_, i) => `item-${i}`),
+				renderItem: (() => {}) as unknown as Snippet,
+				defaultEstimatedItemHeight: ROW,
+				hasMore: false,
+			},
+		});
+		await frame();
+		await tick();
+		const viewport = container.querySelector(
+			".virtual-list-viewport",
+		) as HTMLElement;
+		viewport.scrollTop = scrollTop;
+		viewport.dispatchEvent(new Event("scroll"));
+		await frame();
+		await tick();
+
+		return container;
+	}
+
+	function px(element: Element | null): number {
+		return Number.parseFloat((element as HTMLElement | null)?.style.top ?? "");
+	}
+
+	/** Where the first mounted row paints, measured from the surface's top. */
+	function firstRowPaintsAt(container: Element): { index: number; y: number } {
+		const first = container.querySelector<HTMLElement>("[data-original-index]");
+		const document = container.querySelector(".virtual-list-document");
+
+		return {
+			index: Number(first?.dataset.originalIndex),
+			y: px(document) + px(container.querySelector(".virtual-list-items")),
+		};
+	}
+
+	it("keeps the full scroll extent around a surface the viewport's height", async () => {
+		const container = await mountScrolledTo(0);
+
+		const content = container.querySelector<HTMLElement>(
+			".virtual-list-content",
+		);
+		const surface = content?.querySelector<HTMLElement>(
+			".virtual-list-surface",
+		);
+
+		expect({
+			extent: content?.style.height,
+			surface: surface?.style.height,
+		}).toEqual({ extent: `${ROWS * ROW}px`, surface: `${VIEWPORT}px` });
+		expect(surface).toHaveClass("sticky", "overflow-clip");
+		expect(surface).toContainElement(
+			container.querySelector(".virtual-list-items"),
+		);
+	});
+
+	it("paints each mounted row where the scroll position it last read puts it", async () => {
+		const container = await mountScrolledTo(600);
+
+		const { index, y } = firstRowPaintsAt(container);
+
+		expect(y).toBe(index * ROW - 600);
+	});
+
+	it("places the rows by offset, leaving no transform for a layer of its own", async () => {
+		const container = await mountScrolledTo(600);
+
+		const items = container.querySelector<HTMLElement>(".virtual-list-items");
+
+		expect(items?.style.transform).toBe("");
+	});
+
+	// CommitGraph pads its viewport, and rows scroll through that padding.
+	describe("when the viewport is padded", () => {
+		const PADDING = 8;
+		let style: HTMLStyleElement;
+
+		beforeEach(() => {
+			style = document.createElement("style");
+			style.textContent = `.virtual-list-viewport { padding-top: ${PADDING}px; padding-bottom: ${PADDING}px; }`;
+			document.head.append(style);
+		});
+
+		afterEach(() => {
+			style.remove();
+		});
+
+		it("stretches the surface over the padding the rows scroll through", async () => {
+			const container = await mountScrolledTo(600);
+
+			const surface = container.querySelector<HTMLElement>(
+				".virtual-list-surface",
+			);
+
+			expect({
+				top: surface?.style.top,
+				height: surface?.style.height,
+			}).toEqual({ top: `${-PADDING}px`, height: `${VIEWPORT}px` });
+		});
+
+		it("paints each mounted row where it sat below the padding", async () => {
+			const container = await mountScrolledTo(600);
+
+			const { index, y } = firstRowPaintsAt(container);
+
+			expect(y).toBe(PADDING + index * ROW - 600);
+		});
+	});
+
+	describe("when the viewport overscrolls", () => {
+		it.each([
+			{ edge: "start", scrollTop: -90, shift: 0 },
+			{ edge: "end", scrollTop: END + 90, shift: -END },
+		])(
+			"leaves the native bounce at the $edge out of the rows",
+			async ({ scrollTop, shift }) => {
+				const container = await mountScrolledTo(scrollTop);
+
+				expect(px(container.querySelector(".virtual-list-document"))).toBe(
+					shift,
+				);
+			},
+		);
 	});
 });

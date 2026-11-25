@@ -443,7 +443,7 @@ async function settledScrolledOverlay(
  *
  * Read from the painted output rather than from any input. A row's
  * `getBoundingClientRect` would hand back the stub's own answer and assert
- * nothing, and the item layer's `translateY` sums mostly *unmeasured* rows, which
+ * nothing, and the item layer's offset sums mostly *unmeasured* rows, which
  * fall back to the estimate and hide a wrong measurement behind it. The dot gap
  * is the number a user would see be wrong.
  */
