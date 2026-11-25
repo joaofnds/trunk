@@ -102,8 +102,8 @@ describe("Tab", () => {
 			expect(screen.getByRole("tab")).toHaveClass(
 				"flex",
 				"items-center",
-				"gap-2",
-				"pl-3",
+				"gap-1",
+				"pl-2",
 			);
 		});
 
@@ -115,7 +115,7 @@ describe("Tab", () => {
 			expect(screen.getByRole("tab")).toHaveClass(
 				"after:w-control-xs",
 				"after:shrink-0",
-				"pr-2",
+				"pr-1",
 			);
 		});
 
@@ -132,7 +132,7 @@ describe("Tab", () => {
 				"row-start-1",
 				"justify-self-end",
 				"self-center",
-				"mr-2",
+				"mr-1",
 			);
 		});
 

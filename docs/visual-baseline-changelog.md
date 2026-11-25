@@ -401,3 +401,11 @@ Show the four merge conflict line and word highlight swatches in the design cata
 Changed baselines:
 
     tests/visual/baselines/catalog.png
+
+## 2026-11-25
+
+the framed tab is compact at the user's direction (2026-11-25): less left padding and a smaller gap before the close, so the catalog's framed tab row is narrower
+
+Changed baselines:
+
+    tests/visual/baselines/catalog.png

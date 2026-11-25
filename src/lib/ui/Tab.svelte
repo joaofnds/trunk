@@ -45,12 +45,12 @@ const VARIANTS: Record<TabVariant, string> = {
 		"aria-selected:border-accent aria-selected:text-text-strong disabled:cursor-default " +
 		"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
 	framed:
-		"col-start-1 row-start-1 flex items-center gap-2 pl-3 pr-2 " +
+		"col-start-1 row-start-1 flex items-center gap-1 pl-2 pr-1 " +
 		"after:w-control-xs after:shrink-0 rounded text-left cursor-pointer",
 };
 
 const TRAILING =
-	"col-start-1 row-start-1 justify-self-end self-center flex mr-2";
+	"col-start-1 row-start-1 justify-self-end self-center flex mr-1";
 
 const TAB_ORDER: Record<TabVariant, number | undefined> = {
 	strip: undefined,
