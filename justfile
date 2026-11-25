@@ -24,11 +24,11 @@ default:
 # ── Dev ──────────────────────────────────────────────
 
 # Start development server (own identifier so dev state never clobbers the installed app's)
-dev:
+dev: target-sweep
     bun run tauri dev -c tauri.dev.conf.json
 
 # Build and launch the Trunk Dev .app bundle under the dev identifier (docs/build-environment.md)
-dev-app:
+dev-app: target-sweep
     #!/usr/bin/env bash
     set -euo pipefail
     # mise's python ships an `xattr` that shadows the system one and rejects the
@@ -39,7 +39,7 @@ dev-app:
 # Build the drive instance an agent starts and drives through commands, no screen tools (scripts/drive/drive.ts).
 # It compiles into a target dir of its own, so the shared debug `trunk` stays the plain dev build
 # that the review CLI and `just dev` expect, and switching features rebuilds nothing there.
-drive-build:
+drive-build: target-sweep
     VITE_TRUNK_DRIVE=1 bunx vite build --outDir dist-drive --emptyOutDir
     TAURI_CONFIG="$(cat tauri.drive.conf.json)" cargo build --manifest-path {{manifest}} --target-dir "{{target}}/drive-build" --bin trunk --features drive,tauri/custom-protocol
     rm -f "{{target}}/debug/trunk-drive"
@@ -75,8 +75,12 @@ prototype:
     bunx vite --port 1430 --strictPort
 
 # Production build
-build:
+build: target-sweep
     bun run tauri build
+
+# Remove build output no build has read for two days, since Cargo keeps every superseded build and each release bump supersedes the whole workspace (milliseconds)
+target-sweep:
+    python3 scripts/target_sweep.py "{{target}}"
 
 # Preview Cargo's workspace debug cleanup; --apply removes it and rebuilds our crates next time
 [positional-arguments]
@@ -149,9 +153,9 @@ rust: fmt clippy clippy-shipped cargo-test
 # Run all checks (run before committing)
 check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast visual machine-hygiene
 
-# No tool in the repo leaves state on the machine that outlives it, such as a virtual display WindowServer keeps until it restarts (milliseconds)
+# No tool in the repo leaves state on the machine that outlives it, such as a virtual display WindowServer keeps until it restarts, and the build cache sweep keeps only what a build still reads (milliseconds)
 machine-hygiene:
-    python3 scripts/test_machine_hygiene.py
+    cd scripts && python3 -m unittest test_machine_hygiene test_target_sweep
 
 # Every audited text/background pair in src/tokens.css still clears its WCAG target (milliseconds)
 contrast:
@@ -261,7 +265,7 @@ svelte-check:
 
 # Clippy lints, with the drive route on so its feature-gated module is linted too.
 # The route reaches into AppKit, so it builds on macOS only and Linux lints without it.
-clippy:
+clippy: target-sweep
     cargo clippy --workspace --manifest-path {{manifest}} --all-targets {{ if os() == "macos" { "--features trunk/drive" } else { "" } }} -- -D warnings
 
 # Clippy the configuration that actually ships. `clippy` above passes
@@ -270,7 +274,7 @@ clippy:
 # feature-off build is the one configuration nothing else compiles. Without this recipe, code that
 # reads a `test-util`-gated field from ungated code passes `just check` and
 # fails only at `tauri build`.
-clippy-shipped:
+clippy-shipped: target-sweep
     cargo clippy --workspace --manifest-path {{manifest}} --lib --bins -- -D warnings
 
 # Run Rust tests (needs: cargo install cargo-nextest). nextest runs every test
@@ -279,7 +283,7 @@ clippy-shipped:
 #
 # No `--doc` line: there are no runnable doctests, and the rustdoc pass alone
 # takes about 8s. `test_doctest_guard.rs` fails if that stops being true.
-cargo-test:
+cargo-test: target-sweep
     {{scrubbed_env}} cargo nextest run --workspace --manifest-path {{manifest}}
 
 # Run Rust tests with coverage. Through nextest for the same reason as
