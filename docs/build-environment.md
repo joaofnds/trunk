@@ -298,7 +298,10 @@ the page shows twice is told apart by its landmark with `--in`. Run from the
 repository root. A shell variable does not outlive an agent's tool call, so
 either run a block like the one below as one script or pass
 `TRUNK_DRIVE_DIR=<dir>` on every call, and always end with `quit`, since the
-instance is detached and outlives the shell that launched it.
+instance is detached and outlives the shell that launched it. `quit` also
+removes the instance's directory once the app has saved its last preference. An
+instance that hears no request for 15 minutes quits and removes its directory on
+its own, so an agent session that ends without `quit` leaves nothing running.
 
 This replays Delete on a branch that a linked worktree is rebasing:
 
@@ -322,7 +325,7 @@ drive until 'document.querySelector("[role=status]")?.textContent?.trim() || nul
                    # "Cannot delete 'feature' while the worktree at … is rebasing it. …"
 git -C "$REPO" branch --list   # feature is still there
 drive quit
-rm -rf "$TRUNK_DRIVE_DIR" "$(dirname "$REPO")"
+rm -rf "$(dirname "$REPO")"
 ```
 
 `rows` prints the commit rows the graph shows, `click` and `type` act on a

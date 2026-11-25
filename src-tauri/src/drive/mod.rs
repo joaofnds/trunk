@@ -15,14 +15,16 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::{AppHandle, Listener, Manager, Runtime};
+
+use crate::drive_socket::{IDLE_LIMIT, Idle};
 
 const READY_EVENT: &str = "trunk-drive:ready";
 const REPLY_EVENT: &str = "trunk-drive:reply";
@@ -34,6 +36,10 @@ const PAGE_DEADLINE: Duration = Duration::from_secs(25);
 
 /// The main window's `WKWebView`, recorded once tauri creates it.
 static WEBVIEW: OnceLock<native::WebViewAddress> = OnceLock::new();
+/// The instance's directory, and whether it goes at exit because nobody will
+/// read it again: the instance quit for idleness, or its launcher asked.
+static INSTANCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+static DISCARD_AT_EXIT: AtomicBool = AtomicBool::new(false);
 
 /// The drive route's plugin: it opens the socket at setup and keeps the window
 /// behind every other one, so a launch never covers the user's work.
@@ -49,9 +55,12 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
                         .into(),
                 );
             }
+            let _ = INSTANCE_DIR.set(dir.clone());
             let page = Arc::new(Page::default());
             listen_to_page(app, &page);
-            serve(app.clone(), &dir, page)?;
+            let idle = Arc::new(Mutex::new(Idle::new(IDLE_LIMIT, Instant::now())));
+            serve(app.clone(), &dir, page, Arc::clone(&idle))?;
+            quit_when_idle(app.clone(), idle);
             Ok(())
         })
         .on_webview_ready(|webview| {
@@ -93,14 +102,27 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 #[serde(tag = "op", rename_all = "kebab-case")]
 enum Request {
     Ping,
-    Eval { js: String },
-    Snapshot { path: PathBuf },
+    Eval {
+        js: String,
+    },
+    Snapshot {
+        path: PathBuf,
+    },
     Alert,
-    Press { button: String },
-    MenuBar { path: Vec<String> },
-    Chord { chord: String },
+    Press {
+        button: String,
+    },
+    MenuBar {
+        path: Vec<String>,
+    },
+    Chord {
+        chord: String,
+    },
     Drawing,
-    Quit,
+    Quit {
+        #[serde(default)]
+        discard: bool,
+    },
 }
 
 #[derive(Deserialize)]
@@ -203,7 +225,12 @@ fn listen_to_page<R: Runtime>(app: &AppHandle<R>, page: &Arc<Page>) {
     });
 }
 
-fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(), String> {
+fn serve<R: Runtime>(
+    app: AppHandle<R>,
+    dir: &Path,
+    page: Arc<Page>,
+    idle: Arc<Mutex<Idle>>,
+) -> Result<(), String> {
     let listener = crate::drive_socket::bind(dir)?;
     crate::drive_socket::announce_listening(dir)?;
 
@@ -212,12 +239,56 @@ fn serve<R: Runtime>(app: AppHandle<R>, dir: &Path, page: Arc<Page>) -> Result<(
             if peer_uid(&stream) != Some(effective_uid()) {
                 continue;
             }
+            hear(&idle);
             let app = app.clone();
             let page = Arc::clone(&page);
-            std::thread::spawn(move || answer(&app, &page, stream));
+            let idle = Arc::clone(&idle);
+            std::thread::spawn(move || {
+                answer(&app, &page, stream);
+                hear(&idle);
+            });
         }
     });
     Ok(())
+}
+
+fn hear(idle: &Mutex<Idle>) {
+    idle.lock().expect("the idle lock").heard(Instant::now());
+}
+
+/// Quits once the instance has heard no request for `IDLE_LIMIT`.
+fn quit_when_idle<R: Runtime>(app: AppHandle<R>, idle: Arc<Mutex<Idle>>) {
+    std::thread::spawn(move || {
+        loop {
+            let remaining = idle
+                .lock()
+                .expect("the idle lock")
+                .remaining(Instant::now());
+            let Some(wait) = remaining else { break };
+            std::thread::sleep(wait);
+        }
+
+        eprintln!(
+            "drive: no request in {} minutes, so the instance quits",
+            IDLE_LIMIT.as_secs() / 60
+        );
+        DISCARD_AT_EXIT.store(true, Ordering::Relaxed);
+        app.exit(0);
+    });
+}
+
+/// Removes the instance's directory after the app's last preference save, when
+/// the instance quit for idleness or its launcher asked for that.
+pub fn discard_at_exit() {
+    if !DISCARD_AT_EXIT.load(Ordering::Relaxed) {
+        return;
+    }
+
+    if let Some(dir) = INSTANCE_DIR.get()
+        && let Err(e) = std::fs::remove_dir_all(dir)
+    {
+        eprintln!("drive: {} stays behind: {e}", dir.display());
+    }
 }
 
 fn answer<R: Runtime>(app: &AppHandle<R>, page: &Page, mut stream: UnixStream) {
@@ -231,7 +302,10 @@ fn answer<R: Runtime>(app: &AppHandle<R>, page: &Page, mut stream: UnixStream) {
     }
 
     let request = serde_json::from_str::<Request>(&line);
-    let quit = matches!(request, Ok(Request::Quit));
+    let quit = match &request {
+        Ok(Request::Quit { discard }) => Some(*discard),
+        _ => None,
+    };
     let reply = match request {
         Ok(request) => handle(app, page, request),
         Err(e) => Err(format!("unreadable request: {e}")),
@@ -243,14 +317,15 @@ fn answer<R: Runtime>(app: &AppHandle<R>, page: &Page, mut stream: UnixStream) {
 
     let _ = writeln!(stream, "{body}");
     drop(stream);
-    if quit {
+    if let Some(discard) = quit {
+        DISCARD_AT_EXIT.store(discard, Ordering::Relaxed);
         app.exit(0);
     }
 }
 
 fn handle<R: Runtime>(app: &AppHandle<R>, page: &Page, request: Request) -> Result<Value, String> {
     match request {
-        Request::Ping | Request::Quit => Ok(Value::Null),
+        Request::Ping | Request::Quit { .. } => Ok(Value::Null),
         Request::Eval { js } => evaluate(app, page, &js),
         Request::Snapshot { path } => native::snapshot(loaded_webview(page)?, &path),
         Request::Alert => native::alert(),

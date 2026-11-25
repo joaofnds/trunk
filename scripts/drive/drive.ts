@@ -31,6 +31,7 @@
  *   bun scripts/drive/drive.ts pick <path>
  */
 
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import {
 	callHook,
@@ -65,6 +66,10 @@ function instance() {
 	const dir = process.env.TRUNK_DRIVE_DIR;
 	if (!dir)
 		throw new UsageError("set TRUNK_DRIVE_DIR to the directory launch printed");
+	if (!existsSync(dir))
+		throw new UsageError(
+			`${dir} is gone: an instance removes it when it quits, and it quits after 15 minutes without a request`,
+		);
 	return instanceAt(dir);
 }
 
@@ -150,7 +155,7 @@ async function run(): Promise<unknown> {
 		case "dismiss-picker":
 			return hook("dismissPicker", 0);
 		case "quit":
-			return request(instance(), { op: "quit" }, DEADLINE_MS);
+			return request(instance(), { op: "quit", discard: true }, DEADLINE_MS);
 		default:
 			throw new UsageError(
 				"usage: drive.ts launch|ping|rows|eval|until|invoke|click|context|type|key|list|snapshot|alert|drawing|press|menu|choose|menu-bar|chord|picker|pick|dismiss-picker|quit",

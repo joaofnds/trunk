@@ -163,9 +163,12 @@ fn run_gui() {
             api.prevent_exit();
         }
         // The native macOS menu can end the loop without ExitRequested.
-        tauri::RunEvent::Exit => app
-            .state::<activity::ActivityState>()
-            .finish_preference_saves_at_exit(),
+        tauri::RunEvent::Exit => {
+            app.state::<activity::ActivityState>()
+                .finish_preference_saves_at_exit();
+            #[cfg(feature = "drive")]
+            drive::discard_at_exit();
+        }
         _ => {}
     });
 }
