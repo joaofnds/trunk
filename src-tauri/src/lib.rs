@@ -1,4 +1,5 @@
 pub mod activity;
+mod app_identity;
 pub mod background_fetch;
 pub mod cli;
 pub mod commands;
@@ -129,12 +130,18 @@ pub fn run() {
     }
 }
 
-/// Build and start the GUI application. Never returns.
+/// Build and start the GUI application. Never returns. Exits before starting
+/// when the build carries an identifier Trunk does not run under.
 ///
 /// # Panics
 ///
 /// Panics when the Tauri runtime cannot start.
 fn run_gui() {
+    let context = context();
+    if let Err(refusal) = app_identity::refuse_unknown(&context.config().identifier) {
+        eprintln!("{refusal}");
+        std::process::exit(1);
+    }
     let builder = configure(
         gui_builder(),
         WatcherState::default(),
@@ -142,7 +149,6 @@ fn run_gui() {
         updates::ReleaseSource::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init());
-    let context = context();
     #[cfg(target_os = "macos")]
     let (builder, context) = macos_webview::configure_main_window(builder, context);
 
