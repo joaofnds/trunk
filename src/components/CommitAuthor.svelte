@@ -2,7 +2,9 @@
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import { copySha } from "../lib/clipboard.js";
+import { exactDate } from "../lib/exact-date.js";
 import { nativeMenu } from "../lib/native-menu.js";
+import { dateTimeLabel } from "../lib/relative-time.js";
 import Chip from "../lib/ui/Chip.svelte";
 import Avatar from "./Avatar.svelte";
 
@@ -26,7 +28,7 @@ let {
 	onnavigate,
 }: Props = $props();
 
-let authorDate = $derived(new Date(authorTimestamp * 1000).toLocaleString());
+let authorDate = $derived(dateTimeLabel(authorTimestamp));
 
 async function showShaContextMenu(e: MouseEvent, oid: string) {
 	e.preventDefault();
@@ -51,7 +53,7 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 		<div class="names">
 			<span class="name">{authorName}</span>
 			<span class="email">{authorEmail}</span>
-			<span class="date">{authorDate}</span>
+			<span class="date" use:exactDate={authorTimestamp}>{authorDate}</span>
 		</div>
 	</div>
 	{#if parentOids.length > 0 || childOids.length > 0}
@@ -127,7 +129,6 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 .email,
 .date {
 	color: var(--color-text-subtle);
-	font-family: var(--font-mono);
 	font-size: var(--text-small);
 }
 
@@ -144,10 +145,8 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	flex-wrap: wrap;
 }
 .topo-lbl {
-	font-size: var(--text-caption);
+	font-size: var(--text-small);
 	color: var(--color-text-subtle);
-	text-transform: uppercase;
-	letter-spacing: var(--tracking-wider);
 	width: calc(31 * var(--u) / 2);
 	flex-shrink: 0;
 }

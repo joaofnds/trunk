@@ -24,6 +24,20 @@ export function exactLabel(
 	}).format(tsSeconds * 1000);
 }
 
+/** The date and time a reader scans, to the minute in the user's locale and
+ *  zone; `exactLabel` holds the seconds and the offset behind it. */
+export function dateTimeLabel(
+	tsSeconds: number,
+	opts?: { locale?: string; timeZone?: string },
+): string {
+	if (tsSeconds === 0) return "";
+	return new Intl.DateTimeFormat(opts?.locale, {
+		dateStyle: "medium",
+		timeStyle: "short",
+		timeZone: opts?.timeZone,
+	}).format(tsSeconds * 1000);
+}
+
 export function relativeLabel(tsSeconds: number, nowMinute: number): string {
 	if (tsSeconds === 0) return "";
 	const minutesAgo = nowMinute - Math.floor(tsSeconds / SECONDS_PER_MINUTE);

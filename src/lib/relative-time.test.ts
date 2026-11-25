@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { compactLabel, exactLabel, relativeLabel } from "./relative-time.js";
+import {
+	compactLabel,
+	dateTimeLabel,
+	exactLabel,
+	relativeLabel,
+} from "./relative-time.js";
 
 const nowMinute = 30_000_000;
 
@@ -65,5 +70,18 @@ describe("exactLabel", () => {
 
 	it("renders an absent timestamp as an empty label", () => {
 		expect(exactLabel(0, pinned)).toBe("");
+	});
+});
+
+describe("dateTimeLabel", () => {
+	const pinned = { locale: "en-US", timeZone: "UTC" } as const;
+
+	it("renders the date and the time to the minute", () => {
+		const ts = Date.UTC(2026, 7, 30, 12, 34, 56) / 1000;
+		expect(dateTimeLabel(ts, pinned)).toBe("Aug 30, 2026, 12:34 PM");
+	});
+
+	it("renders an absent timestamp as an empty label", () => {
+		expect(dateTimeLabel(0, pinned)).toBe("");
 	});
 });

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it } from "vitest";
+import { dateTimeLabel, exactLabel } from "../lib/relative-time.js";
 import CommitAuthor from "./CommitAuthor.svelte";
 
 const PARENT = "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0";
@@ -21,12 +22,19 @@ function renderAuthor(lineage: { parentOids: string[]; childOids: string[] }) {
 }
 
 describe("CommitAuthor", () => {
-	it("shows when the commit was authored", () => {
+	it("shows when the commit was authored, to the minute", () => {
 		renderAuthor({ parentOids: [], childOids: [] });
 
-		expect(
-			screen.getByText(new Date(1_700_000_000_000).toLocaleString()),
-		).toBeInTheDocument();
+		expect(screen.getByText(dateTimeLabel(1_700_000_000))).toBeInTheDocument();
+	});
+
+	it("names the exact moment, seconds and zone, behind the date", () => {
+		renderAuthor({ parentOids: [], childOids: [] });
+
+		expect(screen.getByText(dateTimeLabel(1_700_000_000))).toHaveAttribute(
+			"aria-label",
+			exactLabel(1_700_000_000),
+		);
 	});
 
 	it("jumps to the parent whose chip is clicked", async () => {
