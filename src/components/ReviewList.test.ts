@@ -264,6 +264,16 @@ describe("ReviewList", () => {
 		).toBeInTheDocument();
 	});
 
+	it("leaves the legend out while no open review has a marker to explain", async () => {
+		reviewComments.seed({ reviews: [aReview({ archived: true })] });
+		reviewComments.refresh();
+		await renderList();
+
+		expect(
+			screen.queryByText("Active review. New comments land here."),
+		).toBeNull();
+	});
+
 	describe("archiving a review", () => {
 		const ARCHIVED: Review = { ...OPEN, archived: true };
 

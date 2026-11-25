@@ -274,12 +274,14 @@ registerUpdateBlocker(() =>
 			{/if}
 		{/if}
 	</ul>
-	<p
-		class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 shadow-hairline text-small text-text-subtle"
-	>
-		<Radio variant="mark" checked />
-		Active review. New comments land here.
-	</p>
+	{#if reviews.length > 0}
+		<p
+			class="flex items-center gap-2 shrink-0 m-0 py-2 px-3 shadow-hairline text-small text-text-subtle"
+		>
+			<Radio variant="mark" checked />
+			Active review. New comments land here.
+		</p>
+	{/if}
 </nav>
 
 <style>
