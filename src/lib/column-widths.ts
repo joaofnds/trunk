@@ -41,7 +41,7 @@ export type MeasureText = (text: string, font: string) => number;
 
 // Fonts the cells actually render in — the measurement is only as good as the
 // font string it is taken with.
-const HEADER_FONT = "11px ui-sans-serif, system-ui, sans-serif";
+const HEADER_FONT = "600 12px ui-sans-serif, system-ui, sans-serif";
 const AUTHOR_CONTENT_FONT = "12px ui-sans-serif, system-ui, sans-serif";
 const DATE_CONTENT_FONT = "11px ui-sans-serif, system-ui, sans-serif";
 const SHA_CONTENT_FONT = "11px ui-monospace, SFMono-Regular, Menlo, monospace";

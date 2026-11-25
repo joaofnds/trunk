@@ -176,11 +176,9 @@ async function saveNote(delivery: Delivery) {
 	padding: 0 var(--space-3);
 }
 .commit-notes-title {
-	font-size: var(--text-small);
-	font-weight: var(--weight-medium);
-	color: var(--color-text-muted);
-	text-transform: uppercase;
-	letter-spacing: var(--tracking-wider);
+	font-size: var(--text-callout);
+	font-weight: var(--weight-semibold);
+	color: var(--color-text);
 	flex: 1;
 }
 .add-note-composer {

@@ -2562,7 +2562,7 @@ $effect(() => {
 	<!-- Header row (always visible). Its cells sit in a scroller of their own inside
        the padding, as the list's rows do, so the two scroll the same distance. -->
 	<div
-		class="flex-shrink-0 h-bar bg-surface shadow-hairline text-caption font-semibold tracking-widest uppercase text-text-subtle"
+		class="flex-shrink-0 h-bar bg-surface shadow-hairline text-callout font-semibold text-text"
 		style:padding="0 {TABLE_INSET_X}px"
 		bind:this={headerRef}
 	>

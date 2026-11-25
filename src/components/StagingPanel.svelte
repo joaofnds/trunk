@@ -981,8 +981,7 @@ registerUpdateBlocker(() => {
 
 {#snippet sectionTitle(label: string, count: number)}
 	<span class="flex-1 min-w-0 inline-flex items-center gap-2">
-		<span
-			class="min-w-0 truncate text-text-muted text-caption font-semibold tracking-widest uppercase"
+		<span class="min-w-0 truncate text-callout font-semibold text-text"
 			>{label}</span
 		>
 		<Badge variant="label" tone="muted">{count}</Badge>
@@ -1171,7 +1170,7 @@ registerUpdateBlocker(() => {
 							</span>
 						{:else}
 							{@render sectionTitle(
-								"Conflicted Files",
+								"Conflicted files",
 								status?.conflicted.length ?? 0,
 							)}
 						{/if}
@@ -1226,7 +1225,7 @@ registerUpdateBlocker(() => {
 							{/if}
 						</span>
 						{@render sectionTitle(
-							"Unstaged Files",
+							"Unstaged files",
 							status?.unstaged.length ?? 0,
 						)}
 						{#snippet actions()}
@@ -1296,7 +1295,7 @@ registerUpdateBlocker(() => {
 						{/if}
 					</span>
 					{@render sectionTitle(
-						isOperation ? "Resolved Files" : "Staged Files",
+						isOperation ? "Resolved files" : "Staged files",
 						status?.staged.length ?? 0,
 					)}
 					{#snippet actions()}

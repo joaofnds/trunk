@@ -338,7 +338,7 @@ describe("StagingPanel", () => {
 			props: { ...noReviewCounts(), repoPath: "/test/repo" },
 		});
 		const header = await screen.findByRole("button", {
-			name: /Unstaged Files/,
+			name: /Unstaged files/,
 		});
 		expect(await screen.findAllByTestId("staging-file")).toHaveLength(2);
 
@@ -2010,7 +2010,7 @@ describe("StagingPanel with no rebase form", () => {
 	);
 
 	it.each([
-		{ state: "nothing is in progress", opType: null, shown: "Staged Files" },
+		{ state: "nothing is in progress", opType: null, shown: "Staged files" },
 		{ state: "a merge is stopped", opType: "Merge", shown: "Abort Merge" },
 	])(
 		"draws the line above the form as no control while $state",

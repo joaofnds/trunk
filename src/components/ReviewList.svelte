@@ -225,7 +225,7 @@ registerUpdateBlocker(() =>
 >
 	<div class="flex items-center gap-2 h-bar shrink-0 pl-3 pr-1 shadow-hairline">
 		<h2
-			class="flex flex-1 items-center gap-2 m-0 text-caption font-semibold uppercase text-text-muted"
+			class="flex flex-1 items-center gap-2 m-0 text-callout font-semibold text-text"
 		>
 			Reviews
 			<Badge variant="label" tone="muted">{reviews.length}</Badge>
@@ -263,7 +263,7 @@ registerUpdateBlocker(() =>
 					{:else}
 						<ChevronRight size={12} aria-hidden="true" />
 					{/if}
-					<span class="text-caption font-semibold uppercase">Archived</span>
+					<span class="text-callout font-semibold text-text">Archived</span>
 					<Badge variant="label" tone="muted">{archivedReviews.length}</Badge>
 				</Row>
 			</li>

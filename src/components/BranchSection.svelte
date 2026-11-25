@@ -84,9 +84,7 @@ let allHidden = $derived(groupState === "all");
 				<ChevronRight size={12} />
 			{/if}
 		</span>
-		<span
-			class="text-text-muted text-caption font-semibold tracking-widest uppercase flex-1 min-w-0 truncate"
-		>
+		<span class="text-callout font-semibold text-text flex-1 min-w-0 truncate">
 			{label} ({count}{filteredFrom === undefined ? "" : ` of ${filteredFrom}`})
 		</span>
 	</Row>

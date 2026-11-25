@@ -80,10 +80,7 @@ async function handleRemoveRecent(path: string) {
 
 		{#if displayedRepos.length > 0}
 			<div class="flex flex-col min-h-0 w-full max-w-welcome px-4">
-				<p
-					class="text-callout font-medium mb-2 uppercase tracking-widest text-text-muted"
-					>Recent</p
-				>
+				<p class="text-callout font-semibold text-text mb-2">Recent</p>
 				<ul class="flex flex-col gap-1 overflow-y-auto">
 					{#each displayedRepos as repo (repo.path)}
 						{@const name = repositoryName(repo.path)}
