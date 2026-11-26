@@ -797,9 +797,8 @@ class InlineReviewDriver {
 	}
 
 	async readFromParagraph(text: string, offset: number): Promise<void> {
-		await this.viewport
-			.getByText(text, { exact: true })
-			.evaluate((paragraph, y) => {
+		await this.viewport.getByText(text, { exact: true }).evaluate(
+			(paragraph, y) => {
 				const viewport = paragraph.closest<HTMLElement>(
 					".exact-virtual-viewport",
 				);
@@ -810,12 +809,16 @@ class InlineReviewDriver {
 				const handled = new Promise<void>((resolve) =>
 					viewport.addEventListener("scroll", () => resolve(), { once: true }),
 				);
+
 				viewport.scrollTop +=
 					paragraph.getBoundingClientRect().top -
 					viewport.getBoundingClientRect().top -
 					y;
 				if (viewport.scrollTop !== from) return handled;
-			}, offset);
+			},
+			offset,
+			{ signal: this.signal },
+		);
 		await painted(this.page);
 	}
 
@@ -870,14 +873,19 @@ class InlineReviewDriver {
 	}
 
 	async scrollToEnd(): Promise<void> {
-		await this.viewport.evaluate((element) => {
-			const from = element.scrollTop;
-			const handled = new Promise<void>((resolve) =>
-				element.addEventListener("scroll", () => resolve(), { once: true }),
-			);
-			element.scrollTop = element.scrollHeight;
-			if (element.scrollTop !== from) return handled;
-		});
+		await this.viewport.evaluate(
+			(element) => {
+				const from = element.scrollTop;
+				const handled = new Promise<void>((resolve) =>
+					element.addEventListener("scroll", () => resolve(), { once: true }),
+				);
+
+				element.scrollTop = element.scrollHeight;
+				if (element.scrollTop !== from) return handled;
+			},
+			undefined,
+			{ signal: this.signal },
+		);
 		await painted(this.page);
 	}
 
