@@ -374,9 +374,6 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 					oncontextmenu={(e) => openMenu(e, tab.id)}
 					onauxclick={(e) => closeOnMiddle(e, tab.id)}
 				>
-					{#if tab.dirty}
-						<span class="dirty-dot"></span>
-					{/if}
 					<span class="tab-label flex-1 min-w-0 flex items-baseline gap-1">
 						<span class="tab-text cut">{tab.repoName || "New Tab"}</span>
 						{#if parent}
@@ -389,23 +386,30 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 						{/if}
 					</span>
 					{#snippet trailing()}
-						{#if shown[tab.id] !== "cut"}
-							<Button
-								icon
-								size="xs"
-								variant="ghost"
-								aria-label="Close tab"
-								onmousedown={(e) => pressClose(e, tab.id)}
-								oncontextmenu={(e) => openMenu(e, tab.id)}
-								onauxclick={(e) => closeOnMiddle(e, tab.id)}
-								onclick={(e) => {
-									e.stopPropagation();
-									onclose(tab.id, e.shiftKey);
-								}}
-							>
-								<X size={12} />
-							</Button>
-						{/if}
+						<span class="tab-slot">
+							{#if tab.dirty}
+								<span class="dirty-dot"></span>
+							{/if}
+							{#if shown[tab.id] !== "cut"}
+								<span class="tab-close inline-flex">
+									<Button
+										icon
+										size="xs"
+										variant="ghost"
+										aria-label="Close tab"
+										onmousedown={(e) => pressClose(e, tab.id)}
+										oncontextmenu={(e) => openMenu(e, tab.id)}
+										onauxclick={(e) => closeOnMiddle(e, tab.id)}
+										onclick={(e) => {
+											e.stopPropagation();
+											onclose(tab.id, e.shiftKey);
+										}}
+									>
+										<X size={12} />
+									</Button>
+								</span>
+							{/if}
+						</span>
 					{/snippet}
 				</Tab>
 			</div>
@@ -452,22 +456,23 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	);
 }
 
+/* Each tab is as wide as its label. When the strip runs out of room the widest
+   tabs narrow first, so a short name stays whole while a long one is cut. The
+   floor sits just under a three-letter name's natural width, so it pads only a
+   name of one or two letters, and still keeps a letter clear of the close. */
 .tab-item {
 	display: grid;
+	flex: 1 1 0;
+	min-width: calc(12 * var(--u));
+	max-width: max-content;
 	height: var(--control-h);
 	border-radius: var(--radius);
 	font-size: var(--text-callout);
-	font-weight: var(--weight-medium);
+	font-weight: var(--weight-regular);
 	color: var(--color-text-muted);
-	flex: 1 1 0;
 	grid-template-columns: minmax(0, auto);
-	min-width: calc(20 * var(--u));
-	max-width: max-content;
 	white-space: nowrap;
 	background: none;
-	/* Paint, not length: the active state's outline must not take a pixel out
-       of a tab item already declaring its height. */
-	box-shadow: inset 0 0 0 1px transparent;
 }
 
 .tab-label {
@@ -507,17 +512,16 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 
 .tab-item:hover {
 	color: var(--color-text);
-	background: var(--color-hover);
+	background: color-mix(in oklch, var(--color-hover) 35%, transparent);
 }
 
 .tab-item.active {
 	color: var(--color-text-strong);
-	background: var(--color-surface-raised);
-	box-shadow: inset 0 0 0 1px var(--color-border);
-}
-
-.tab-item.active:hover {
-	background: var(--color-surface-raised);
+	font-weight: var(--weight-medium);
+	background: var(--color-surface-chip);
+	box-shadow:
+		inset 0 0 0 1px var(--color-border-strong),
+		0 1px 3px var(--color-backdrop);
 }
 
 .dirty-dot {
@@ -525,7 +529,41 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	height: calc(3 * var(--u) / 2);
 	border-radius: 50%;
 	background: var(--color-accent);
-	flex-shrink: 0;
+}
+
+/* A dirty tab shows its dot where the close sits, and the close takes that
+   place under the pointer or the keyboard's focus. */
+.tab-slot {
+	display: grid;
+	place-items: center;
+	width: var(--control-xs-h);
+	height: var(--control-xs-h);
+}
+
+.tab-slot > * {
+	grid-area: 1 / 1;
+}
+
+/* Opacity, not visibility, hides a resting close, so a screen reader still finds
+   it and the keyboard still reaches it in either direction. The focus test is
+   global because the focusable buttons belong to the primitives, which this
+   component's scoped class never reaches. */
+.tab-close {
+	opacity: 0;
+}
+
+.tab-item:is(.active, :hover, :has(:global(:focus-visible))) .tab-close {
+	opacity: 1;
+}
+
+.tab-item:is(:hover, :has(:global(:focus-visible))) .dirty-dot {
+	visibility: hidden;
+}
+
+.tab-item.active:not(:hover, :has(:global(:focus-visible)))
+	.dirty-dot
+	~ .tab-close {
+	opacity: 0;
 }
 
 :global(.tab-ghost) {

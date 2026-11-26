@@ -80,9 +80,9 @@ export class StartupHarness {
 	}
 
 	dirty(name: string): boolean {
-		return (
-			screen.getByRole("tab", { name }).querySelector(".dirty-dot") !== null
-		);
+		const item = screen.getByRole("tab", { name }).parentElement;
+		if (!item) throw new Error("tab has no container");
+		return item.querySelector(".dirty-dot") !== null;
 	}
 
 	async selectedHistoryRow(): Promise<HTMLElement> {

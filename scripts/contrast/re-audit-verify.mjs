@@ -187,6 +187,15 @@ check("accent chip label on the merge banner under the pointer", "var(--color-ac
 check("accent chip label on the staging header", "var(--color-accent-strong)", "var(--color-surface-raised)", { layers: ["var(--color-chip-accent-bg)"] });
 check("accent chip label on the staging header under the pointer", "var(--color-accent-strong)", "var(--color-surface-raised)", { layers: ["var(--color-chip-accent-bg-hover)"] });
 
+// The open tab's fill stands 1.06:1 off the bar and its edge 1.5:1, short of the
+// 3:1 a state mark needs, so its label's medium weight is what tells it apart.
+section("Repository tab (on the top bar's --color-surface)");
+check("resting tab label", "var(--color-text-muted)", "var(--color-surface)");
+check("tab label under the pointer", "var(--color-text)", "var(--color-surface)", { layers: [t("var(--color-hover)", 35)] });
+check("open tab label", "var(--color-text-strong)", "var(--color-surface-chip)");
+check("dirty dot on a resting tab", "var(--color-accent)", "var(--color-surface)", { target: 3 });
+check("dirty dot on the open tab", "var(--color-accent)", "var(--color-surface-chip)", { target: 3 });
+
 section("Rebase DROP row (--opacity-dimmed 0.6 -> 0.8): message AAA, date AA (transient)");
 check("message --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });
 check("author --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });

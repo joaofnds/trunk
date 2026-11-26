@@ -268,6 +268,25 @@ describe("TabBar", () => {
 		expect(dirtyDots.length).toBe(1);
 	});
 
+	it("puts a dirty tab's dot in the place its close takes", () => {
+		render(TabBar, { props: defaultProps });
+
+		const dot = itemOf("other").querySelector(".dirty-dot");
+
+		expect(screen.getByRole("tab", { name: "other" })).not.toContainElement(
+			dot as HTMLElement,
+		);
+		expect(dot?.parentElement).toContainElement(closeOf("other"));
+	});
+
+	it("keeps a resting tab's close reachable by assistive tech and the keyboard", () => {
+		render(TabBar, { props: defaultProps });
+
+		expect(
+			within(itemOf("other")).getByRole("button", { name: "Close tab" }),
+		).toBeInTheDocument();
+	});
+
 	it("marks active tab with aria-selected", () => {
 		render(TabBar, { props: defaultProps });
 		const activeTabs = screen.getAllByRole("tab");
