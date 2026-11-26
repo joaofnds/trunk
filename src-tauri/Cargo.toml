@@ -207,3 +207,9 @@ struct_excessive_bools = "allow"
 #
 # A third site means splitting it, not adding it here.
 too_many_lines = "allow"
+
+# On macOS rustc keeps a debug build's object files for their debug info, under new names at
+# every build, and deletes none, so a build with debug info grows the target without bound. A
+# panic still names its file and line. scripts/test_machine_hygiene.py holds every profile to it.
+[profile.dev]
+debug = false

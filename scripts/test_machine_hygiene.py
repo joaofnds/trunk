@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -9,6 +10,8 @@ DISPLAY_CONFIGURATION = 'macOS keeps the arrangement and modes a tool gives a di
 COLORSYNC = 'ColorSync keeps every device registered with it, and the profiles it was given, across reboots'
 SYSTEM_SETTING = 'a system setting a tool changes stays changed after the tool exits'
 GLOBAL_GIT = 'git configuration outside the repository changes git for every repository the user has'
+DEBUG_INFO = ('on macOS rustc keeps a build\'s object files for their debug info, under new names at every build, '
+              'and deletes none, so the target grows without bound')
 
 LASTING_STATE = {
     'CGVirtualDisplay': 'WindowServer keeps every virtual display it is shown until it restarts, with a backstop window '
@@ -43,6 +46,18 @@ def tracked_sources():
                 yield name, path.read_bytes()
 
 
+def debug_settings(profiles):
+    settings = {}
+    for name, profile in profiles.items():
+        overrides = {f'{name}.package.{package}': table for package, table in profile.get('package', {}).items()}
+        overrides[f'{name}.build-override'] = profile.get('build-override', {})
+        for table_name, table in [(name, profile), *overrides.items()]:
+            if 'debug' in table:
+                settings[table_name] = table['debug']
+
+    return settings
+
+
 class MachineHygiene(unittest.TestCase):
     def test_no_tool_leaves_machine_state_that_outlives_it(self):
         sources = list(tracked_sources())
@@ -51,6 +66,23 @@ class MachineHygiene(unittest.TestCase):
                 users = [name for name, content in sources if call.encode() in content]
 
                 self.assertEqual(users, [], consequence)
+
+    def test_no_build_makes_debug_info(self):
+        profiles = tomllib.loads((ROOT / 'src-tauri' / 'Cargo.toml').read_text()).get('profile', {})
+
+        settings = debug_settings(profiles)
+
+        self.assertIs(settings.get('dev'), False, DEBUG_INFO)
+        self.assertEqual({name: value for name, value in settings.items() if value is not False}, {}, DEBUG_INFO)
+
+    def test_debug_settings_reads_overrides_and_every_profile(self):
+        profiles = {'dev': {'debug': False, 'debug-assertions': True, 'package': {'git': {'debug': True}}},
+                    'test': {'debug': 1, 'build-override': {'debug': 'line-tables-only'}}}
+
+        settings = debug_settings(profiles)
+
+        self.assertEqual(settings, {'dev': False, 'dev.package.git': True, 'test': 1,
+                                    'test.build-override': 'line-tables-only'})
 
 
 if __name__ == '__main__':
