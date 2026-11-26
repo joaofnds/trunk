@@ -323,7 +323,7 @@ async function saveReplyEdit() {
 .thread-reply {
 	box-shadow: inset 0 1px 0 var(--color-border);
 }
-.thread-replies-more:has(:focus-visible),
+.thread-replies-more:has(:global(:focus-visible)),
 .thread-reply:focus-visible {
 	box-shadow: inset 0 0 0 2px var(--color-accent);
 }
