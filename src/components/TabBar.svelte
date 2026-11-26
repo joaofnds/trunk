@@ -380,7 +380,7 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 							<span
 								class="tab-parent inline-flex text-small font-regular text-text-muted"
 							>
-								<span class="tab-text">{parent.ancestor}</span
+								<span>{parent.ancestor}</span
 								><span class="tab-text cut">{parent.tail}</span>
 							</span>
 						{/if}
@@ -479,18 +479,9 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 	max-width: calc(50 * var(--u));
 }
 
-/* Centres the lowercase body of the text, not its line box, on the dot and the
-   close, which otherwise sit a pixel above it. */
-.tab-text {
-	text-box: trim-both ex alphabetic;
-}
-
-/* Clipped across only: a box clipped in both directions would cut off the
-   ascenders the trim leaves outside it. */
 .tab-text.cut {
 	min-width: 0;
-	overflow-x: clip;
-	overflow-y: visible;
+	overflow: clip;
 	text-overflow: ellipsis;
 }
 
