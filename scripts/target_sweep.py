@@ -8,7 +8,9 @@ import time
 
 DAY = 86_400
 UNUSED_FOR = 2 * DAY
-LOCKS = ['.cargo-lock', '.cargo-build-lock', '.cargo-artifact-lock']
+PROFILE_LOCK = '.cargo-lock'
+LOCKS = [PROFILE_LOCK, '.cargo-build-lock', '.cargo-artifact-lock']
+HASH = re.compile(r'[0-9a-f]{16}')
 UNIT_HASH = re.compile(r'-([0-9a-f]{16})(?=\.|$)')
 UNIT_OUTPUTS = ['deps', 'build', 'examples']
 
@@ -37,8 +39,8 @@ def sweep(target, *, now, unused_for=UNUSED_FOR):
 
 
 def profiles(target):
-    fingerprints = [*target.glob('*/.fingerprint'), *target.glob('*/*/.fingerprint')]
-    return sorted(directory.parent for directory in fingerprints if directory.is_dir())
+    locks = [*target.glob(f'*/{PROFILE_LOCK}'), *target.glob(f'*/*/{PROFILE_LOCK}')]
+    return sorted(lock.parent for lock in locks if lock.is_file())
 
 
 def acquire(profile):
@@ -59,7 +61,7 @@ def acquire(profile):
 
 def sweep_profile(profile, *, cutoff):
     last_use = {}
-    for unit in (profile / '.fingerprint').iterdir():
+    for unit in entries(profile / '.fingerprint'):
         last_use[unit] = last_read(unit)
     live = {unit.name.rsplit('-', 1)[-1] for unit, used in last_use.items() if used >= cutoff}
 
@@ -72,9 +74,23 @@ def sweep_profile(profile, *, cutoff):
             unit_hash = UNIT_HASH.search(entry.name)
             if unit_hash and unit_hash.group(1) not in live:
                 removed += remove(entry)
+    for package in entries(profile / 'build'):
+        removed += sweep_package(package, cutoff=cutoff)
     for crate in entries(profile / 'incremental'):
         if last_write(crate) < cutoff:
             removed += remove(crate)
+
+    return removed
+
+
+def sweep_package(package, *, cutoff):
+    # Since Cargo 1.100 a unit keeps its fingerprint beside its outputs in build/<package>/<hash>.
+    # Before 1.100 a build script's output also sits under build/, so only a hash names a unit.
+    removed = 0
+    for unit in entries(package):
+        fingerprint = unit / 'fingerprint'
+        if HASH.fullmatch(unit.name) and fingerprint.is_dir() and last_read(fingerprint) < cutoff:
+            removed += remove(unit)
 
     return removed
 

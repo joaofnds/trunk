@@ -18,14 +18,30 @@ def write(path, *, at):
     return path
 
 
+def profile(path):
+    write(path / '.cargo-lock', at=NOW)
+    return path
+
+
 def fingerprint(profile, unit, *, built, read):
     directory = profile / '.fingerprint' / unit
+    fingerprint_files(directory, built=built, read=read)
+    return directory
+
+
+def unit_directory(profile, *, built, read):
+    directory = profile / 'build' / 'trunk_lib' / HASH
+    fingerprint_files(directory / 'fingerprint', built=built, read=read)
+    write(directory / 'out' / 'libtrunk_lib.rlib', at=built)
+    return directory
+
+
+def fingerprint_files(directory, *, built, read):
     write(directory / 'lib-trunk_lib.json', at=built)
     write(directory / 'invoked.timestamp', at=built)
     write(directory / 'dep-lib-trunk_lib', at=built)
     hash_file = write(directory / 'lib-trunk_lib', at=built)
     os.utime(hash_file, (read, built))
-    return directory
 
 
 def artifacts(profile, crate, digest):
@@ -41,8 +57,7 @@ class TargetSweep(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.target = Path(temporary.name)
-        self.profile = self.target / 'debug'
-        (self.profile / '.fingerprint').mkdir(parents=True)
+        self.profile = profile(self.target / 'debug')
 
     def test_removes_a_unit_no_build_has_read_for_two_days(self):
         unit = fingerprint(self.profile, f'trunk-{HASH}', built=NOW - 30 * DAY, read=NOW - 3 * DAY)
@@ -110,12 +125,44 @@ class TargetSweep(unittest.TestCase):
         self.assertTrue(fresh.exists())
 
     def test_sweeps_every_profile_directory_under_the_target(self):
-        nested = self.target / 'drive-build' / 'debug'
+        nested = profile(self.target / 'drive-build' / 'debug')
         unit = fingerprint(nested, f'trunk-{HASH}', built=NOW - 30 * DAY, read=NOW - 3 * DAY)
 
         sweep(self.target, now=NOW)
 
         self.assertFalse(unit.exists())
+
+    def test_removes_a_unit_cargo_1_100_keeps_in_a_directory_of_its_own(self):
+        release = profile(self.target / 'release')
+        unit = unit_directory(release, built=NOW - 30 * DAY, read=NOW - 3 * DAY)
+
+        sweep(self.target, now=NOW)
+
+        self.assertFalse(unit.exists())
+
+    def test_keeps_a_unit_cargo_1_100_keeps_in_a_directory_of_its_own_while_a_build_reads_it(self):
+        unit = unit_directory(self.profile, built=NOW - 30 * DAY, read=NOW - DAY)
+
+        sweep(self.target, now=NOW)
+
+        self.assertTrue((unit / 'out' / 'libtrunk_lib.rlib').exists())
+
+    def test_leaves_a_fingerprint_directory_a_build_script_writes(self):
+        fingerprint(self.profile, f'trunk-{HASH}', built=NOW, read=NOW)
+        written = write(self.profile / 'build' / f'trunk_lib-{HASH}' / 'out' / 'fingerprint' / 'lib-trunk_lib',
+                        at=NOW - 30 * DAY)
+
+        sweep(self.target, now=NOW)
+
+        self.assertTrue(written.exists())
+
+    def test_passes_over_the_files_beside_the_profiles(self):
+        files = [write(self.target / '.rustc_info.json', at=NOW - 30 * DAY),
+                 write(self.target / 'tmp' / 'scratch', at=NOW - 30 * DAY)]
+
+        sweep(self.target, now=NOW)
+
+        self.assertEqual([path for path in files if not path.exists()], [])
 
     def test_leaves_a_profile_directory_alone_while_a_build_holds_its_lock(self):
         unit = fingerprint(self.profile, f'trunk-{HASH}', built=NOW - 30 * DAY, read=NOW - 3 * DAY)
