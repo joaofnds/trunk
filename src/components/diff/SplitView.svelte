@@ -228,12 +228,13 @@ function originClass(origin: string): string {
      style choice: rowHeights' ceil(columns / available) is only a height when
      the break is unconditional, so it is declared here with the height it
      belongs to. -->
-{#snippet cellContent(line: DiffLine)}
+{#snippet cellContent(line: DiffLine, side: "old" | "new")}
 	{@const trailStart = showInvisibles
 		? trailingWhitespaceStart(line.content)
 		: line.content.length}
 	<span
 		class="diff-line-content select-text cursor-text"
+		data-code-line={side}
 		class:whitespace-pre-wrap={vd.wrapActive}
 		class:whitespace-pre={!vd.wrapActive}
 		class:break-all={vd.wrapActive}
@@ -339,6 +340,7 @@ function originClass(origin: string): string {
 		{@const heldOn = actionSide(hunkKey, item.row)}
 		<div
 			class="split-row pan-pinned flex"
+			data-split-code-row
 			class:holds-action={heldOn !== null}
 			class:run-flash={vd.flashLit(index)}
 		>
@@ -377,7 +379,7 @@ function originClass(origin: string): string {
 							class:w-full={vd.wrapActive}
 							class:w-max={!vd.wrapActive}
 						>
-							{@render cellContent(line)}
+							{@render cellContent(line, "old")}
 						</div>
 					</div>
 				</div>
@@ -418,7 +420,7 @@ function originClass(origin: string): string {
 							class:w-full={vd.wrapActive}
 							class:w-max={!vd.wrapActive}
 						>
-							{@render cellContent(line)}
+							{@render cellContent(line, "new")}
 						</div>
 					</div>
 				</div>
@@ -495,6 +497,7 @@ function originClass(origin: string): string {
 	]}
 	style:--max-l="{vd.maxLeftPx}px"
 	style:--max-r="{vd.maxRightPx}px"
+	data-code-selection
 	bind:this={vd.pane}
 >
 	{#if vd.ready}

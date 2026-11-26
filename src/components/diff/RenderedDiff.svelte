@@ -709,6 +709,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 	<div class="split-column" use:colSync>
 		<div
 			class="split-col-content min-w-full"
+			data-prose-selection
 			class:w-full={wordWrap}
 			class:w-max={!wordWrap}
 		>
@@ -736,6 +737,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
        lives inside the per-row columns. -->
 	<div
 		class="rendered-content min-w-full"
+		data-prose-selection={layoutMode === "inline" ? "" : undefined}
 		class:split={layoutMode === "split"}
 		class:w-full={wordWrap || layoutMode === "split"}
 		class:w-max={!wordWrap && layoutMode !== "split"}
@@ -755,6 +757,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 				<div class="split-column" use:colSync>
 					<div
 						class="split-col-content min-w-full"
+						data-prose-selection
 						class:w-full={wordWrap}
 						class:w-max={!wordWrap}
 					>
@@ -769,6 +772,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 				<div class="split-column" use:colSync>
 					<div
 						class="split-col-content min-w-full"
+						data-prose-selection
 						class:w-full={wordWrap}
 						class:w-max={!wordWrap}
 					>

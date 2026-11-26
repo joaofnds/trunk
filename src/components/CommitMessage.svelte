@@ -46,8 +46,8 @@ let bodyExpandable = $derived(bodyOverflows(body, renderedLines));
 let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 </script>
 
-<div class="commit-message">
-	<div class="select-text summary" class:has-body={body}>
+<div class="commit-message" data-prose-selection>
+	<div class="select-text summary" class:has-body={body} data-prose-block>
 		{summary}
 	</div>
 	{#if body}
@@ -58,7 +58,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 			data-clamped={bodyClamped}
 			style:--body-clamp-lines={BODY_CLAMP_LINES}
 		>
-			<div class="select-text" use:measureBody>{body}</div>
+			<div class="select-text" data-prose-block use:measureBody>{body}</div>
 		</div>
 		{#if bodyExpandable}
 			<div class="mt-1">

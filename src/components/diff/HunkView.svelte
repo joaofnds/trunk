@@ -271,7 +271,9 @@ export const step = vd.step;
 				<span class="inline-flex shrink-0 select-none"
 					>{@render lineNumbers(line)}</span
 				>
-			{/if}<span class="diff-line-content select-text cursor-text"
+			{/if}<span
+				class="diff-line-content select-text cursor-text"
+				data-code-line
 				>{#if line.spans.length > 0}
 					{#each line.spans as span}
 						{@const sliced = line.content.slice(span.start, span.end)}
@@ -384,6 +386,7 @@ export const step = vd.step;
 	style:--diff-composer-row-height={FIXED_ROW_HEIGHT_VARS[
 		"--diff-composer-row-height"
 	]}
+	data-code-selection
 	bind:this={vd.pane}
 >
 	{#if vd.ready}

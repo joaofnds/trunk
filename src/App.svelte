@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { onDestroy, tick, untrack } from "svelte";
+import { onDestroy, onMount, tick, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import RecentReposPicker from "./components/RecentReposPicker.svelte";
 import RepoView from "./components/RepoView.svelte";
@@ -80,6 +80,7 @@ import {
 import { canMoveTab, moveTab } from "./lib/tab-order.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
+import { installTextSelection } from "./lib/text-selection.js";
 import { showToast } from "./lib/toast.svelte.js";
 import type { ContentMode, ReviewTone, ThreadFilter } from "./lib/types.js";
 import Button from "./lib/ui/Button.svelte";
@@ -89,6 +90,7 @@ import { setUpdateFrozen, UpdatePreparation } from "./lib/updates-lifecycle.js";
 import { UpdateCheckScheduler } from "./lib/updates-scheduler.js";
 
 provideFileLabelStyle();
+onMount(() => installTextSelection(document));
 
 let updateStatus = $state<UpdateStatus | null>(null);
 let updateOpen = $state(false);

@@ -206,6 +206,18 @@ export class VisualHarness {
 		);
 	}
 
+	dragDiffText(
+		repo: RepoSpec,
+		file: string,
+		view: { layout: "inline" | "split"; wrap?: boolean },
+		endpoints: readonly [string, string],
+		test: CaptureTest,
+	) {
+		return this.onPage(test, (page) =>
+			page.dragDiffText(repo, file, view, endpoints, test.signal),
+		);
+	}
+
 	/** Opens `repository` the way a restored tab does and captures one footer
 	 *  of the staging panel. */
 	captureFooter(
@@ -524,6 +536,96 @@ class AppPage {
 				signal: abandoned,
 			});
 		});
+	}
+
+	async dragDiffText(
+		repo: RepoSpec,
+		file: string,
+		{ layout, wrap }: { layout: "inline" | "split"; wrap?: boolean },
+		[first, last]: readonly [string, string],
+		abandoned: AbortSignal,
+	) {
+		await this.page.setViewportSize({ width: VIEWPORT.width, height: 800 });
+		await this.openRepository(repo, {}, abandoned);
+		const options = { signal: abandoned };
+		await this.page
+			.getByTestId("staging-unstaged-section")
+			.getByTitle(file, { exact: true })
+			.click(options);
+		if (layout === "split")
+			await this.page.getByTitle("Side-by-side view").click(options);
+		if (wrap) await this.page.getByTitle("Toggle word wrap").click(options);
+
+		const viewport = this.page.locator(".exact-virtual-viewport");
+		const lines = viewport.locator(
+			layout === "split"
+				? ".split-cell:not(.split-cell-left) .diff-line-content"
+				: ".diff-line-content",
+		);
+		const point = (text: string, column: number) =>
+			lines.filter({ hasText: text }).evaluate(
+				(line, column) => {
+					const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+					let first = walker.nextNode();
+					while (first instanceof Text && first.length === 0)
+						first = walker.nextNode();
+					if (!(first instanceof Text)) throw new Error("Missing code text");
+					const caret = document.createRange();
+					caret.setStart(first, column);
+					caret.collapse(true);
+					const { left, top, height } = caret.getBoundingClientRect();
+					return { x: left + 1, y: top + height / 2 };
+				},
+				column,
+				options,
+			);
+		const start = await point(first, 2);
+		const end = await point(last, 0);
+		await this.page.mouse.move(start.x, start.y);
+		await this.page.mouse.down();
+		await this.page.mouse.move(end.x, end.y, { steps: 4 });
+		await this.page.mouse.up();
+		await painted(this.page);
+
+		return viewport.evaluate(
+			(element) => {
+				const clipboard = new DataTransfer();
+				document.dispatchEvent(
+					new ClipboardEvent("copy", { clipboardData: clipboard }),
+				);
+				const paint = Array.from(
+					element.querySelectorAll(".text-selection-paint"),
+					(band) => {
+						const { top, bottom, height } = band.getBoundingClientRect();
+						return {
+							top,
+							bottom,
+							height,
+							lineHeight: parseFloat(getComputedStyle(band).lineHeight),
+						};
+					},
+				);
+				return {
+					copied: clipboard.getData("text/plain"),
+					visible: Array.from(
+						element.querySelectorAll(".text-selection-paint"),
+					).every((band) => {
+						const style = getComputedStyle(band);
+						return (
+							style.visibility === "visible" &&
+							style.opacity !== "0" &&
+							style.backgroundColor !== "rgba(0, 0, 0, 0)"
+						);
+					}),
+					fills: paint.map(({ height, lineHeight }) => height / lineHeight),
+					gaps: paint
+						.slice(1)
+						.map((band, index) => band.top - paint[index].bottom),
+				};
+			},
+			undefined,
+			options,
+		);
 	}
 
 	async openInlineReview(

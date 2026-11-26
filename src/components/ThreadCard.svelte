@@ -553,6 +553,7 @@ async function requestDeleteReply(replyId: string) {
 		{#if variant === "panel" && excerptLines.length > 0}
 			<div
 				class="comment-card-diff"
+				data-code-selection
 				class:comment-card-diff-dim={thread.stale || orphaned}
 			>
 				<div class="py-1">
@@ -560,7 +561,7 @@ async function requestDeleteReply(replyId: string) {
 						<div class="diff-line diff-line-{line.kind}">
 							<span class="diff-number select-none">{line.number ?? ""}</span>
 							<span class="diff-gutter select-none">{line.gutter}</span>
-							<span class="diff-content select-text"
+							<span class="diff-content select-text" data-code-line
 								>{#if line.spans.length > 0}
 									{#each line.spans as span, j (j)}
 										<span class={span.syntax_class}
@@ -638,7 +639,11 @@ async function requestDeleteReply(replyId: string) {
 					>{@html thread.text_html}</div
 				>
 			{:else}
-				<span class="comment-card-text select-text" data-thread-root-body
+				<span
+					class="comment-card-text select-text"
+					data-thread-root-body
+					data-prose-selection
+					data-prose-block
 					>{thread.text}</span
 				>
 			{/if}

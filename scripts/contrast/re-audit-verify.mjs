@@ -62,6 +62,26 @@ for (const hue of SYN) {
 }
 record(`worst of ${SYN.length} hues x ${Object.keys(LINE_TINTS).length} tints: ${worstSyn.label}`, worstSyn.r, 7, verdict(worstSyn.r).padEnd(4));
 
+section("Text selection retains readable syntax on diff and merge lines");
+const appCss = readFileSync(new URL("../../src/app.css", import.meta.url), "utf8");
+const selectionBg = appCss.match(/\.text-selection-paint,[^{]*\{\s*background-color:\s*([^;]+)/)?.[1];
+if (!selectionBg) throw new Error("Missing text selection background.");
+for (const [line, base, tints] of [
+	...Object.entries(LINE_TINTS).map(([line, tints]) => [line, PANEL, tints]),
+	["merge current", PAGE, ["var(--color-merge-current-line)"]],
+	["merge incoming", PAGE, ["var(--color-merge-incoming-line)"]],
+	["code fence", PAGE, ["var(--color-muted-bg)"]],
+]) {
+	const layers = [...tints, selectionBg];
+	for (const hue of SYN) check(`${line} selected syntax ${hue}`, `var(--color-syn-${hue})`, base, { layers, target: 4.5 });
+	check(`${line} selected plain text`, "var(--color-diff-text)", base, { layers, target: 4.5 });
+	check(`${line} selection edge`, "var(--color-accent)", base, { layers, target: 3 });
+}
+check("selected secondary prose", "var(--color-text-muted)", PANEL, { layers: [selectionBg], target: 4.5 });
+check("selected excerpt in an outdated review", "var(--color-text-subtle)", PAGE, { layers: [selectionBg], target: 4.5 });
+check("selected inline comment code", "var(--color-text-strong)", "var(--color-surface-chip)", { layers: [selectionBg], target: 4.5 });
+check("native selection", "var(--color-on-accent)", PANEL, { layers: [t("var(--color-accent)", 95)] });
+
 section("Merge comparison and editable Output");
 for (const hue of SYN) check(`context and Output syntax ${hue}`, `var(--color-syn-${hue})`, PAGE);
 check("plain context text", "var(--color-diff-text)", PAGE);

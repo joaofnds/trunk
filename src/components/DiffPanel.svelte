@@ -1207,6 +1207,7 @@ async function handleLineMouseDown(
 	// Suppress native text selection for the whole gesture — a drag crosses
 	// Context lines and gutters that are otherwise user-selectable.
 	e.preventDefault();
+	document.getSelection()?.removeAllRanges();
 	pressHeld = true;
 
 	const hunkKey = `${filePath}-${hunkIdx}`;

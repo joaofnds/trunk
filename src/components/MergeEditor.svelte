@@ -940,6 +940,7 @@ registerUpdateBlocker(
 		: text.length}
 	<span
 		class="syntax-highlight select-text cursor-text pl-1 flex-1 min-w-0 text-diff-text"
+		data-code-line
 		class:whitespace-pre={!sideWrap}
 		class:whitespace-break-spaces={sideWrap}
 		class:self-start={sideWrap}
@@ -1071,6 +1072,7 @@ registerUpdateBlocker(
 		{/if}
 	</div>
 	<div
+		data-code-selection
 		class:min-w-full={!sideWrap}
 		style:width={!sideWrap
 			? `calc(${sourceColumns}ch + 18 * var(--u))`
@@ -1465,6 +1467,7 @@ registerUpdateBlocker(
 .source-gutter {
 	position: sticky;
 	left: 0;
+	z-index: 1;
 }
 .source-divider {
 	width: 100cqi;

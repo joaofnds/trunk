@@ -19,6 +19,58 @@ body {
 	user-select: none;
 }
 
+[data-code-selection-active] [data-code-line],
+[data-prose-selection-active] {
+	position: relative;
+	isolation: isolate;
+}
+
+[data-code-line] {
+	display: block;
+}
+
+.text-selection-paint {
+	position: absolute;
+	z-index: -1;
+	pointer-events: none;
+	border-radius: var(--radius);
+}
+
+@media (forced-colors: none) {
+	:where(
+		[data-code-selection-active] :not(input, textarea, [contenteditable]),
+		[data-prose-selection-active],
+		[data-prose-selection-active] *
+	)::selection {
+		color: currentColor;
+		background-color: transparent;
+	}
+
+	:where(
+		:not(
+			[data-code-selection-active] :not(input, textarea, [contenteditable]),
+			[data-prose-selection-active],
+			[data-prose-selection-active] *
+		)
+	)::selection {
+		color: var(--color-on-accent);
+		background-color: color-mix(in oklch, var(--color-accent) 95%, transparent);
+	}
+
+	.text-selection-paint,
+	[data-prose-selection-active] code:not(pre code)::selection {
+		background-color: color-mix(in oklch, var(--color-accent) 22%, transparent);
+	}
+
+	.text-selection-paint[data-selection-start] {
+		border-inline-start: 1px solid var(--color-accent);
+	}
+
+	.text-selection-paint[data-selection-end] {
+		border-inline-end: 1px solid var(--color-accent);
+	}
+}
+
 /* WKWebView paints no visible native scrollbar, and styling ::-webkit-scrollbar
    to paint one ourselves costs the one thing that matters here: any rule that
    targets it switches WebKit (and Blink) out of overlay mode, and the declared
