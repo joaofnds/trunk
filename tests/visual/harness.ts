@@ -806,10 +806,15 @@ class InlineReviewDriver {
 				if (!viewport)
 					throw new Error("the paragraph is outside the diff viewport");
 
+				const from = viewport.scrollTop;
+				const handled = new Promise<void>((resolve) =>
+					viewport.addEventListener("scroll", () => resolve(), { once: true }),
+				);
 				viewport.scrollTop +=
 					paragraph.getBoundingClientRect().top -
 					viewport.getBoundingClientRect().top -
 					y;
+				if (viewport.scrollTop !== from) return handled;
 			}, offset);
 		await painted(this.page);
 	}
@@ -866,7 +871,12 @@ class InlineReviewDriver {
 
 	async scrollToEnd(): Promise<void> {
 		await this.viewport.evaluate((element) => {
+			const from = element.scrollTop;
+			const handled = new Promise<void>((resolve) =>
+				element.addEventListener("scroll", () => resolve(), { once: true }),
+			);
 			element.scrollTop = element.scrollHeight;
+			if (element.scrollTop !== from) return handled;
 		});
 		await painted(this.page);
 	}
