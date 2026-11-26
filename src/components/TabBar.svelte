@@ -458,12 +458,13 @@ function closeOnMiddle(e: MouseEvent, tabId: string) {
 
 /* Each tab is as wide as its label. When the strip runs out of room the widest
    tabs narrow first, so a short name stays whole while a long one is cut. The
-   floor sits just under a three-letter name's natural width, so it pads only a
-   name of one or two letters, and still keeps a letter clear of the close. */
+   floor is the tab of a five-letter name such as "trunk": about 30px of name
+   in the callout step, beside the 32px the framed Tab gives its padding, gap
+   and close. A shorter name is padded up to it. */
 .tab-item {
 	display: grid;
 	flex: 1 1 0;
-	min-width: calc(12 * var(--u));
+	min-width: calc(31 * var(--u) / 2);
 	max-width: max-content;
 	height: var(--control-h);
 	border-radius: var(--radius);
