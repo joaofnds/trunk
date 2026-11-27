@@ -2,8 +2,8 @@
 /**
  * The drive route's native paths, each on its own, on one drive instance. The
  * app menu bar's Edit > Find opens the history search bar. Delete, chosen from
- * the context menu of a branch a linked worktree is rebasing, shows a dialog
- * naming that worktree with OK as its only button, and OK leaves the branch.
+ * the context menu of a branch a linked worktree is rebasing, names that worktree
+ * in a refusal. Deleting a spare branch opens a native confirmation to cancel.
  * Cmd+Z, pressed through AppKit's key path, undoes the last commit, and
  * Cmd+Shift+Z redoes it, which only holds while the page meets those keys
  * before the Edit menu's own Undo and Redo do. Cmd+Q through the same path is
@@ -87,6 +87,7 @@ function seedRebasingWorktree(): void {
 	git(repo, "add", "f");
 	git(repo, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "base");
 	git(repo, "branch", "feature");
+	git(repo, "branch", "spare");
 	writeFileSync(join(repo, "f"), "b\n");
 	git(
 		repo,
@@ -174,25 +175,42 @@ async function deleteTheRebasingBranch(instance: Instance): Promise<void> {
 	);
 	await callHook(instance, "choose", ["Delete"], DEADLINE_MS);
 
-	const dialog = asDialog(
-		await request(instance, { op: "alert" }, DEADLINE_MS),
-	);
 	const path = execFileSync("realpath", [worktree], {
 		encoding: "utf8",
 	}).trim();
+	const refusal = `Cannot delete 'feature' while the worktree at ${path} is rebasing it.`;
+	await until(
+		instance,
+		`[...document.querySelectorAll('[role="status"]')].some(node => node.textContent.includes(${JSON.stringify(refusal)}))`,
+		DEADLINE_MS,
+	);
 	check(
-		dialog.texts.some((text) => text.includes(path)) &&
-			JSON.stringify(dialog.buttons) === '["OK"]',
-		`Delete shows a dialog naming the worktree at ${path}, with OK as its only button`,
-		`the dialog showed ${JSON.stringify(dialog)}`,
+		git(repo, "branch", "--list", "feature").trim() !== "",
+		"Delete identifies the rebasing worktree and leaves its branch",
+		"Delete removed the branch held by the rebase",
 	);
 
-	await request(instance, { op: "press", button: "OK" }, DEADLINE_MS);
-	const branches = git(repo, "branch", "--list", "--format=%(refname:short)");
+	await callHook(
+		instance,
+		"context",
+		["button", "spare", "complementary"],
+		DEADLINE_MS,
+	);
+	await callHook(instance, "choose", ["Delete"], DEADLINE_MS);
+	const dialog = asDialog(
+		await request(instance, { op: "alert" }, DEADLINE_MS),
+	);
 	check(
-		branches.split("\n").includes("feature"),
-		"after OK, git branch --list still lists feature",
-		`git branch --list shows ${JSON.stringify(branches)}`,
+		dialog.texts.some((text) => text.includes("spare")) &&
+			dialog.buttons.includes("Delete"),
+		"Delete asks for confirmation for the unheld branch",
+		`the dialog showed ${JSON.stringify(dialog)}`,
+	);
+	await request(instance, { op: "press", button: "Cancel" }, DEADLINE_MS);
+	check(
+		git(repo, "branch", "--list", "spare").trim() !== "",
+		"Cancel leaves the branch in place",
+		"Cancel removed the spare branch",
 	);
 }
 
