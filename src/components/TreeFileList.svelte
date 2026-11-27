@@ -415,6 +415,7 @@ function handleKeydown(e: KeyboardEvent) {
 			<DirectoryRow
 				node={row.node}
 				depth={row.depth}
+				filtering={files[0]?.match !== undefined}
 				expanded={row.expanded}
 				selected={isMarked(i, row)}
 				ontoggle={() => {

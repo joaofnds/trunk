@@ -231,11 +231,16 @@ section("Unread marker and count (TRUNK-156)");
 check("unread label on a card header", "var(--color-accent-strong)", "var(--color-comment-card-header-bg)");
 check("unread label on a settled card header", "var(--color-accent-strong)", "var(--color-comment-card-bg)");
 check("unread count in the panel header", "var(--color-accent-strong)", "var(--color-surface)");
-check("file filter match on a selected row", "var(--color-accent-strong)", "var(--color-selected-row)");
-check("file filter match under the pointer", "var(--color-accent-strong)", "var(--color-hover)");
 check("unread dot on a card header", "var(--color-accent)", "var(--color-comment-card-header-bg)", { target: 3 });
 check("unread dot on a settled card header", "var(--color-accent)", "var(--color-comment-card-bg)", { target: 3 });
 check("unread dot in the panel header", "var(--color-accent)", "var(--color-surface)", { target: 3 });
+
+section("File filter matches");
+check("file filter match on a selected row", "var(--color-accent-strong)", "var(--color-selected-row)");
+check("file filter match under the pointer", "var(--color-accent-strong)", "var(--color-hover)");
+for (const surface of ["bg", "surface", "surface-raised", "hover", "selected-row"]) {
+	checkSurfaces(`matched space on ${surface}`, `var(--color-${surface})`, [], [t("var(--color-accent-strong)", 45)], 3);
+}
 
 section("Chip (lineage pills and branch chips, on --color-surface, the merge banner and the staging header)");
 check("accent chip label", "var(--color-accent-strong)", "var(--color-surface)", { layers: ["var(--color-chip-accent-bg)"] });

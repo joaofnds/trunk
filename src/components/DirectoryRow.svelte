@@ -23,6 +23,7 @@ interface Props {
 	depth: number;
 	expanded: boolean;
 	selected: boolean;
+	filtering?: boolean;
 	ontoggle: () => void;
 	actionLabel?: string;
 	onaction?: () => void;
@@ -37,6 +38,7 @@ let {
 	depth,
 	expanded,
 	selected,
+	filtering = false,
 	ontoggle,
 	actionLabel = "",
 	onaction,
@@ -109,7 +111,10 @@ function openMenu(e: MouseEvent) {
 			<ChevronRight size={12} />
 		{/if}
 	</span>
-	<span class="overflow-hidden text-ellipsis whitespace-nowrap font-medium">
+	<span
+		class="overflow-hidden text-ellipsis whitespace-nowrap"
+		class:font-medium={!filtering}
+	>
 		{#if node.positions?.length}
 			<PathMatchText text={node.name} positions={node.positions} />
 		{:else}

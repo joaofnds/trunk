@@ -11,6 +11,24 @@ describe("FileRow", () => {
 		[
 			"option",
 			"filename-first",
+			"native copy.ts",
+			null,
+			[5, 6, 7],
+			[],
+			["e", " ", "c"],
+		],
+		[
+			"option",
+			"filename-first",
+			"a \u0301b",
+			null,
+			[0, 1, 2],
+			[],
+			["a", " \u0301"],
+		],
+		[
+			"option",
+			"filename-first",
 			"scripts/drive/native.ts",
 			null,
 			[8, 9, 10, 14, 15, 17],
@@ -77,9 +95,18 @@ describe("FileRow", () => {
 					/scripts\/drive\/native\.ts/,
 				);
 			}
-			expect(
-				Array.from(label.querySelectorAll("mark"), (mark) => mark.textContent),
-			).toEqual(expected);
+			const marks = Array.from(label.querySelectorAll("mark"));
+			expect(marks.map((mark) => mark.textContent)).toEqual(expected);
+			expect(label.querySelector(".leaf.font-semibold")).toBeNull();
+			for (const mark of marks) {
+				expect(mark).toHaveClass("font-semibold", "text-accent-strong");
+				expect(mark).not.toHaveClass("underline");
+				expect(mark).toHaveClass(
+					/\p{Zs}/u.test(mark.textContent ?? "")
+						? "bg-current/45"
+						: "bg-transparent",
+				);
+			}
 		},
 	);
 

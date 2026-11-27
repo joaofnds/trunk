@@ -72,7 +72,7 @@ let directoryPositions = $derived(
 			>
 			<span class="arrow">→</span>
 		{/if}
-		<span class="leaf" class:font-semibold={!fullPath}
+		<span class="leaf" class:font-semibold={!fullPath && !match}
 			>{@render label(to, namePositions, toOffset)}</span
 		>
 	</span>

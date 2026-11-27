@@ -145,13 +145,10 @@ describe("ComparePanel", () => {
 			treeViewEnabled: true,
 			fileDiffs: [{ ...fileDiffs[0], path: "scripts/drive/native.ts" }],
 		});
+		expect(screen.getByText("scripts/drive")).toHaveClass("font-medium");
 		await fireEvent.click(screen.getByRole("button", { name: "Filter files" }));
-		await fireEvent.input(
-			screen.getByRole("textbox", { name: "Filter files" }),
-			{
-				target: { value: "dnv" },
-			},
-		);
+		const filter = screen.getByRole("textbox", { name: "Filter files" });
+		await fireEvent.input(filter, { target: { value: "dnv" } });
 
 		const folder = screen.getByRole("treeitem", { expanded: true });
 		const filename = screen.getByTitle("scripts/drive/native.ts");
@@ -159,6 +156,9 @@ describe("ComparePanel", () => {
 		expect(
 			Array.from(filename.querySelectorAll("mark"), (mark) => mark.textContent),
 		).toEqual(["n", "v"]);
+
+		await fireEvent.input(filter, { target: { value: "native" } });
+		expect(screen.getByText("scripts/drive")).not.toHaveClass("font-medium");
 	});
 
 	it("filters renamed paths without opening a diff and restores the tree on Escape", async () => {
