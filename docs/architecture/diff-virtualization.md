@@ -22,6 +22,19 @@ The list measures the live row's border box, which includes the cards at the pin
 pane width and their spacing. Navigation waits for that geometry. Changes to a card
 or the membership of a comment group keep the row at its anchor.
 
+## Find in a source diff
+
+Cmd+F opens Find above the active text diff. It searches the code rows in display
+order, including rows outside the virtual window. Hunk mode searches the changes
+and their displayed context. Full-file mode includes the surrounding file text.
+In split view a context line counts once, and each side of a replacement has its
+own occurrences.
+
+Find treats the query as literal text and ignores case. Enter and Shift+Enter
+step forward and backward, wrapping at either end. The list reveals the active
+row, then the view brings the highlighted text into its clipped cell or wrapped
+viewport. Escape returns to the diff.
+
 ## Scrolling and painted coverage
 
 The native scroll offset and the main thread's rendered rows advance independently.

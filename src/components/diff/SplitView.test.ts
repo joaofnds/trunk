@@ -1,7 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { createRawSnippet, tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import {
+	afterEach,
+	assert,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
+import {
+	restoreLayout,
+	setLayout,
+	stubLayout,
+} from "../../__tests__/helpers/layout-stub";
 import { commentingLeaf } from "../../__tests__/helpers/review-props.js";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
@@ -141,6 +153,73 @@ function scrollTo(container: Element, top: number): void {
 }
 
 describe("SplitView", () => {
+	it("pans back from the shorter side's own limit to reveal an earlier occurrence", async () => {
+		const view = render(SplitView, {
+			props: defaultProps({
+				contentMode: "full",
+				activeMatch: { row: 0, side: "old", start: 2, end: 5 },
+			}),
+		});
+		const mark = screen.getByRole("mark");
+		const viewport = mark.closest<HTMLElement>(".exact-virtual-viewport");
+		const pan = mark.closest<HTMLElement>(".split-pan");
+		assert(
+			viewport && pan?.parentElement,
+			"expected the mark in a split window",
+		);
+		setLayout(pan.parentElement, { left: 60, width: 380 });
+		setLayout(pan, { left: -240, width: 680 });
+		setLayout(mark, { left: -200, width: 24, height: 18 });
+		viewport.scrollLeft = 2000;
+
+		view.component.revealSearchRow(0);
+		await tick();
+
+		expect(viewport.scrollLeft).toBe(40);
+		expect(
+			mark
+				.closest<HTMLElement>(".exact-virtual-rows")
+				?.style.getPropertyValue("--pan-x"),
+		).toBe("40px");
+	});
+
+	it("marks the exact occurrence across syntax and visible whitespace on its chosen side", async () => {
+		const line: DiffLine = {
+			...contextLines(1)[0],
+			content: "fn\t  main",
+			spans: [
+				{ start: 0, end: 2, syntax_class: "syn-keyword", emphasized: false },
+				{ start: 2, end: 9, syntax_class: "syn-function", emphasized: false },
+			],
+		};
+		const props = defaultProps({
+			contentMode: "full",
+			fileDiffs: [fileOf("src/main.ts", [line])],
+			showInvisibles: true,
+		});
+		const view = render(SplitView, { props });
+
+		await view.rerender({
+			...props,
+			activeMatch: { row: 0, side: "new", start: 1, end: 6 },
+		});
+
+		expect(
+			view.container.querySelector('[data-code-line="new"]')?.textContent,
+		).toBe(line.content);
+		const marks = view.container.querySelectorAll("[data-diff-match]");
+		expect([...marks].map((mark) => mark.textContent).join("")).toBe("n\t  m");
+		expect(marks[0].closest("[data-code-line]")).toHaveAttribute(
+			"data-code-line",
+			"new",
+		);
+		const glyphs = Array.from(
+			marks[0].querySelectorAll<HTMLElement>("[data-glyph]"),
+			(node) => node.dataset.glyph,
+		);
+		expect(glyphs.join("")).toBe("→··");
+	});
+
 	it("paints each hunk action in the tone its meaning carries", () => {
 		render(SplitView, { props: defaultProps() });
 

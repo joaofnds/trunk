@@ -1340,11 +1340,10 @@ does, and the merge editor does not move on to the next conflicted file after a 
 (both TRUNK-445). Overlapping index writes collided on `index.lock`
 (TRUNK-442). The screening on that card saw it only with clicks under 40 ms apart, but on
 a repository of 20,000 new files the window lasts seconds and a write was lost, and the
-write gate in E09 now makes overlapping actions take turns. Cmd+F does nothing while a diff covers the
-graph: the native menu's Find reaches only the graph's search, which ignores it while
-covered. The walker pressed it through the drive route, which never reaches the
-menu, so the report came from the wrong route, and the code confirms it. TRUNK-29
-holds the find over a diff.
+write gate in E09 now makes overlapping actions take turns. The walker tried Cmd+F as a simulated WebView keypress. That route bypassed
+the native menu, and at the time only the graph handled its Find command.
+TRUNK-29 added Find to the diff. It now searches the active [source diff](architecture/diff-virtualization.md#find-in-a-source-diff)
+when it covers the graph.
 
 One finding waited on a product decision, on TRUNK-452. At the default window on a
 repository with wide branch labels, the SHA column shrank to its 28 px floor and showed

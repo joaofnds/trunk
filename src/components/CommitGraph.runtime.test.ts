@@ -1182,7 +1182,7 @@ describe("CommitGraph", () => {
 				context: new Map([[SCHEDULER, clock]]),
 			});
 			await screen.findByText("earlier change");
-			await host.emit("search-toggle", null);
+			view.component.openFind();
 			await screen.findByPlaceholderText("Search commits…");
 			vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 

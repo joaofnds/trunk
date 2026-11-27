@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-/* The three source views each carry their own copy of the diff-line styles,
-   and the AAA argument for the word patch rests on one rule in each copy: text
+/* The three source views share DiffLineText. The AAA argument for the
+   word patch rests on one rule in its stylesheet: text
    on a patch is --color-diff-text, whatever its syntax class or marker role.
    jsdom does not cascade a scoped <style>, and scripts/contrast/re-audit-verify.mjs
    measures --color-diff-text on the patch without knowing the views put it
@@ -12,13 +12,10 @@ import { describe, expect, it } from "vitest";
    are all one class or class plus pseudo, like it) by source order alone, so
    it has to be the last color rule in the block. */
 
-const views = ["HunkView", "SplitView", "FullFileView"].map((name) => ({
-	name,
-	css: readFileSync(
-		resolve(process.cwd(), `src/components/diff/${name}.svelte`),
-		"utf8",
-	),
-}));
+const css = readFileSync(
+	resolve(process.cwd(), "src/components/diff/DiffLineText.svelte"),
+	"utf8",
+);
 
 function lastIndexOfAll(css: string, pattern: RegExp): number {
 	const indices = [...css.matchAll(pattern)].map((m) => m.index);
@@ -26,7 +23,7 @@ function lastIndexOfAll(css: string, pattern: RegExp): number {
 	return Math.max(...indices);
 }
 
-describe.each(views)("$name diff-line styles", ({ css }) => {
+describe("DiffLineText styles", () => {
 	const patchText = css.match(
 		/\.word-add,\s*\.word-delete,\s*\.word-add::before,\s*\.word-delete::before\s*\{([^}]*)\}/,
 	);
@@ -42,7 +39,7 @@ describe.each(views)("$name diff-line styles", ({ css }) => {
 		expect(lastIndexOfAll(css, /\.syn-[a-z]+ \{\s*color:/g)).toBeLessThan(
 			ruleAt,
 		);
-		expect(lastIndexOfAll(css, /\.invisible-char::before \{/g)).toBeLessThan(
+		expect(lastIndexOfAll(css, /^\.invisible-char::before \{/gm)).toBeLessThan(
 			ruleAt,
 		);
 		expect(lastIndexOfAll(css, /\.trailing-ws::before \{/g)).toBeLessThan(

@@ -61,6 +61,7 @@ export interface DiffListHandle {
 	verticalScrollRevision(): number;
 	anchorTo(index: number): void;
 	revealIndex(index: number): void;
+	revealSearchRow(index: number): void;
 	scrollToIndex(index: number, onsettled?: () => void): void;
 }
 
@@ -369,6 +370,12 @@ export function createVirtualizedDiff(
 	}
 
 	return {
+		searchRows() {
+			return model.rows;
+		},
+		revealSearchRow(index) {
+			deps.list()?.revealSearchRow(index);
+		},
 		isReady() {
 			return ready && (deps.list()?.isReady() ?? false);
 		},

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
+import type { DiffMatch } from "../../lib/diff-find.js";
 import {
 	buildSplitRows,
 	countLines,
@@ -12,10 +13,8 @@ import {
 	gripLabel,
 	lineBackground,
 	type PairedRow,
-	splitInvisibles,
 	splitSide,
 	takesNewComment,
-	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
@@ -38,6 +37,7 @@ import {
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
 import DiffFileHeader from "./DiffFileHeader.svelte";
+import { diffLineText } from "./DiffLineText.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import HunkActions from "./HunkActions.svelte";
 import InlineThread from "./InlineThread.svelte";
@@ -48,6 +48,7 @@ import SelectionComment, {
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
+	activeMatch?: DiffMatch | null;
 	contentMode: ContentMode;
 	fileDiffs: FileDiff[];
 	selectedPath: string | null;
@@ -101,6 +102,7 @@ interface Props {
 }
 
 let {
+	activeMatch = null,
 	contentMode,
 	fileDiffs,
 	selectedPath,
@@ -198,6 +200,8 @@ function hunkLinesOf(path: string, hunkIdx: number): DiffLine[] {
 	return fileDiffs.find((fd) => fd.path === path)?.hunks[hunkIdx]?.lines ?? [];
 }
 
+export const searchRows = vd.searchRows;
+export const revealSearchRow = vd.revealSearchRow;
 export const readingLine = vd.readingLine;
 export const readingThread = vd.readingThread;
 export const isReady = vd.isReady;
@@ -228,10 +232,7 @@ function originClass(origin: string): string {
      style choice: rowHeights' ceil(columns / available) is only a height when
      the break is unconditional, so it is declared here with the height it
      belongs to. -->
-{#snippet cellContent(line: DiffLine, side: "old" | "new")}
-	{@const trailStart = showInvisibles
-		? trailingWhitespaceStart(line.content)
-		: line.content.length}
+{#snippet cellContent(line: DiffLine, side: "old" | "new", index: number)}
 	<span
 		class="diff-line-content select-text cursor-text"
 		data-code-line={side}
@@ -239,54 +240,13 @@ function originClass(origin: string): string {
 		class:whitespace-pre={!vd.wrapActive}
 		class:break-all={vd.wrapActive}
 		class:break-normal={!vd.wrapActive}
-		>{#if line.spans.length > 0}
-			{#each line.spans as span}
-				{@const sliced = line.content.slice(span.start, span.end)}
-				{@const spanInTrailing = span.start >= trailStart}
-				{#if showInvisibles}
-					{@const segments = splitInvisibles(
-						sliced,
-						spanInTrailing || span.end > trailStart,
-					)}{#each segments as seg}
-						<span
-							class="{span.syntax_class}{span.emphasized
-								? line.origin === "Add"
-									? " word-add"
-									: " word-delete"
-								: ""}{seg.isInvisible ? " invisible-char" : ""}{seg.isTrailing
-								? " trailing-ws"
-								: ""}"
-							data-glyph={seg.glyph}
-							>{seg.text}</span
-						>
-					{/each}
-				{:else}
-					<span
-						class="{span.syntax_class}{span.emphasized
-							? line.origin === "Add"
-								? " word-add"
-								: " word-delete"
-							: ""}"
-						>{sliced}</span
-					>
-				{/if}
-			{/each}
-		{:else}
-			{#if showInvisibles}
-				{@const segments = splitInvisibles(line.content, false)}
-				{#each segments as seg}
-					<span
-						class="{seg.isInvisible ? "invisible-char" : ""}{seg.isTrailing
-							? " trailing-ws"
-							: ""}"
-						data-glyph={seg.glyph}
-						>{seg.text}</span
-					>
-				{/each}
-			{:else}
-				{line.content}
-			{/if}
-		{/if}</span
+		>{@render diffLineText(
+			line,
+			showInvisibles,
+			activeMatch?.row === index && activeMatch.side === side
+				? activeMatch
+				: null,
+		)}</span
 	>
 {/snippet}
 
@@ -379,7 +339,7 @@ function originClass(origin: string): string {
 							class:w-full={vd.wrapActive}
 							class:w-max={!vd.wrapActive}
 						>
-							{@render cellContent(line, "old")}
+							{@render cellContent(line, "old", index)}
 						</div>
 					</div>
 				</div>
@@ -420,7 +380,7 @@ function originClass(origin: string): string {
 							class:w-full={vd.wrapActive}
 							class:w-max={!vd.wrapActive}
 						>
-							{@render cellContent(line, "new")}
+							{@render cellContent(line, "new", index)}
 						</div>
 					</div>
 				</div>
@@ -678,62 +638,6 @@ function originClass(origin: string): string {
 		background-color: transparent;
 	}
 }
-.word-add {
-	background-color: var(--color-diff-word-add-bg);
-	border-radius: var(--radius);
-}
-.word-delete {
-	background-color: var(--color-diff-word-delete-bg);
-	border-radius: var(--radius);
-}
-
-/* Syntax highlighting classes */
-.syn-keyword {
-	color: var(--color-syn-keyword);
-}
-.syn-string {
-	color: var(--color-syn-string);
-}
-.syn-comment {
-	color: var(--color-syn-comment);
-}
-.syn-number {
-	color: var(--color-syn-number);
-}
-.syn-type {
-	color: var(--color-syn-type);
-}
-.syn-function {
-	color: var(--color-syn-function);
-}
-.syn-variable {
-	color: var(--color-syn-variable);
-}
-.syn-constant {
-	color: var(--color-syn-constant);
-}
-.syn-operator {
-	color: var(--color-syn-operator);
-}
-.syn-punctuation {
-	color: var(--color-syn-punctuation);
-}
-.syn-attribute {
-	color: var(--color-syn-attribute);
-}
-.syn-tag {
-	color: var(--color-syn-tag);
-}
-.syn-property {
-	color: var(--color-syn-property);
-}
-.syn-regex {
-	color: var(--color-syn-regex);
-}
-.syn-escape {
-	color: var(--color-syn-escape);
-}
-
 /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
      Every cell carries the 3px border so the columns stay aligned regardless of origin. */
 .diff-line {
@@ -770,47 +674,6 @@ function originClass(origin: string): string {
 	gap: var(--space-2);
 	padding: var(--space-2);
 	box-sizing: border-box;
-}
-
-/* Invisible character styling. Real whitespace stays in the text node (so it
-     copies faithfully) at zero width via font-size:0; the ·/→ glyph is painted by
-     a pseudo-element, never part of the selection/clipboard. font-size:0 also keeps
-     a real tab at one visual cell instead of advancing to a tab stop. */
-.invisible-char {
-	font-size: 0;
-}
-.invisible-char::before {
-	content: attr(data-glyph);
-	font-size: var(--text-callout);
-	color: var(--color-invisible);
-}
-
-/* Trailing whitespace warning */
-.trailing-ws {
-	background-color: var(--color-trailing-ws-bg);
-}
-.trailing-ws::before {
-	color: var(--color-trailing-ws-fg);
-}
-
-/* Text on a word patch is the primary diff color, whatever its syntax class
-     or marker role. The patch is strong enough that no syntax hue clears AAA
-     on it (see --color-diff-word-add-bg); last so it wins every equal-
-     specificity color rule above. */
-.word-add,
-.word-delete,
-.word-add::before,
-.word-delete::before {
-	color: var(--color-diff-text);
-}
-/* Trailing whitespace inside a word patch keeps the patch color: its own red
-     tint on top would take the glyph below AAA on a selected line, and the
-     patch plus the marker glyph already say everything the tint said. */
-.word-add.trailing-ws {
-	background-color: var(--color-diff-word-add-bg);
-}
-.word-delete.trailing-ws {
-	background-color: var(--color-diff-word-delete-bg);
 }
 
 /* The composer row holds its declared height, and the card fills it, so the

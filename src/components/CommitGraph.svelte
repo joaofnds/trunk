@@ -10,7 +10,6 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Network from "@lucide/svelte/icons/network";
 import Tag from "@lucide/svelte/icons/tag";
 import User from "@lucide/svelte/icons/user";
-import { listen } from "@tauri-apps/api/event";
 import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import { deleteBranch } from "../lib/branch-delete.js";
@@ -171,8 +170,7 @@ interface Props {
 		defaultValue: string,
 		title: string,
 	) => Promise<string | null>;
-	/** Whether this graph's tab is the active one. Every tab stays mounted, so the
-	 *  window-global search-toggle event reaches all of them. */
+	/** Whether this graph owns the active tab's center pane. */
 	tabActive: boolean;
 	/** Filtered per-commit badge projection from RepoView. */
 	commentCounts: Map<string, number>;
@@ -2276,33 +2274,13 @@ $effect(() => {
 	}
 });
 
-// Cmd+F search toggle — handled via native menu accelerator (registered in Rust)
-// so it works regardless of WebView focus state (e.g. after fullscreen/maximize).
-$effect(() => {
-	let unlisten: (() => void) | undefined;
-	listen<void>("search-toggle", () => {
-		// Webview-global event, and every tab stays mounted — without this a
-		// background graph opens its own search bar on the active tab's Cmd+F.
-		if (!tabActive) return;
+let searchBar = $state<SearchBar | null>(null);
+export function openFind() {
+	if (!tabActive) return;
 
-		if (searchOpen) {
-			const input =
-				containerRef?.querySelector<HTMLInputElement>(".search-bar-input");
-			if (input) {
-				input.focus();
-				input.select();
-			}
-		} else {
-			searchOpen = true;
-		}
-	}).then((fn) => {
-		unlisten = fn;
-	});
-
-	return () => {
-		unlisten?.();
-	};
-});
+	if (searchOpen) searchBar?.focusQuery();
+	else searchOpen = true;
+}
 
 $effect(() => {
 	const query = searchQuery;
@@ -2630,6 +2608,7 @@ $effect(() => {
 	>
 		{#if searchOpen}
 			<SearchBar
+				bind:this={searchBar}
 				query={searchText}
 				currentIndex={searchCurrentIndex}
 				totalMatches={stepResults?.length ?? 0}

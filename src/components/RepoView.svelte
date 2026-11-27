@@ -1,6 +1,6 @@
 <script lang="ts">
 import { listen } from "@tauri-apps/api/event";
-import { onDestroy, tick, untrack } from "svelte";
+import { onDestroy, onMount, tick, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import {
 	type CoalescedTask,
@@ -325,6 +325,7 @@ $effect(() => {
 
 // DiffPanel ref for jump-to-range scroll+highlight (Phase 69 / D-07).
 let diffPanelRef = $state<{
+	openFind(): void;
 	jumpToThread: (
 		thread: Thread,
 		startLine: number,
@@ -722,6 +723,7 @@ let commitEmpty = $state(false);
 
 // CommitGraph component ref -- used to call scrollToOid for ref navigation (GRAPH-03)
 let commitGraphRef = $state<{
+	openFind(): void;
 	scrollToOid: (oid: string, isStillRequested?: () => boolean) => Promise<void>;
 	showGraph: (graph: GraphResponse) => void;
 	loadedRows: () => number;
@@ -752,6 +754,7 @@ let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
 let rebaseLoadedDiffs = $state.raw(noLoadedDiffs<string>());
 let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
+let rebaseDiffPanel = $state<{ openFind(): void } | null>(null);
 let rebaseFocusLoadSeq = 0;
 let rebaseDiffLoadSeq = 0;
 let rebaseDiffLoading = $state(false);
@@ -851,6 +854,24 @@ let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 // tab stays mounted under the active one, so closing a diff returns to the rows
 // and scroll position the user left rather than to the top of a fresh first page.
 const graphCovered = $derived(reviewPanelShown || showDiff || showRebaseEditor);
+
+onMount(() => {
+	let mounted = true;
+	const registration = listen("search-toggle", () => {
+		if (!mounted || !tabActive || isUpdateFrozen() || keyInDialog()) return;
+
+		if (!graphCovered) commitGraphRef?.openFind();
+		else if (showRebaseEditor) rebaseDiffPanel?.openFind();
+		else if (!reviewPanelShown) diffPanelRef?.openFind();
+	}).catch((error: unknown) => {
+		reportErrorToast(error, "Could not register the Find command");
+	});
+
+	return () => {
+		mounted = false;
+		void registration.then((unlisten) => unlisten?.());
+	};
+});
 
 // The diffs to display: filtered commit file diff, staging diff, or the whole
 // of a tracked file opened through the finder. A current-file view is last
@@ -3188,6 +3209,7 @@ async function handleRebaseStart(
 						>
 							{#snippet children(DiffPanel)}
 								<DiffPanel
+									bind:this={rebaseDiffPanel}
 									{diffPreferences}
 									keysActive={tabActive}
 									fileDiffs={rebaseShownDiff}

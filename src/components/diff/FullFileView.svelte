@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
+import type { DiffMatch } from "../../lib/diff-find.js";
 import {
 	buildInlineRows,
 	countLines,
@@ -7,12 +8,7 @@ import {
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
-import {
-	gripLabel,
-	lineBackground,
-	splitInvisibles,
-	trailingWhitespaceStart,
-} from "../../lib/diff-utils.js";
+import { gripLabel, lineBackground } from "../../lib/diff-utils.js";
 import { focusInEditable, keyChord } from "../../lib/keyboard.js";
 import { measure } from "../../lib/perf.js";
 import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
@@ -32,6 +28,7 @@ import {
 	type ReadingAnchor,
 	TAB_SIZE,
 } from "../../lib/virtualized-diff.svelte.js";
+import { diffLineText } from "./DiffLineText.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 import InlineThread from "./InlineThread.svelte";
 import SelectionComment, {
@@ -40,6 +37,7 @@ import SelectionComment, {
 import ThreadMarker from "./ThreadMarker.svelte";
 
 interface Props {
+	activeMatch?: DiffMatch | null;
 	fileDiffs: FileDiff[];
 	showInvisibles: boolean;
 	wordWrap: boolean;
@@ -68,6 +66,7 @@ interface Props {
 }
 
 let {
+	activeMatch = null,
 	fileDiffs,
 	showInvisibles,
 	wordWrap,
@@ -251,6 +250,8 @@ function extendDrag(e: MouseEvent) {
 	focusIndex = index;
 }
 
+export const searchRows = vd.searchRows;
+export const revealSearchRow = vd.revealSearchRow;
 export const readingLine = vd.readingLine;
 export const readingThread = vd.readingThread;
 export const isReady = vd.isReady;
@@ -301,9 +302,6 @@ export function clearSelection() {
 		{@const isSelected = inSelection(item.path, item.flatIdx)}
 		{@const holdsAction =
 			selectedPath === item.path && actionIndex === item.flatIdx}
-		{@const trailStart = showInvisibles
-			? trailingWhitespaceStart(line.content)
-			: line.content.length}
 		<div
 			class="diff-line flex items-start px-2 text-diff-text {line.origin ===
 			"Add"
@@ -344,54 +342,11 @@ export function clearSelection() {
 			{/if}<span
 				class="diff-line-content select-text cursor-text"
 				data-code-line
-				>{#if line.spans.length > 0}
-					{#each line.spans as span}
-						{@const sliced = line.content.slice(span.start, span.end)}
-						{@const spanInTrailing = span.start >= trailStart}
-						{#if showInvisibles}
-							{@const segments = splitInvisibles(
-								sliced,
-								spanInTrailing || span.end > trailStart,
-							)}{#each segments as seg}
-								<span
-									class="{span.syntax_class}{span.emphasized
-										? line.origin === "Add"
-											? " word-add"
-											: " word-delete"
-										: ""}{seg.isInvisible
-										? " invisible-char"
-										: ""}{seg.isTrailing ? " trailing-ws" : ""}"
-									data-glyph={seg.glyph}
-									>{seg.text}</span
-								>
-							{/each}
-						{:else}
-							<span
-								class="{span.syntax_class}{span.emphasized
-									? line.origin === "Add"
-										? " word-add"
-										: " word-delete"
-									: ""}"
-								>{sliced}</span
-							>
-						{/if}
-					{/each}
-				{:else}
-					{#if showInvisibles}
-						{@const segments = splitInvisibles(line.content, false)}
-						{#each segments as seg}
-							<span
-								class="{seg.isInvisible ? "invisible-char" : ""}{seg.isTrailing
-									? " trailing-ws"
-									: ""}"
-								data-glyph={seg.glyph}
-								>{seg.text}</span
-							>
-						{/each}
-					{:else}
-						{line.content}
-					{/if}
-				{/if}</span
+				>{@render diffLineText(
+					line,
+					showInvisibles,
+					activeMatch?.row === index ? activeMatch : null,
+				)}</span
 			>{#if holdsAction}
 				<SelectionComment oncomment={commentOnSelection} />
 			{/if}</div
@@ -496,62 +451,6 @@ export function clearSelection() {
 	line-height: var(--text-callout--line-height);
 }
 
-.word-add {
-	background-color: var(--color-diff-word-add-bg);
-	border-radius: var(--radius);
-}
-.word-delete {
-	background-color: var(--color-diff-word-delete-bg);
-	border-radius: var(--radius);
-}
-
-/* Syntax highlighting classes */
-.syn-keyword {
-	color: var(--color-syn-keyword);
-}
-.syn-string {
-	color: var(--color-syn-string);
-}
-.syn-comment {
-	color: var(--color-syn-comment);
-}
-.syn-number {
-	color: var(--color-syn-number);
-}
-.syn-type {
-	color: var(--color-syn-type);
-}
-.syn-function {
-	color: var(--color-syn-function);
-}
-.syn-variable {
-	color: var(--color-syn-variable);
-}
-.syn-constant {
-	color: var(--color-syn-constant);
-}
-.syn-operator {
-	color: var(--color-syn-operator);
-}
-.syn-punctuation {
-	color: var(--color-syn-punctuation);
-}
-.syn-attribute {
-	color: var(--color-syn-attribute);
-}
-.syn-tag {
-	color: var(--color-syn-tag);
-}
-.syn-property {
-	color: var(--color-syn-property);
-}
-.syn-regex {
-	color: var(--color-syn-regex);
-}
-.syn-escape {
-	color: var(--color-syn-escape);
-}
-
 /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
      Every line carries the 3px border so columns stay aligned regardless of origin. */
 .diff-line {
@@ -599,47 +498,6 @@ export function clearSelection() {
 	padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
 	width: 100cqi;
 	box-sizing: border-box;
-}
-
-/* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
-     in the text node (so it copies faithfully) at zero width via font-size:0; the
-     ·/→ glyph is painted by a pseudo-element, never part of the selection/clipboard.
-     font-size:0 also keeps a real tab at one visual cell, not a tab stop. */
-.invisible-char {
-	font-size: 0;
-}
-.invisible-char::before {
-	content: attr(data-glyph);
-	font-size: var(--text-callout);
-	color: var(--color-invisible);
-}
-
-/* Trailing whitespace warning (Phase 63 -- D-12) */
-.trailing-ws {
-	background-color: var(--color-trailing-ws-bg);
-}
-.trailing-ws::before {
-	color: var(--color-trailing-ws-fg);
-}
-
-/* Text on a word patch is the primary diff color, whatever its syntax class
-     or marker role. The patch is strong enough that no syntax hue clears AAA
-     on it (see --color-diff-word-add-bg); last so it wins every equal-
-     specificity color rule above. */
-.word-add,
-.word-delete,
-.word-add::before,
-.word-delete::before {
-	color: var(--color-diff-text);
-}
-/* Trailing whitespace inside a word patch keeps the patch color: its own red
-     tint on top would take the glyph below AAA on a selected line, and the
-     patch plus the marker glyph already say everything the tint said. */
-.word-add.trailing-ws {
-	background-color: var(--color-diff-word-add-bg);
-}
-.word-delete.trailing-ws {
-	background-color: var(--color-diff-word-delete-bg);
 }
 
 /* The composer row holds its declared height, and the card fills it, so the

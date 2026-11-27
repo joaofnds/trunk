@@ -4,7 +4,7 @@ import { firstMatching } from "./dom.js";
 const INPUT = ".search-bar-input";
 const COUNT = /^(\d+ of \d+|0 matches)$/;
 
-/** The commit search bar the Cmd+F accelerator opens. */
+/** The search bar the native Find command opens. */
 export class SearchDriver {
 	/** Types a query into the open search bar. */
 	async query(text: string): Promise<void> {
@@ -14,6 +14,20 @@ export class SearchDriver {
 
 		input.value = text;
 		input.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	async step(backward = false): Promise<void> {
+		const input = await waitFor("the focused search input", () =>
+			document.querySelector<HTMLInputElement>(`${INPUT}:focus`),
+		);
+		input.dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: "Enter",
+				shiftKey: backward,
+				bubbles: true,
+				cancelable: true,
+			}),
+		);
 	}
 
 	/** The match count beside the input, as the user reads it, or null while

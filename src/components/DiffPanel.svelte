@@ -61,6 +61,7 @@ import type {
 	Thread,
 } from "../lib/types.js";
 import CommentComposer from "./diff/CommentComposer.svelte";
+import DiffFind from "./diff/DiffFind.svelte";
 import DiffToolbar from "./diff/DiffToolbar.svelte";
 import DiffViewer from "./diff/DiffViewer.svelte";
 import type FullFileView from "./diff/FullFileView.svelte";
@@ -144,6 +145,19 @@ let {
 }: Props = $props();
 
 let hunkOperationInFlight = $state(false);
+
+let panel: HTMLDivElement;
+let find = $state<DiffFind | null>(null);
+
+function focusDiff() {
+	panel
+		.querySelector<HTMLElement>(".exact-virtual-viewport")
+		?.focus({ preventScroll: true });
+}
+
+export function openFind() {
+	find?.openFind();
+}
 
 let diffNav = $state<DiffNav | null>(null);
 let renderedView = $state<RenderedDiff | null>(null);
@@ -1308,7 +1322,7 @@ function extendDrag(e: MouseEvent) {
 	{/if}
 {/snippet}
 
-<div class="h-full flex flex-col overflow-hidden bg-surface">
+<div bind:this={panel} class="h-full flex flex-col overflow-hidden bg-surface">
 	<DiffToolbar
 		{contentMode}
 		layoutMode={diffPreferences.layoutMode}
@@ -1339,7 +1353,19 @@ function extendDrag(e: MouseEvent) {
 		{backLabel}
 		showsLines={!selectedFile?.is_binary}
 	/>
+	<DiffFind
+		bind:this={find}
+		{focusDiff}
+		source={nav}
+		subject={sourceSubject}
+		enabled={keysActive &&
+			!renderedView &&
+			!emptyCommit &&
+			!loadError &&
+			fileDiffs.some((file) => !file.is_binary && file.hunks.length > 0)}
+	/>
 	<DiffViewer
+		activeMatch={find?.currentMatch()}
 		{folds}
 		{keysActive}
 		contentMode={effectiveContentMode}

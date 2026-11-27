@@ -25,6 +25,15 @@ const BINARY_ROW = ".binary-row";
 /** The center diff pane's markdown affordance: the source/rendered toggle and
  *  the tinted blocks the rendered view shows. */
 export class DiffPaneDriver {
+	markedLine(): string | null {
+		return (
+			document
+				.querySelector("mark[data-diff-match]")
+				?.closest("[data-code-line]")
+				?.textContent?.trimEnd() ?? null
+		);
+	}
+
 	wrapsLine(text: string): boolean {
 		return [
 			...document.querySelectorAll(

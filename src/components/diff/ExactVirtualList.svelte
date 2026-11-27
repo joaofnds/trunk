@@ -6,6 +6,7 @@ import {
 	threadPositionAt,
 	threadPositionTarget,
 } from "../../lib/diff-thread-position.js";
+import { revealDiffMatch } from "../../lib/reveal-diff-match.js";
 import { buildOffsets, windowFor } from "../../lib/virtual-window.js";
 
 interface Props {
@@ -375,6 +376,23 @@ export function preservePosition(update: () => void): void {
  *  already shows. */
 export function revealIndex(index: number): void {
 	navigate(index, true);
+}
+
+export function revealSearchRow(index: number): void {
+	navigate(index, true, () => {
+		void tick().then(() => {
+			const mark = rows?.querySelector<HTMLElement>("[data-diff-match]");
+			const scroller = viewport;
+			if (!scroller || !mark) return;
+
+			revealDiffMatch(mark);
+			// A second Find step can arrive before the native scroll event.
+			flushSync(() => {
+				recordScrollTop(scroller.scrollTop);
+				panLeft = scroller.scrollLeft;
+			});
+		});
+	});
 }
 
 function reveal(top: number, bottom: number): void {

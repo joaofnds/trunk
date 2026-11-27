@@ -31,9 +31,9 @@ function normalizeKey(key: string): string {
 }
 
 /** A background tab can keep an anchored dialog mounted while another tab owns the keyboard. */
-export function keyInDialog(event: KeyboardEvent): boolean {
+export function keyInDialog(event?: KeyboardEvent): boolean {
 	const target =
-		event.target instanceof Element ? event.target : document.activeElement;
+		event?.target instanceof Element ? event.target : document.activeElement;
 	if (target?.closest("dialog[open]")) return true;
 
 	return Array.from(document.querySelectorAll("dialog:modal")).some(

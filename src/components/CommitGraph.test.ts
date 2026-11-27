@@ -9,7 +9,15 @@ import {
 	within,
 } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	afterEach,
+	assert,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	vi,
+} from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { reportWidthOf } from "../__tests__/helpers/fake-resize-observer.js";
@@ -87,20 +95,6 @@ vi.mock("../lib/invoke.js", async () => {
 		safeInvoke: vi.fn(),
 	};
 });
-
-// search-toggle is webview-global, so every mounted instance gets one and the
-// fire helper calls them all.
-let searchToggleHandlers: (() => void)[] = [];
-vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn((event: string, cb: () => void) => {
-		if (event === "search-toggle") searchToggleHandlers.push(cb);
-		return Promise.resolve(() => {});
-	}),
-}));
-
-function fireSearchToggle(): void {
-	for (const handler of searchToggleHandlers) handler();
-}
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
@@ -263,7 +257,6 @@ function errorsShown(): string[] {
 }
 
 beforeEach(() => {
-	searchToggleHandlers = [];
 	vi.clearAllMocks();
 	vi.mocked(ask).mockResolvedValue(false);
 	_resetToasts();
@@ -490,7 +483,7 @@ describe("CommitGraph", () => {
 		});
 
 		it("hands focus back to the list when search closes", async () => {
-			render(CommitGraph, {
+			const { component } = render(CommitGraph, {
 				props: {
 					...noReviewCounts(),
 					repoPath: "/test/repo",
@@ -499,7 +492,7 @@ describe("CommitGraph", () => {
 				},
 			});
 			await screen.findByText("first commit");
-			fireSearchToggle();
+			component.openFind();
 			const input = await screen.findByRole("textbox");
 			input.focus();
 
@@ -1024,12 +1017,19 @@ describe("CommitGraph", () => {
 			const { first, second } = renderPair();
 			await flush();
 
-			fireSearchToggle();
+			second.component.openFind();
 			await flush();
-			fireSearchToggle();
+			const field = second.getByPlaceholderText("Search commits…");
+			assert(field instanceof HTMLInputElement);
+			await fireEvent.input(field, { target: { value: "change" } });
+			field.blur();
+
+			second.component.openFind();
 			await flush();
 
-			expect(second.container.contains(document.activeElement)).toBe(true);
+			expect(field).toHaveFocus();
+			expect(field.selectionStart).toBe(0);
+			expect(field.selectionEnd).toBe(field.value.length);
 			expect(first.container.contains(document.activeElement)).toBe(false);
 		});
 
@@ -1037,7 +1037,7 @@ describe("CommitGraph", () => {
 			const { first } = renderPair();
 			await flush();
 
-			fireSearchToggle();
+			first.component.openFind();
 			await flush();
 
 			expect(first.container.querySelectorAll(".search-bar-input").length).toBe(

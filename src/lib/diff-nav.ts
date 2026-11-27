@@ -1,4 +1,4 @@
-import type { ReadingLine } from "./diff-rows.js";
+import type { DiffRow, ReadingLine } from "./diff-rows.js";
 import type { ThreadReadingPosition } from "./diff-thread-position.js";
 import type { Side } from "./types.js";
 
@@ -10,6 +10,8 @@ import type { Side } from "./types.js";
  * indices the view owns rather than through `scrollIntoView` on a bound node.
  */
 export interface DiffNav {
+	searchRows(): readonly DiffRow[];
+	revealSearchRow(row: number): void;
 	/** Whether the rows can receive a jump. */
 	isReady(): boolean;
 	/** A hunk's place in that sequence, or -1 when it is not rendered. */

@@ -2,6 +2,7 @@
 import { untrack } from "svelte";
 import { isImagePath } from "../../lib/binary-file.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
+import type { DiffMatch } from "../../lib/diff-find.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
 import { type DiffComposer, diffHoldsComposer } from "../../lib/diff-rows.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
@@ -31,6 +32,7 @@ import type { SelectionCommentPlace } from "./SelectionComment.svelte";
 import SplitView from "./SplitView.svelte";
 
 interface Props {
+	activeMatch?: DiffMatch | null;
 	contentMode: ContentMode;
 	contextLines: number;
 	layoutMode: LayoutMode;
@@ -110,6 +112,7 @@ interface Props {
 }
 
 let {
+	activeMatch = null,
 	contentMode,
 	contextLines,
 	layoutMode,
@@ -403,6 +406,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		</div>
 	{:else if pane === "hunk"}
 		<HunkView
+			{activeMatch}
 			{folds}
 			bind:this={diffNav}
 			{startAt}
@@ -440,6 +444,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else if pane === "full"}
 		<FullFileView
+			{activeMatch}
 			{folds}
 			bind:this={fullFileView}
 			{keysActive}
@@ -459,6 +464,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
 		/>
 	{:else}
 		<SplitView
+			{activeMatch}
 			{folds}
 			bind:this={diffNav}
 			{startAt}
