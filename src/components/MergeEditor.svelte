@@ -939,7 +939,7 @@ registerUpdateBlocker(
 		? trailingWhitespaceStart(text)
 		: text.length}
 	<span
-		class="syntax-highlight select-text cursor-text pl-1 flex-1 min-w-0 text-diff-text"
+		class="select-text cursor-text pl-1 flex-1 min-w-0 text-diff-text"
 		data-code-line
 		class:whitespace-pre={!sideWrap}
 		class:whitespace-break-spaces={sideWrap}

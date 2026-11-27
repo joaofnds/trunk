@@ -5,7 +5,7 @@
 // Run: bun scripts/contrast/re-audit-verify.mjs   (exit 1 if any target missed)
 
 import { readFileSync } from "node:fs";
-import { compose, contrast, ratio, resolve, verdict } from "./contrast.mjs";
+import { compose, contrast, ratio, resolve, TOKENS, verdict } from "./contrast.mjs";
 
 let fails = 0;
 const rows = [];
@@ -64,23 +64,72 @@ record(`worst of ${SYN.length} hues x ${Object.keys(LINE_TINTS).length} tints: $
 
 section("Text selection retains readable syntax on diff and merge lines");
 const appCss = readFileSync(new URL("../../src/app.css", import.meta.url), "utf8");
-const selectionBg = appCss.match(/\.text-selection-paint,[^{]*\{\s*background-color:\s*([^;]+)/)?.[1];
-if (!selectionBg) throw new Error("Missing text selection background.");
-for (const [line, base, tints] of [
-	...Object.entries(LINE_TINTS).map(([line, tints]) => [line, PANEL, tints]),
-	["merge current", PAGE, ["var(--color-merge-current-line)"]],
-	["merge incoming", PAGE, ["var(--color-merge-incoming-line)"]],
-	["code fence", PAGE, ["var(--color-muted-bg)"]],
-]) {
-	const layers = [...tints, selectionBg];
-	for (const hue of SYN) check(`${line} selected syntax ${hue}`, `var(--color-syn-${hue})`, base, { layers, target: 4.5 });
-	check(`${line} selected plain text`, "var(--color-diff-text)", base, { layers, target: 4.5 });
-	check(`${line} selection edge`, "var(--color-accent)", base, { layers, target: 3 });
+const selectionValue = (name) => {
+	const value = appCss.match(new RegExp(`--selection-${name}:\\s*([^;]+);`))?.[1];
+	if (!value) throw new Error(`Missing selection ${name} in app.css.`);
+	return value.replace(/\s+/g, " ").trim();
+};
+const selectionRule = appCss.match(/^\s*::selection \{([^}]+)\}/m)?.[1] ?? "";
+const selectionInk = selectionRule.match(/(?:^|;)\s*color:\s*([^;]+)/)?.[1];
+const paintedFill = appCss.match(/\.text-selection-paint\s*\{\s*background-color:\s*([^;]+)/)?.[1];
+if (!selectionInk || paintedFill !== "var(--selection-fill)" || !selectionRule.includes(`background-color: ${paintedFill}`)) {
+	throw new Error("Native selection and the range painter must share the selection palette.");
 }
-check("selected secondary prose", "var(--color-text-muted)", PANEL, { layers: [selectionBg], target: 4.5 });
-check("selected excerpt in an outdated review", "var(--color-text-subtle)", PAGE, { layers: [selectionBg], target: 4.5 });
-check("selected inline comment code", "var(--color-text-strong)", "var(--color-surface-chip)", { layers: [selectionBg], target: 4.5 });
-check("native selection", "var(--color-on-accent)", PANEL, { layers: [t("var(--color-accent)", 95)] });
+const syntaxBlend = selectionValue("ink");
+const selectedSyntax = (hue) =>
+	syntaxBlend
+		.replace(/var\(--syntax-ink,\s*var\(--color-text-strong\)\)/, `var(--color-syn-${hue})`)
+		.replace("var(--selection-syntax-share)", TOKENS["--selection-syntax-share"]);
+for (const state of ["active", "inactive"]) {
+	const selectionColor = (name) => selectionValue(name)
+		.replace("var(--selection-tone)", selectionValue("tone"))
+		.replace("var(--selection-strength)", TOKENS[`--selection-strength-${state}`]);
+	const fill = selectionColor("fill");
+	const overlap = selectionColor("overlap");
+	if (resolve(fill).a === 1 || resolve(overlap).a === 1) {
+		throw new Error("WebKit selection fills need explicit alpha.");
+	}
+	for (const [line, base, tints] of [
+		...Object.entries(LINE_TINTS).map(([line, tints]) => [line, PANEL, tints]),
+		["gutter-selected add", PANEL, ["var(--color-diff-add-bg)", "var(--color-accent-bg)"]],
+		["gutter-selected del", PANEL, ["var(--color-diff-delete-bg)", "var(--color-accent-bg)"]],
+		["merge current", PAGE, ["var(--color-merge-current-line)"]],
+		["merge incoming", PAGE, ["var(--color-merge-incoming-line)"]],
+		["code fence", PAGE, ["var(--color-muted-bg)"]],
+	]) {
+		const layers = [...tints, fill];
+		for (const hue of SYN) {
+			const ink = state === "active" ? selectedSyntax(hue) : `var(--color-syn-${hue})`;
+			check(`${state} ${line} selection on ${hue}`, ink, base, { layers, target: 4.5 });
+		}
+		check(`${state} ${line} selection on plain text`, selectionInk, base, { layers, target: 4.5 });
+		if (state === "active") checkSurfaces(`active selection against ${line}`, base, tints, layers, 3);
+		else check(`inactive selection rule on ${line}`, selectionValue("inactive-rule"), base, { layers, target: 3 });
+	}
+	for (const base of [PAGE, PANEL, "var(--color-surface-raised)"]) {
+		check(`${state} native or prose selection on ${base}`, selectionInk, base, { layers: [fill], target: 4.5 });
+		if (state === "active") checkSurfaces(`active selection against ${base}`, base, [], [fill], 3);
+		else check(`inactive selection on muted prose in ${base}`, "var(--color-text-subtle)", base, { layers: [fill], target: 4.5 });
+	}
+	if (state === "inactive") {
+		for (const origin of ["add", "del"]) {
+			check(`inactive selection on stale ${origin} excerpt`, "var(--color-text-subtle)", PAGE, { layers: [...LINE_TINTS[origin], fill], target: 4.5 });
+		}
+	}
+	for (const [line, base, layers, marker] of [
+		["added word", PANEL, [...LINE_TINTS["selected add"], fill, "var(--color-diff-word-add-bg)", overlap], selectionValue("add-marker")],
+		["removed word", PANEL, [...LINE_TINTS["selected del"], fill, "var(--color-diff-word-delete-bg)", overlap], selectionValue("delete-marker")],
+		["rendered addition", PAGE, [fill, "var(--color-md-word-add-bg)", overlap], selectionValue("add-marker")],
+		["rendered deletion", PAGE, [fill, "var(--color-md-word-delete-bg)", overlap], selectionValue("delete-marker")],
+		["Find match", PANEL, ["var(--color-accent)", overlap], "var(--color-accent-strong)"],
+		["inline code", "var(--color-comment-card-bg)", [fill, "var(--color-muted-bg)", overlap], null],
+		["merge word", PAGE, ["var(--color-merge-current-line)", fill, "var(--color-merge-current-word)", overlap], selectionInk],
+		["trailing whitespace", PANEL, [...LINE_TINTS["selected del"], fill, "var(--color-trailing-ws-bg)", overlap], "var(--color-trailing-ws-fg)"],
+	]) {
+		check(`${state} selection on ${line}`, selectionInk, base, { layers, target: 4.5 });
+		if (marker) check(`${state} selected ${line} marker`, marker, base, { layers, target: 3 });
+	}
+}
 
 section("Merge comparison and editable Output");
 for (const hue of SYN) check(`context and Output syntax ${hue}`, `var(--color-syn-${hue})`, PAGE);
@@ -89,18 +138,7 @@ check("context line number", "var(--color-text-muted)", PAGE);
 check("whitespace in context and Output", "var(--color-invisible)", PAGE);
 check("trailing whitespace in context and Output", "var(--color-trailing-ws-fg)", PAGE, { layers: ["var(--color-trailing-ws-bg)"] });
 check("plain Output text", "var(--color-text)", PAGE);
-// WebKit darkens opaque textarea selection fills. Read the authored pair so
-// an opaque replacement cannot pass solely on its nominal contrast.
-const outputCss = readFileSync(new URL("../../src/components/MergeOutput.svelte", import.meta.url), "utf8");
-const selection = outputCss.match(/textarea::selection\s*\{([^}]+)\}/)?.[1] ?? "";
-const selectionInk = selection.match(/(?:^|;)\s*color:\s*([^;]+)/)?.[1];
-const selectionFill = selection.match(/background-color:\s*([^;]+)/)?.[1];
-if (!selectionInk || !selectionFill || resolve(selectionFill).a === 1) {
-	throw new Error("Merge Output needs explicit selection ink and a translucent fill for WebKit.");
-}
-check("selected Output text", selectionInk, PAGE, { layers: [selectionFill] });
 check("Output caret against the page", "var(--color-text)", PAGE, { target: 3 });
-checkSurfaces("Output selection against the page", PAGE, [], [selectionFill], 3);
 for (const [side, accent] of [["current", "var(--color-accent)"], ["incoming", "var(--color-accent-alt)"]]) {
 	const line = `var(--color-merge-${side}-line)`;
 	const word = `var(--color-merge-${side}-word)`;

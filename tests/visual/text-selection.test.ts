@@ -24,25 +24,27 @@ describe("diff text selection", () => {
 
 	test.for([
 		{
-			layout: "inline" as const,
+			view: { layout: "inline" as const },
 			lines: [
 				"nst start = 1;",
 				"const previous = 2;",
 				"const current = 2;",
 				"",
 			],
+			underlinedWords: ["previous", "current"],
 		},
 		{
-			layout: "split" as const,
+			view: { layout: "split" as const, crossColumns: true },
 			lines: ["nst start = 1;", "const current = 2;", ""],
+			underlinedWords: ["current"],
 		},
 	])(
-		"draws a continuous $layout selection across a blank line",
-		async ({ layout, lines }, context) => {
+		"draws an unbroken $view.layout selection without end marks",
+		async ({ view, lines, underlinedWords }, context) => {
 			const selection = await harness.dragDiffText(
 				EDITED,
 				FILE,
-				{ layout },
+				view,
 				["const start", "const finish"],
 				context,
 			);
@@ -51,6 +53,8 @@ describe("diff text selection", () => {
 				copied: `${lines.join("\n")}\n`,
 				visible: true,
 				fills: lines.map(() => 1),
+				endMarks: false,
+				underlinedWords,
 				gaps: lines.slice(1).map(() => 0),
 			});
 		},

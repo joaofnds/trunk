@@ -90,6 +90,12 @@
 	--accent-fg: oklch(0.14 0.03 245);
 	--accent-soft: oklch(0.3 0.08 245);
 
+	/* WebKit may keep the band in an inactive window while restoring the
+	   original ink. A lower strength keeps that ink readable. */
+	--selection-strength-active: 99%;
+	--selection-strength-inactive: 31%;
+	--selection-syntax-share: 8%;
+
 	/* ── Semantic status ── */
 	--ok: oklch(0.74 0.12 150);
 	--warn: oklch(0.82 0.14 90);

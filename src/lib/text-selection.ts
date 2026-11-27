@@ -3,6 +3,8 @@ const CODE = "[data-code-selection]";
 const PROSE =
 	"[data-prose-selection], .markdown-body:not([data-prose-selection] .markdown-body)";
 const BLOCK = "[data-prose-block], pre, p, h1, h2, h3, h4, h5, h6, li, td, th";
+const INLINE_MARK =
+	".word-add, .word-delete, .merge-word, .md-word-add, .md-word-delete, .invisible-char, [data-diff-match]";
 
 interface Slice {
 	element: HTMLElement;
@@ -121,13 +123,13 @@ interface Band {
 	left: number;
 	right: number;
 	top: number;
-	bottom: number;
 }
 
 interface PaintedBand extends Band {
 	element: HTMLElement;
 	x: number;
 	y: number;
+	height: number;
 }
 
 function measure(
@@ -159,7 +161,6 @@ function measure(
 			left,
 			right: rect.width ? rect.right : left + tail,
 			top,
-			bottom: top + height,
 		});
 	}
 
@@ -174,7 +175,6 @@ function measure(
 			left,
 			right: left + tail,
 			top,
-			bottom: top + height,
 		});
 	}
 
@@ -189,48 +189,46 @@ function measure(
 		) {
 			previous.right = Math.max(previous.right, band.right);
 		} else {
-			merged.push({ ...band, element, x, y });
+			merged.push({ ...band, element, x, y, height });
 		}
 	}
 
 	return merged;
 }
 
-function paintBand(band: PaintedBand, above?: Band, below?: Band) {
-	const { element, left, right, top, bottom, x, y } = band;
-	const joinsAbove = above && Math.abs(above.bottom - top) < 0.5;
-	const joinsBelow = below && Math.abs(below.top - bottom) < 0.5;
+function paintBand({ element, left, right, top, x, y, height }: PaintedBand) {
 	const paint = element.ownerDocument.createElement("span");
 	paint.className = "text-selection-paint";
 	paint.setAttribute("aria-hidden", "true");
-	paint.toggleAttribute("data-selection-start", !above);
-	paint.toggleAttribute("data-selection-end", !below);
 	paint.style.left = `${left - x}px`;
 	paint.style.top = `${top - y}px`;
 	paint.style.width = `${right - left}px`;
-	paint.style.height = `${bottom - top}px`;
-	if (joinsAbove) {
-		if (above.left <= left + 0.5 && above.right > left)
-			paint.style.borderTopLeftRadius = "0";
-		if (above.right >= right - 0.5 && above.left < right)
-			paint.style.borderTopRightRadius = "0";
-	}
-	if (joinsBelow) {
-		if (below.left <= left + 0.5 && below.right > left)
-			paint.style.borderBottomLeftRadius = "0";
-		if (below.right >= right - 0.5 && below.left < right)
-			paint.style.borderBottomRightRadius = "0";
-	}
-
+	paint.style.height = `${height}px`;
 	element.append(paint);
 	return paint;
+}
+
+function reflectSelection(
+	attribute: string,
+	previous: ReadonlySet<HTMLElement>,
+	next: ReadonlySet<HTMLElement>,
+) {
+	for (const element of previous) {
+		if (!next.has(element)) element.removeAttribute(attribute);
+	}
+	for (const element of next) {
+		if (!previous.has(element)) element.setAttribute(attribute, "");
+	}
 }
 
 export function installTextSelection(document: Document) {
 	let frame: number | undefined;
 	let surface: HTMLElement | undefined;
 	let paint: HTMLElement[] = [];
-	let proseBlocks = new Set<HTMLElement>();
+	let paintedBlocks = new Set<HTMLElement>();
+	let markedOverlaps = new Set<HTMLElement>();
+	const view = document.defaultView;
+	const root = document.documentElement;
 	const resize = new ResizeObserver(schedule);
 
 	function clear() {
@@ -263,27 +261,37 @@ export function installTextSelection(document: Document) {
 					),
 				)
 			: [];
-		paint = bands.map((band, index) =>
-			paintBand(band, bands[index - 1], bands[index + 1]),
-		);
+		paint = bands.map(paintBand);
 		code?.surface.toggleAttribute("data-code-selection-active", true);
 
-		const nextBlocks = code
-			? new Set<HTMLElement>()
-			: new Set(bands.map(({ element }) => element));
-		for (const block of proseBlocks) {
-			if (!nextBlocks.has(block))
-				block.removeAttribute("data-prose-selection-active");
+		const nextBlocks = new Set(bands.map(({ element }) => element));
+		const nextOverlaps = new Set<HTMLElement>();
+		for (const { element, range } of text ? text.slices : []) {
+			if (range.collapsed) continue;
+			for (const mark of element.querySelectorAll<HTMLElement>(INLINE_MARK)) {
+				if (
+					range.intersectsNode(mark) &&
+					intersect(mark, range).range.toString()
+				)
+					nextOverlaps.add(mark);
+			}
 		}
-		for (const block of nextBlocks) {
-			if (!proseBlocks.has(block))
-				block.setAttribute("data-prose-selection-active", "");
-		}
-		proseBlocks = nextBlocks;
+		reflectSelection("data-text-selection-active", paintedBlocks, nextBlocks);
+		reflectSelection(
+			"data-text-selection-overlap",
+			markedOverlaps,
+			nextOverlaps,
+		);
+		paintedBlocks = nextBlocks;
+		markedOverlaps = nextOverlaps;
 	}
 
 	function schedule() {
 		frame ??= requestAnimationFrame(update);
+	}
+
+	function syncFocus() {
+		root.toggleAttribute("data-selection-inactive", !document.hasFocus());
 	}
 
 	function copy(event: ClipboardEvent) {
@@ -308,14 +316,23 @@ export function installTextSelection(document: Document) {
 
 	document.addEventListener("selectionchange", schedule);
 	document.addEventListener("copy", copy);
+	view?.addEventListener("focus", syncFocus);
+	view?.addEventListener("blur", syncFocus);
+	syncFocus();
+
 	return () => {
 		document.removeEventListener("selectionchange", schedule);
 		document.removeEventListener("copy", copy);
+		view?.removeEventListener("focus", syncFocus);
+		view?.removeEventListener("blur", syncFocus);
+		root.removeAttribute("data-selection-inactive");
 		if (frame !== undefined) cancelAnimationFrame(frame);
 		resize.disconnect();
 		surface?.removeAttribute("data-code-selection-active");
-		for (const block of proseBlocks)
-			block.removeAttribute("data-prose-selection-active");
+		for (const block of paintedBlocks)
+			block.removeAttribute("data-text-selection-active");
+		for (const mark of markedOverlaps)
+			mark.removeAttribute("data-text-selection-overlap");
 		clear();
 	};
 }

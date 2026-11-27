@@ -97,53 +97,6 @@ export { diffLineText };
 	border-radius: var(--radius);
 }
 
-/* Syntax highlighting classes */
-.syn-keyword {
-	color: var(--color-syn-keyword);
-}
-.syn-string {
-	color: var(--color-syn-string);
-}
-.syn-comment {
-	color: var(--color-syn-comment);
-}
-.syn-number {
-	color: var(--color-syn-number);
-}
-.syn-type {
-	color: var(--color-syn-type);
-}
-.syn-function {
-	color: var(--color-syn-function);
-}
-.syn-variable {
-	color: var(--color-syn-variable);
-}
-.syn-constant {
-	color: var(--color-syn-constant);
-}
-.syn-operator {
-	color: var(--color-syn-operator);
-}
-.syn-punctuation {
-	color: var(--color-syn-punctuation);
-}
-.syn-attribute {
-	color: var(--color-syn-attribute);
-}
-.syn-tag {
-	color: var(--color-syn-tag);
-}
-.syn-property {
-	color: var(--color-syn-property);
-}
-.syn-regex {
-	color: var(--color-syn-regex);
-}
-.syn-escape {
-	color: var(--color-syn-escape);
-}
-
 /* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays
      in the text node (so it copies faithfully) at zero width via font-size:0; the
      ·/→ glyph is painted by a pseudo-element, never part of the selection/clipboard.
@@ -165,10 +118,8 @@ export { diffLineText };
 	color: var(--color-trailing-ws-fg);
 }
 
-/* Text on a word patch is the primary diff color, whatever its syntax class
-     or marker role. The patch is strong enough that no syntax hue clears AAA
-     on it (see --color-diff-word-add-bg); last so it wins every equal-
-     specificity color rule above. */
+/* The primary diff color clears AAA on a word patch. The scoped rule
+   outweighs the global syntax classes and comes after the whitespace colors. */
 .word-add,
 .word-delete,
 .word-add::before,

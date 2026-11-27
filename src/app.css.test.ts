@@ -337,14 +337,6 @@ describe("merge editor conflict header", () => {
 	});
 });
 
-/* indexOf returns -1 for a missing needle, and -1 loses every ordering
-   comparison silently. An ordering test must know it found both rules. */
-function ruleIndex(needle: string): number {
-	const i = css.indexOf(needle);
-	if (i < 0) throw new Error(`rule not found in app.css: ${needle}`);
-	return i;
-}
-
 describe("rendered markdown word marks", () => {
 	/* A rendered mark sits alone on the page, with no row tint under it, so it
 	   carries the change by itself: a tint at the same 2:1 step the source-view
@@ -374,24 +366,12 @@ describe("rendered markdown word marks", () => {
 	});
 
 	it("draws everything on a rendered mark in the primary diff color", () => {
-		/* At 38% no other hue in the theme clears AAA on the mark. The rule
-		   reaches descendants so a marked link or code span does not keep its
-		   own color, and it comes after every .markdown-body color rule it ties
-		   with on specificity (the .syn-* set), so source order makes it win. */
+		/* A marked link or code span also needs the primary color for AAA. */
 		const rule = css.match(
 			/\.markdown-body \.md-word-delete,\s*\.markdown-body \.md-word-add,\s*\.markdown-body \.md-word-delete \*,\s*\.markdown-body \.md-word-add \*\s*\{([^}]*)\}/,
 		)?.[1];
 		expect(rule).toBeDefined();
 		expect(rule).toMatch(/color:\s*var\(--color-diff-text\)/);
-
-		const markRule = ruleIndex(".markdown-body .md-word-delete,");
-		const synRules = [
-			...css.matchAll(
-				/:is\(\.markdown-body, \.comment-card-diff, \.syntax-highlight\) \.syn-[a-z]+ \{/g,
-			),
-		].map((m) => m.index);
-		expect(synRules.length).toBeGreaterThan(0);
-		expect(Math.max(...synRules)).toBeLessThan(markRule);
 	});
 
 	/* An image carries no text, so an inline mark around one paints its

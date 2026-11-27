@@ -8,9 +8,8 @@ import { describe, expect, it } from "vitest";
    jsdom does not cascade a scoped <style>, and scripts/contrast/re-audit-verify.mjs
    measures --color-diff-text on the patch without knowing the views put it
    there, so this reads the stylesheets as text, the way app.css.test.ts does.
-   The rule wins its ties (.syn-*, .invisible-char::before, .trailing-ws::before
-   are all one class or class plus pseudo, like it) by source order alone, so
-   it has to be the last color rule in the block. */
+   The scoped rule outranks global syntax colors. It wins its ties with
+   .invisible-char::before and .trailing-ws::before by source order. */
 
 const css = readFileSync(
 	resolve(process.cwd(), "src/components/diff/DiffLineText.svelte"),
@@ -36,9 +35,6 @@ describe("DiffLineText styles", () => {
 	it("places that rule after every color rule it ties with on specificity", () => {
 		const ruleAt = patchText?.index ?? -1;
 		expect(ruleAt).toBeGreaterThanOrEqual(0);
-		expect(lastIndexOfAll(css, /\.syn-[a-z]+ \{\s*color:/g)).toBeLessThan(
-			ruleAt,
-		);
 		expect(lastIndexOfAll(css, /^\.invisible-char::before \{/gm)).toBeLessThan(
 			ruleAt,
 		);

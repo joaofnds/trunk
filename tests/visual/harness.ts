@@ -209,7 +209,11 @@ export class VisualHarness {
 	dragDiffText(
 		repo: RepoSpec,
 		file: string,
-		view: { layout: "inline" | "split"; wrap?: boolean },
+		view: {
+			layout: "inline" | "split";
+			wrap?: boolean;
+			crossColumns?: boolean;
+		},
 		endpoints: readonly [string, string],
 		test: CaptureTest,
 	) {
@@ -541,7 +545,11 @@ class AppPage {
 	async dragDiffText(
 		repo: RepoSpec,
 		file: string,
-		{ layout, wrap }: { layout: "inline" | "split"; wrap?: boolean },
+		{
+			layout,
+			wrap,
+			crossColumns,
+		}: { layout: "inline" | "split"; wrap?: boolean; crossColumns?: boolean },
 		[first, last]: readonly [string, string],
 		abandoned: AbortSignal,
 	) {
@@ -557,30 +565,32 @@ class AppPage {
 		if (wrap) await this.page.getByTitle("Toggle word wrap").click(options);
 
 		const viewport = this.page.locator(".exact-virtual-viewport");
-		const lines = viewport.locator(
-			layout === "split"
-				? ".split-cell:not(.split-cell-left) .diff-line-content"
-				: ".diff-line-content",
-		);
-		const point = (text: string, column: number) =>
-			lines.filter({ hasText: text }).evaluate(
-				(line, column) => {
-					const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
-					let first = walker.nextNode();
-					while (first instanceof Text && first.length === 0)
-						first = walker.nextNode();
-					if (!(first instanceof Text)) throw new Error("Missing code text");
-					const caret = document.createRange();
-					caret.setStart(first, column);
-					caret.collapse(true);
-					const { left, top, height } = caret.getBoundingClientRect();
-					return { x: left + 1, y: top + height / 2 };
-				},
-				column,
-				options,
-			);
-		const start = await point(first, 2);
-		const end = await point(last, 0);
+		const point = (text: string, column: number, lane: string) =>
+			viewport
+				.locator(`${lane}.diff-line-content`)
+				.filter({ hasText: text })
+				.evaluate(
+					(line, column) => {
+						const walker = document.createTreeWalker(
+							line,
+							NodeFilter.SHOW_TEXT,
+						);
+						let first = walker.nextNode();
+						while (first instanceof Text && first.length === 0)
+							first = walker.nextNode();
+						if (!(first instanceof Text)) throw new Error("Missing code text");
+						const caret = document.createRange();
+						caret.setStart(first, column);
+						caret.collapse(true);
+						const { left, top, height } = caret.getBoundingClientRect();
+						return { x: left + 1, y: top + height / 2 };
+					},
+					column,
+					options,
+				);
+		const lane = layout === "split" ? ".split-cell:not(.split-cell-left) " : "";
+		const start = await point(first, 2, lane);
+		const end = await point(last, 0, crossColumns ? ".split-cell-left " : lane);
 		await this.page.mouse.move(start.x, start.y);
 		await this.page.mouse.down();
 		await this.page.mouse.move(end.x, end.y, { steps: 4 });
@@ -596,28 +606,37 @@ class AppPage {
 				const paint = Array.from(
 					element.querySelectorAll(".text-selection-paint"),
 					(band) => {
-						const { top, bottom, height } = band.getBoundingClientRect();
+						const { top, bottom, height, width } = band.getBoundingClientRect();
+						const style = getComputedStyle(band);
 						return {
 							top,
 							bottom,
 							height,
-							lineHeight: parseFloat(getComputedStyle(band).lineHeight),
+							lineHeight: parseFloat(style.lineHeight),
+							visible:
+								width > 1 &&
+								style.visibility === "visible" &&
+								style.opacity !== "0" &&
+								style.backgroundColor !== "rgba(0, 0, 0, 0)",
+							endMarks:
+								style.borderInlineStartWidth !== "0px" ||
+								style.borderInlineEndWidth !== "0px",
 						};
 					},
 				);
 				return {
 					copied: clipboard.getData("text/plain"),
-					visible: Array.from(
-						element.querySelectorAll(".text-selection-paint"),
-					).every((band) => {
-						const style = getComputedStyle(band);
-						return (
-							style.visibility === "visible" &&
-							style.opacity !== "0" &&
-							style.backgroundColor !== "rgba(0, 0, 0, 0)"
-						);
-					}),
+					visible: paint.length > 0 && paint.every((band) => band.visible),
 					fills: paint.map(({ height, lineHeight }) => height / lineHeight),
+					endMarks: paint.some((band) => band.endMarks),
+					underlinedWords: Array.from(
+						element.querySelectorAll(".word-add, .word-delete"),
+					)
+						.filter(
+							(word) =>
+								getComputedStyle(word).textDecorationLine === "underline",
+						)
+						.map((word) => word.textContent),
 					gaps: paint
 						.slice(1)
 						.map((band, index) => band.top - paint[index].bottom),

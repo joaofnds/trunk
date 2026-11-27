@@ -202,7 +202,7 @@ $effect(() => {
 		<pre
 			bind:this={mirror}
 			aria-hidden="true"
-			class="syntax-highlight pointer-events-none select-none overflow-hidden py-1 px-2"
+			class="pointer-events-none select-none overflow-hidden py-1 px-2"
 		>{#if large}<MergeText text={textareaText} showInvisibles={true} />{:else if current || markers}{@render paintedLines()}{:else}{displayText}{/if}{"\u200b"}</pre>
 	{/if}
 	<textarea
@@ -246,12 +246,6 @@ $effect(() => {
 	textarea.painted {
 		color: transparent;
 		caret-color: var(--color-text);
-	}
-	/* WebKit darkens opaque selection fills. An explicit alpha preserves the
-	   accent's contrast with the ink in the native text control. */
-	textarea::selection {
-		color: var(--color-on-accent);
-		background-color: color-mix(in oklch, var(--color-accent) 95%, transparent);
 	}
 }
 @media (forced-colors: active) {

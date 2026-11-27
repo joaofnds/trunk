@@ -19,55 +19,153 @@ body {
 	user-select: none;
 }
 
-[data-code-selection-active] [data-code-line],
-[data-prose-selection-active] {
-	position: relative;
-	isolation: isolate;
-}
-
 [data-code-line] {
 	display: block;
+}
+
+[data-text-selection-active] {
+	position: relative;
+	isolation: isolate;
 }
 
 .text-selection-paint {
 	position: absolute;
 	z-index: -1;
 	pointer-events: none;
-	border-radius: var(--radius);
 }
 
 @media (forced-colors: none) {
+	:root {
+		--selection-tone: color-mix(
+			in srgb,
+			var(--color-accent) 62%,
+			var(--color-bg)
+		);
+		--selection-strength: var(--selection-strength-active);
+		--selection-fill: color-mix(
+			in srgb,
+			var(--selection-tone) var(--selection-strength),
+			transparent
+		);
+		/* An inline mark sits above the band. Keep alpha explicit because
+		   WebKit darkens opaque native selection fills. */
+		--selection-overlap: color-mix(
+			in srgb,
+			color-mix(
+					in srgb,
+					var(--selection-tone) var(--selection-strength),
+					var(--color-surface)
+				)
+				98%,
+			transparent
+		);
+		--selection-inactive-rule: color-mix(
+			in srgb,
+			var(--color-accent) 81%,
+			var(--color-bg)
+		);
+		--selection-add-marker: color-mix(
+			in srgb,
+			var(--color-diff-add) 54%,
+			var(--color-text-strong)
+		);
+		--selection-delete-marker: color-mix(
+			in srgb,
+			var(--color-diff-delete) 54%,
+			var(--color-text-strong)
+		);
+	}
+
+	:root[data-selection-inactive] {
+		--selection-strength: var(--selection-strength-inactive);
+	}
+
+	::selection {
+		color: var(--color-text-strong);
+		background-color: var(--selection-fill);
+	}
+
+	.text-selection-paint {
+		background-color: var(--selection-fill);
+	}
+
+	:root[data-selection-inactive] .text-selection-paint {
+		box-shadow: inset 0 -1px var(--selection-inactive-rule);
+	}
+
+	/* A native range can cross both columns of a split diff. Only the projected
+	   side gets painted and recolored. Editable controls keep native selection. */
 	:where(
-		[data-code-selection-active] :not(input, textarea, [contenteditable]),
-		[data-prose-selection-active],
-		[data-prose-selection-active] *
+		[data-code-selection-active] :not(input, textarea, [contenteditable])
 	)::selection {
 		color: currentColor;
 		background-color: transparent;
 	}
 
+	[data-text-selection-active] {
+		--selection-inline-fill: transparent;
+	}
+
+	:where([data-text-selection-active], [data-text-selection-active] *) {
+		--selection-ink: color-mix(
+			in srgb,
+			var(--syntax-ink, var(--color-text-strong)) var(--selection-syntax-share),
+			var(--color-text-strong)
+		);
+	}
+
+	[data-text-selection-active]
+		:where(
+			code:not(pre code),
+			.word-add,
+			.word-delete,
+			.merge-word,
+			.md-word-add,
+			.md-word-delete,
+			.trailing-ws,
+			[data-diff-match]
+		) {
+		--selection-inline-fill: var(--selection-overlap);
+	}
+
+	[data-text-selection-overlap] {
+		--selection-syntax-share: 0%;
+	}
+
+	[data-text-selection-active]
+		[data-text-selection-overlap].invisible-char::before {
+		color: var(--color-text-strong);
+	}
+
 	:where(
-		:not(
-			[data-code-selection-active] :not(input, textarea, [contenteditable]),
-			[data-prose-selection-active],
-			[data-prose-selection-active] *
-		)
+		[data-text-selection-active],
+		[data-text-selection-active] *
 	)::selection {
-		color: var(--color-on-accent);
-		background-color: color-mix(in oklch, var(--color-accent) 95%, transparent);
+		color: var(--selection-ink);
+		background-color: var(--selection-inline-fill);
 	}
 
-	.text-selection-paint,
-	[data-prose-selection-active] code:not(pre code)::selection {
-		background-color: color-mix(in oklch, var(--color-accent) 22%, transparent);
+	/* Older WebKit paints only the decoration from the element itself. */
+	[data-text-selection-overlap]:is(.word-add, .word-delete, .merge-word) {
+		text-decoration-line: underline;
 	}
 
-	.text-selection-paint[data-selection-start] {
-		border-inline-start: 1px solid var(--color-accent);
+	[data-text-selection-overlap]:is(.word-add, .md-word-add) {
+		text-decoration-color: var(--selection-add-marker);
 	}
 
-	.text-selection-paint[data-selection-end] {
-		border-inline-end: 1px solid var(--color-accent);
+	[data-text-selection-overlap]:is(.word-delete, .md-word-delete) {
+		text-decoration-color: var(--selection-delete-marker);
+	}
+
+	[data-text-selection-overlap].merge-word {
+		text-decoration-color: var(--color-text-strong);
+	}
+
+	[data-text-selection-overlap][data-diff-match] {
+		text-decoration-line: underline;
+		text-decoration-style: dotted;
+		text-decoration-color: var(--color-accent-strong);
 	}
 }
 
@@ -220,6 +318,7 @@ textarea::placeholder {
 	margin: 0.6em 0;
 }
 .markdown-body a {
+	--syntax-ink: var(--color-accent);
 	color: var(--color-accent);
 	text-decoration: none;
 }
@@ -308,50 +407,65 @@ textarea::placeholder {
 .markdown-body del {
 	color: var(--color-text-muted);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-keyword {
-	color: var(--color-syn-keyword);
+.syn-keyword {
+	--syntax-ink: var(--color-syn-keyword);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-string {
-	color: var(--color-syn-string);
+.syn-string {
+	--syntax-ink: var(--color-syn-string);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-comment {
-	color: var(--color-syn-comment);
+.syn-comment {
+	--syntax-ink: var(--color-syn-comment);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-number {
-	color: var(--color-syn-number);
+.syn-number {
+	--syntax-ink: var(--color-syn-number);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-type {
-	color: var(--color-syn-type);
+.syn-type {
+	--syntax-ink: var(--color-syn-type);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-function {
-	color: var(--color-syn-function);
+.syn-function {
+	--syntax-ink: var(--color-syn-function);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-variable {
-	color: var(--color-syn-variable);
+.syn-variable {
+	--syntax-ink: var(--color-syn-variable);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-constant {
-	color: var(--color-syn-constant);
+.syn-constant {
+	--syntax-ink: var(--color-syn-constant);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-operator {
-	color: var(--color-syn-operator);
+.syn-operator {
+	--syntax-ink: var(--color-syn-operator);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-punctuation {
-	color: var(--color-syn-punctuation);
+.syn-punctuation {
+	--syntax-ink: var(--color-syn-punctuation);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-attribute {
-	color: var(--color-syn-attribute);
+.syn-attribute {
+	--syntax-ink: var(--color-syn-attribute);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-tag {
-	color: var(--color-syn-tag);
+.syn-tag {
+	--syntax-ink: var(--color-syn-tag);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-property {
-	color: var(--color-syn-property);
+.syn-property {
+	--syntax-ink: var(--color-syn-property);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-regex {
-	color: var(--color-syn-regex);
+.syn-regex {
+	--syntax-ink: var(--color-syn-regex);
+	color: var(--syntax-ink);
 }
-:is(.markdown-body, .comment-card-diff, .syntax-highlight) .syn-escape {
-	color: var(--color-syn-escape);
+.syn-escape {
+	--syntax-ink: var(--color-syn-escape);
+	color: var(--syntax-ink);
 }
 
 /* ── Rendered-markdown block-diff tints ──
