@@ -192,27 +192,88 @@ describe("StagingPanel", () => {
 			ontreeviewtoggle: vi.fn(),
 			...noReviewCounts(),
 		};
-		render(StagingPanel, { props });
+		const { rerender } = render(StagingPanel, { props });
 
-		const options = await screen.findByRole("combobox", {
-			name: "Tree view options",
+		await screen.findByRole("treeitem", { name: /^src/ });
+		const bulk = screen.getByRole("button", {
+			name: "Expand all directories",
 		});
+		const mode = screen.getByRole("switch", { name: "Switch to list view" });
+		bulk.focus();
+		await fireEvent.click(bulk);
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
 		expect(
-			within(options).getByRole("option", { name: "Switch to list view" }),
-		).toBeInTheDocument();
-		await fireEvent.change(options, { target: { value: "collapse" } });
-		expect(screen.getByRole("treeitem", { name: /src/ })).toHaveAttribute(
+			screen.getByRole("button", { name: "Collapse all directories" }),
+		).toBe(bulk);
+		expect(bulk).toHaveFocus();
+
+		await fireEvent.click(bulk);
+		expect(screen.queryByTitle("src/main.ts")).toBeNull();
+		expect(bulk).toHaveAccessibleName("Expand all directories");
+
+		await fireEvent.click(mode);
+		expect(props.ontreeviewtoggle).toHaveBeenCalledOnce();
+		await rerender({ treeViewEnabled: false });
+		expect(screen.getByRole("switch", { name: "Switch to tree view" })).toBe(
+			mode,
+		);
+		expect(bulk).not.toBeInTheDocument();
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+	});
+
+	it("applies one action across open staging sections and skips a closed section", async () => {
+		mockInvoke.mockImplementation(async (command) => {
+			if (command === "get_status")
+				return {
+					unstaged: [
+						{ path: "src/main.ts", status: "Modified", is_binary: false },
+						{ path: "src/deep/one.ts", status: "Modified", is_binary: false },
+					],
+					staged: [{ path: "docs/guide.md", status: "New", is_binary: false }],
+					conflicted: [
+						{ path: "lib/merge.ts", status: "Conflicted", is_binary: false },
+					],
+				};
+		});
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo", treeViewEnabled: true },
+		});
+
+		await fireEvent.click(
+			await screen.findByRole("treeitem", { name: /^src / }),
+		);
+		const staged = screen.getByRole("button", { name: /^Staged files/ });
+		await fireEvent.click(staged);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Expand all directories" }),
+		);
+
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+		expect(screen.getByTitle("src/deep/one.ts")).toBeVisible();
+		expect(screen.getByTitle("lib/merge.ts")).toBeVisible();
+		expect(screen.queryByRole("treeitem", { name: /^docs / })).toBeNull();
+		const collapse = screen.getByRole("button", {
+			name: "Collapse all directories",
+		});
+
+		await fireEvent.click(staged);
+		expect(screen.getByRole("treeitem", { name: /^docs / })).toHaveAttribute(
 			"aria-expanded",
 			"false",
 		);
-		await fireEvent.change(options, { target: { value: "expand" } });
-		expect(screen.getByRole("treeitem", { name: /src/ })).toHaveAttribute(
-			"aria-expanded",
-			"true",
-		);
-		await fireEvent.change(options, { target: { value: "list" } });
-		expect(props.ontreeviewtoggle).toHaveBeenCalledOnce();
-		expect(options).toHaveValue("");
+		expect(collapse).toHaveAccessibleName("Expand all directories");
+
+		await fireEvent.click(collapse);
+		expect(screen.getByTitle("docs/guide.md")).toBeVisible();
+		await fireEvent.click(collapse);
+		for (const path of [
+			"src/main.ts",
+			"src/deep/one.ts",
+			"lib/merge.ts",
+			"docs/guide.md",
+		]) {
+			expect(screen.queryByTitle(path)).toBeNull();
+		}
 	});
 
 	it("renders without crashing", () => {

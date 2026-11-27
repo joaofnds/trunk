@@ -53,7 +53,7 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 	const onswap = vi.fn();
 	const onclose = vi.fn();
 	const onfileselect = vi.fn();
-	render(ComparePanel, {
+	const { rerender } = render(ComparePanel, {
 		props: {
 			base,
 			target,
@@ -66,7 +66,7 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 			...overrides,
 		},
 	});
-	return { onswap, onclose, onfileselect };
+	return { onswap, onclose, onfileselect, rerender };
 }
 
 describe("ComparePanel", () => {
@@ -195,12 +195,44 @@ describe("ComparePanel", () => {
 		expect(screen.queryByTitle("src/main.ts")).toBeNull();
 		expect(onfileselect).not.toHaveBeenCalled();
 
-		await fireEvent.keyDown(filter, { key: "Escape" });
+		const bulk = screen.getByRole("button", {
+			name: "Collapse all directories",
+		});
+		await fireEvent.click(bulk);
+		expect(screen.queryByTitle("old/Foo.ts → lib/new.ts")).toBeNull();
+		expect(screen.getByText("1 of 2 files changed")).toBeVisible();
+		await fireEvent.click(bulk);
+		expect(screen.getByTitle("old/Foo.ts → lib/new.ts")).toBeVisible();
+
+		await fireEvent.click(bulk);
+		await fireEvent.input(filter, { target: { value: "main" } });
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+
+		bulk.focus();
+		await fireEvent.keyDown(bulk, { key: "Escape" });
 		expect(tree).toHaveFocus();
 		expect(screen.getByText("2 files changed")).toBeVisible();
 		expect(screen.getByTitle("src/main.ts")).toBeVisible();
 		expect(screen.queryByTitle("old/Foo.ts → lib/new.ts")).toBeNull();
 		expect(onfileselect).not.toHaveBeenCalled();
+	});
+
+	it("returns focus to the filter trigger when the directory action becomes disabled", async () => {
+		stubLayout({ width: 300, height: 4000 });
+		onTestFinished(restoreLayout);
+		const { rerender } = renderPanel({ treeViewEnabled: true });
+		const bulk = screen.getByRole("button", { name: "Expand all directories" });
+
+		bulk.focus();
+		await fireEvent.keyDown(bulk, { key: "/" });
+		const filter = screen.getByRole("textbox", { name: "Filter files" });
+		expect(filter).toHaveFocus();
+		await rerender({ fileDiffs: [{ ...fileDiffs[0], path: "README.md" }] });
+		expect(bulk).toBeDisabled();
+
+		await fireEvent.keyDown(filter, { key: "Escape" });
+		expect(screen.getByRole("button", { name: "Filter files" })).toHaveFocus();
+		expect(screen.getByTitle("README.md")).toBeVisible();
 	});
 
 	it("closes through the close button", async () => {

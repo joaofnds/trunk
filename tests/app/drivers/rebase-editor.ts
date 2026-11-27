@@ -8,7 +8,8 @@ const TOOLBAR = ".rebase-toolbar-meta";
 const START = "Start Rebase";
 const CANCEL = 'button[aria-label="Cancel rebase preview"]';
 const FILE_ROW = '[data-testid="staging-file"]';
-const DETAIL_SUMMARY = ".commit-message .summary";
+const DETAIL_SUMMARY =
+	'section[aria-label="Interactive rebase"] .commit-message .summary';
 const DIFF_PATH = '[data-testid="diff-path"]';
 const CLOSE_DIFF = '[aria-label="Close diff"]';
 

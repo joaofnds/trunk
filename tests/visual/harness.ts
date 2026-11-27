@@ -240,6 +240,17 @@ export class VisualHarness {
 		);
 	}
 
+	inspectFileTrees<T>(
+		repo: RepoSpec,
+		width: number,
+		test: CaptureTest,
+		read: (page: Page) => Promise<T>,
+	): Promise<T> {
+		return this.onPage(test, (page) =>
+			page.inspectFileTrees(repo, width, test.signal, read),
+		);
+	}
+
 	readInlineReview(
 		repo: RepoSpec,
 		file: string,
@@ -605,6 +616,25 @@ class AppPage {
 				options,
 			);
 			return { sectionWidth, labelFits, actionFits, gutterCollapses };
+		} finally {
+			await this.page.setViewportSize(VIEWPORT);
+		}
+	}
+
+	async inspectFileTrees<T>(
+		repo: RepoSpec,
+		width: number,
+		abandoned: AbortSignal,
+		read: (page: Page) => Promise<T>,
+	): Promise<T> {
+		await this.page.setViewportSize({ width: VIEWPORT.width, height: 600 });
+		try {
+			await this.openRepository(
+				repo,
+				{ right_pane_width: width, tree_view_enabled: true },
+				abandoned,
+			);
+			return await read(this.page);
 		} finally {
 			await this.page.setViewportSize(VIEWPORT);
 		}

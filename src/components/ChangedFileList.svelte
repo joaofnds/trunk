@@ -1,6 +1,4 @@
 <script lang="ts">
-import FolderTree from "@lucide/svelte/icons/folder-tree";
-import List from "@lucide/svelte/icons/list";
 import { showFilePathMenu } from "../lib/file-menu.js";
 import { fileKey, toFileStatusList } from "../lib/file-status.js";
 import { filterShortcut } from "../lib/filter-shortcut.js";
@@ -11,7 +9,7 @@ import type {
 	FileStatus,
 	ReviewTally,
 } from "../lib/types.js";
-import Button from "../lib/ui/Button.svelte";
+import FileViewControls from "./FileViewControls.svelte";
 import ListFilter from "./ListFilter.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
@@ -44,6 +42,7 @@ let {
 let query = $state("");
 let open = $state(false);
 let filter: ListFilter;
+let tree = $state<TreeFileList | null>(null);
 const files = $derived(toFileStatusList(fileDiffs));
 const filterPaths = $derived(createPathFilter(files));
 const matches = $derived(filterPaths(query));
@@ -69,6 +68,7 @@ function showContextMenu(
 >
 	<div
 		class="min-h-bar py-1 px-3 flex items-center gap-1 shadow-hairline shrink-0"
+		class:flex-wrap={open && treeViewEnabled}
 	>
 		<div
 			class={open
@@ -92,7 +92,7 @@ function showContextMenu(
 				{/if}
 			</span>
 			{#if !open && stat && (stat.insertions > 0 || stat.deletions > 0)}
-				<span class="inline-flex gap-2 font-mono text-caption">
+				<span class="inline-flex flex-wrap gap-x-2 font-mono text-caption">
 					{#if stat.insertions > 0}
 						<span class="text-diff-add">+{stat.insertions}</span>
 					{/if}
@@ -102,32 +102,32 @@ function showContextMenu(
 				</span>
 			{/if}
 		</div>
-		<ListFilter bind:this={filter} label="Filter files" bind:query bind:open />
-		{#if ontreeviewtoggle}
-			<Button
-				icon
-				size="sm"
-				variant="ghost"
-				role="switch"
-				aria-checked={treeViewEnabled}
-				aria-label={treeViewEnabled
-					? "Switch to list view"
-					: "Switch to tree view"}
-				title={treeViewEnabled ? "List view" : "Tree view"}
-				onclick={ontreeviewtoggle}
-			>
-				{#if treeViewEnabled}
-					<FolderTree size={14} />
-				{:else}
-					<List size={14} />
-				{/if}
-			</Button>
-		{/if}
+		<div
+			class="flex items-center gap-1"
+			class:filter-controls={open}
+			class:min-w-0={open}
+			class:shrink-0={!open}
+		>
+			<ListFilter
+				bind:this={filter}
+				label="Filter files"
+				bind:query
+				bind:open
+			/>
+			<FileViewControls
+				treeMode={treeViewEnabled}
+				expansion={tree?.directoryExpansion() ?? "empty"}
+				onsetexpanded={(expanded) => tree?.setDirectoriesExpanded(expanded)}
+				onbulkkeydown={(event) => filter?.handleKeydown(event)}
+				onviewtoggle={ontreeviewtoggle}
+			/>
+		</div>
 	</div>
 	{#if query && !matches.length}
 		<p class="px-3 py-2 text-small text-text-muted">No matching files</p>
 	{/if}
 	<TreeFileList
+		bind:this={tree}
 		files={matches}
 		filterQuery={query}
 		treeMode={treeViewEnabled}
@@ -140,3 +140,9 @@ function showContextMenu(
 		{commentTallies}
 	/>
 </div>
+
+<style>
+.filter-controls {
+	flex: 1 1 max-content;
+}
+</style>

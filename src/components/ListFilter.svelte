@@ -36,15 +36,17 @@ async function close() {
 	open = false;
 	await tick();
 	const target =
-		opener?.isConnected && opener !== document.body
+		opener?.isConnected &&
+		opener !== document.body &&
+		!opener.matches(":disabled")
 			? opener
 			: host?.querySelector("button");
 	target?.focus({ preventScroll: true });
 	opener = null;
 }
 
-function keydown(event: KeyboardEvent) {
-	if (event.key === "Escape" && !event.isComposing) {
+export function handleKeydown(event: KeyboardEvent) {
+	if (open && event.key === "Escape" && !event.isComposing) {
 		event.preventDefault();
 		event.stopPropagation();
 		void close();
@@ -66,7 +68,7 @@ function keydown(event: KeyboardEvent) {
 			bind:value={query}
 			aria-label={label}
 			placeholder={`${label}…`}
-			onkeydown={keydown}
+			onkeydown={handleKeydown}
 		>
 		<Button
 			icon
@@ -75,7 +77,7 @@ function keydown(event: KeyboardEvent) {
 			aria-label={`Close ${label.toLowerCase()}`}
 			tooltip="Clear and close filter (Esc)"
 			onclick={close}
-			onkeydown={keydown}
+			onkeydown={handleKeydown}
 		>
 			<X size={14} />
 		</Button>

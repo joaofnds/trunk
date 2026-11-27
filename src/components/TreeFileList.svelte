@@ -1,5 +1,9 @@
+<script module lang="ts">
+export type DirectoryExpansion = "empty" | "expandable" | "expanded";
+</script>
+
 <script lang="ts">
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import {
 	buildTree,
 	collectFilePaths,
@@ -39,8 +43,6 @@ interface Props {
 		dirPath: string,
 	) => void;
 	selectedPath?: string | null;
-	expandAllSignal?: number;
-	collapseAllSignal?: number;
 	/** path → review-comment count for this list's OID. Empty (default) hides
 	 *  all badges, which is how the toggle/active gate reaches the rows. */
 	commentCounts?: Map<string, number>;
@@ -59,8 +61,6 @@ let {
 	ondirectoryaction,
 	ondirectorycontextmenu,
 	selectedPath = null,
-	expandAllSignal = 0,
-	collapseAllSignal = 0,
 	commentCounts,
 	commentTallies,
 }: Props = $props();
@@ -70,6 +70,7 @@ let focusIndex = $state(0);
 let lastFocusedPath = $state<string | null>(null);
 let list = $state<HTMLElement>();
 let listFocused = $state(false);
+let keepViewportForSelection: string | null = null;
 // The part of the list in sight, in the list's own content coordinates.
 let viewTop = $state(0);
 let viewHeight = $state(0);
@@ -94,6 +95,18 @@ function trackFocusLeaving(e: FocusEvent) {
 	listFocused = next instanceof Node && list?.contains(next) === true;
 }
 
+async function trackTreeFocus(e: FocusEvent) {
+	listFocused = true;
+	const tree = list;
+	if (e.target !== tree) return;
+
+	const previous = e.relatedTarget;
+	if (previous instanceof Node && tree?.contains(previous)) return;
+
+	await tick();
+	if (list === tree && document.activeElement === tree) revealRow(focusIndex);
+}
+
 // Track previous tree mode to detect actual changes (not initial render)
 let prevTreeMode: boolean | undefined;
 
@@ -116,9 +129,40 @@ let matchingExpanded = $derived.by(() => {
 	void filterQuery;
 	return dirPaths;
 });
+const activeExpansion = $derived(filterQuery ? matchingExpanded : expanded);
+const expansion = $derived.by((): DirectoryExpansion => {
+	if (!treeMode || dirPaths.size === 0) return "empty";
+	if (activeExpansion === dirPaths) return "expanded";
+	if (activeExpansion.size < dirPaths.size) return "expandable";
+
+	for (const path of dirPaths) {
+		if (!activeExpansion.has(path)) return "expandable";
+	}
+
+	return "expanded";
+});
+
+export function directoryExpansion(): DirectoryExpansion {
+	return expansion;
+}
+
+export function setDirectoriesExpanded(shouldExpand: boolean) {
+	if (expansion === "empty") return;
+	if (shouldExpand ? expansion === "expanded" : activeExpansion.size === 0)
+		return;
+
+	keepViewportForSelection = selectedPath;
+	setExpansion(shouldExpand ? dirPaths : new Set());
+}
+
+function setExpansion(next: Set<string>) {
+	if (filterQuery) matchingExpanded = next;
+	else expanded = next;
+}
+
 let flatRows = $derived<FlatRow[]>(
 	treeMode
-		? flattenTree(tree, filterQuery ? matchingExpanded : expanded)
+		? flattenTree(tree, activeExpansion)
 		: files.map((f) => ({
 				type: "file" as const,
 				depth: 0,
@@ -148,28 +192,12 @@ $effect(() => {
 	prevTreeMode = currentMode;
 });
 
-// Expand All signal: when incremented, expand all directories
-let prevExpandAll = 0;
-$effect(() => {
-	if (expandAllSignal > 0 && expandAllSignal !== prevExpandAll) {
-		prevExpandAll = expandAllSignal;
-		if (filterQuery) matchingExpanded = dirPaths;
-		else expanded = dirPaths;
-	}
-});
-
-// Collapse All signal: when incremented, collapse all directories
-let prevCollapseAll = 0;
-$effect(() => {
-	if (collapseAllSignal > 0 && collapseAllSignal !== prevCollapseAll) {
-		prevCollapseAll = collapseAllSignal;
-		if (filterQuery) matchingExpanded = new Set();
-		else expanded = new Set();
-	}
-});
-
 // Sync focusIndex when parent sets selectedPath (e.g. auto-advance)
 $effect(() => {
+	// A bulk action can put the selected row below the viewport. Revealing it
+	// here would also scroll the toolbar away in commit details.
+	const keepViewport = selectedPath === keepViewportForSelection;
+	keepViewportForSelection = null;
 	if (selectedPath && flatRows.length > 0) {
 		const idx = flatRows.findIndex(
 			(r) => r.type === "file" && r.node.path === selectedPath,
@@ -177,7 +205,7 @@ $effect(() => {
 		if (idx >= 0) {
 			focusIndex = idx;
 			lastFocusedPath = selectedPath;
-			untrack(() => revealRow(idx));
+			if (!keepViewport) untrack(() => revealRow(idx));
 		}
 	}
 });
@@ -305,14 +333,13 @@ function takeFocus() {
 }
 
 function toggleExpanded(path: string) {
-	const next = new Set(filterQuery ? matchingExpanded : expanded);
+	const next = new Set(activeExpansion);
 	if (next.has(path)) {
 		next.delete(path);
 	} else {
 		next.add(path);
 	}
-	if (filterQuery) matchingExpanded = next;
-	else expanded = next;
+	setExpansion(next);
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -472,7 +499,7 @@ function handleKeydown(e: KeyboardEvent) {
 		role="tree"
 		tabindex="0"
 		onkeydown={handleKeydown}
-		onfocusin={() => (listFocused = true)}
+		onfocusin={trackTreeFocus}
 		onfocusout={trackFocusLeaving}
 		class={LIST}
 		class:cursor-active={listFocused}

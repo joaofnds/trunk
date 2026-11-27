@@ -2,10 +2,6 @@
 import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
-import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
-import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
-import FolderTree from "@lucide/svelte/icons/folder-tree";
-import List from "@lucide/svelte/icons/list";
 import Trash2 from "@lucide/svelte/icons/trash-2";
 import { onDestroy } from "svelte";
 import { copyText } from "../lib/clipboard.js";
@@ -31,7 +27,6 @@ import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
-import { tooltip } from "../lib/tooltip.js";
 import type {
 	FileStatus,
 	FileStatusType,
@@ -48,9 +43,10 @@ import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 import CommitForm from "./CommitForm.svelte";
+import FileViewControls from "./FileViewControls.svelte";
 import ListFilter from "./ListFilter.svelte";
 import OperationBanner from "./OperationBanner.svelte";
-import TreeFileList from "./TreeFileList.svelte";
+import TreeFileList, { type DirectoryExpansion } from "./TreeFileList.svelte";
 
 interface Props {
 	mergePicks?: MergePicksStore;
@@ -105,7 +101,6 @@ let {
 const scheduler = getScheduler();
 
 let panelWidth = $state(0);
-// At narrower widths the tree buttons squeeze even a short branch out of its chip.
 const compactHeader = $derived(panelWidth > 0 && panelWidth < 280);
 
 let status = $state.raw<WorkingTreeStatus | null>(null);
@@ -211,8 +206,24 @@ let panelActive = true;
 let conflicted_expanded = $state(true);
 let operationInfo = $state<OperationInfo | null>(null);
 
-let expandAllSignal = $state(0);
-let collapseAllSignal = $state(0);
+let conflictedTree = $state<TreeFileList | null>(null);
+let unstagedTree = $state<TreeFileList | null>(null);
+let stagedTree = $state<TreeFileList | null>(null);
+const fileTrees = $derived([conflictedTree, unstagedTree, stagedTree]);
+const directoryExpansion = $derived.by((): DirectoryExpansion => {
+	let anyExpanded = false;
+	for (const tree of fileTrees) {
+		const expansion = tree?.directoryExpansion();
+		if (expansion === "expandable") return "expandable";
+		if (expansion === "expanded") anyExpanded = true;
+	}
+
+	return anyExpanded ? "expanded" : "empty";
+});
+
+function setDirectoriesExpanded(expanded: boolean) {
+	for (const tree of fileTrees) tree?.setDirectoriesExpanded(expanded);
+}
 
 let isMerge = $derived(operationInfo?.op_type === "Merge");
 let isRebase = $derived(operationInfo?.op_type === "Rebase");
@@ -552,14 +563,6 @@ async function handleDiscardDirectory(dirPath: string, files: FileStatus[]) {
 			"success",
 		);
 	});
-}
-
-function chooseTreeOption(select: HTMLSelectElement) {
-	const action = select.value;
-	select.value = "";
-	if (action === "list") ontreeviewtoggle?.();
-	if (action === "expand") expandAllSignal++;
-	if (action === "collapse") collapseAllSignal++;
 }
 
 async function showUnstagedContextMenu(
@@ -1136,80 +1139,13 @@ registerUpdateBlocker(() => {
 				bind:query
 				bind:open={filterOpen}
 			/>
-			{#if compactHeader && treeViewEnabled}
-				<div
-					class="inline-grid w-control-lg shrink-0 grid-cols-1 rounded h-control-sm text-text-muted hover:bg-hover hover:text-text has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-accent"
-				>
-					<span
-						class="col-start-1 row-start-1 inline-flex items-center justify-center gap-1"
-						aria-hidden="true"
-					>
-						<FolderTree size={14} />
-						<ChevronDown size={10} />
-					</span>
-					<select
-						class="col-start-1 row-start-1 w-0 min-w-full opacity-0 cursor-pointer"
-						aria-label="Tree view options"
-						use:tooltip={"Tree view options"}
-						onchange={(event) => chooseTreeOption(event.currentTarget)}
-					>
-						<option value="" hidden>Tree view options</option>
-						<option value="list">Switch to list view</option>
-						<option value="expand">Expand all directories</option>
-						<option value="collapse">Collapse all directories</option>
-					</select>
-				</div>
-			{:else}
-				{#if treeViewEnabled}
-					<Button
-						icon
-						size="sm"
-						variant="ghost"
-						aria-label="Expand all directories"
-						title="Expand All"
-						onclick={(e) => {
-							e.stopPropagation();
-							expandAllSignal++;
-						}}
-					>
-						<ChevronsUpDown size={14} />
-					</Button>
-					<Button
-						icon
-						size="sm"
-						variant="ghost"
-						aria-label="Collapse all directories"
-						title="Collapse All"
-						onclick={(e) => {
-							e.stopPropagation();
-							collapseAllSignal++;
-						}}
-					>
-						<ChevronsDownUp size={14} />
-					</Button>
-				{/if}
-				<Button
-					icon
-					size="sm"
-					variant="ghost"
-					role="switch"
-					aria-checked={treeViewEnabled}
-					aria-label={treeViewEnabled
-						? "Switch to list view"
-						: "Switch to tree view"}
-					title={treeViewEnabled ? "List view" : "Tree view"}
-					onclick={(e) => {
-						e.stopPropagation();
-						ontreeviewtoggle?.();
-					}}
-				>
-					{#if treeViewEnabled}
-						<FolderTree size={14} />
-					{:else}
-						<List size={14} />
-					{/if}
-				</Button>
-			{/if}
+			<FileViewControls
+				treeMode={treeViewEnabled}
+				expansion={directoryExpansion}
+				onsetexpanded={setDirectoriesExpanded}
+				onbulkkeydown={(event) => filter?.handleKeydown(event)}
+				onviewtoggle={() => ontreeviewtoggle?.()}
+			/>
 		</div>
 
 		<!-- Operation banners -->
@@ -1303,6 +1239,7 @@ registerUpdateBlocker(() => {
 
 					{#if conflicted_expanded}
 						<TreeFileList
+							bind:this={conflictedTree}
 							files={conflictedMatches}
 							filterQuery={query}
 							treeMode={treeViewEnabled}
@@ -1316,8 +1253,6 @@ registerUpdateBlocker(() => {
 							ondirectorycontextmenu={(e, dirPath) =>
 								showConflictedDirContextMenu(e, dirPath)}
 							selectedPath={selectedKind === "conflicted" ? selectedPath : null}
-							{expandAllSignal}
-							{collapseAllSignal}
 						/>
 					{/if}
 				</div>
@@ -1381,6 +1316,7 @@ registerUpdateBlocker(() => {
 
 					{#if unstaged_expanded}
 						<TreeFileList
+							bind:this={unstagedTree}
 							files={unstagedMatches}
 							filterQuery={query}
 							treeMode={treeViewEnabled}
@@ -1397,8 +1333,6 @@ registerUpdateBlocker(() => {
 							selectedPath={selectedKind === "unstaged" ? selectedPath : null}
 							commentCounts={unstagedCommentCounts}
 							commentTallies={unstagedCommentTallies}
-							{expandAllSignal}
-							{collapseAllSignal}
 						/>
 					{/if}
 				</div>
@@ -1447,6 +1381,7 @@ registerUpdateBlocker(() => {
 
 				{#if staged_expanded}
 					<TreeFileList
+						bind:this={stagedTree}
 						files={stagedMatches}
 						filterQuery={query}
 						treeMode={treeViewEnabled}
@@ -1463,8 +1398,6 @@ registerUpdateBlocker(() => {
 						selectedPath={selectedKind === "staged" ? selectedPath : null}
 						commentCounts={stagedCommentCounts}
 						commentTallies={stagedCommentTallies}
-						{expandAllSignal}
-						{collapseAllSignal}
 					/>
 				{/if}
 			</div>
