@@ -128,36 +128,34 @@ function autofocus(node: HTMLElement) {
 		</span>
 	{/if}
 
-	<Button
-		icon
-		size="base"
-		variant="ghost"
-		aria-label="Previous match"
-		onkeydown={handleKeydown}
-		tooltip="Previous match (Shift+Enter)"
-		disabled={totalMatches === 0}
-		onclick={onprev}
-	>
-		<ChevronUp size={14} />
-	</Button>
+	<div class="flex gap-1 me-1">
+		<Button
+			icon
+			size="base"
+			variant="ghost"
+			aria-label="Previous match"
+			onkeydown={handleKeydown}
+			tooltip="Previous match (Shift+Enter)"
+			disabled={totalMatches === 0}
+			onclick={onprev}
+		>
+			<ChevronUp size={14} />
+		</Button>
 
-	<Button
-		icon
-		size="base"
-		variant="ghost"
-		aria-label="Next match"
-		onkeydown={handleKeydown}
-		tooltip="Next match (Enter)"
-		disabled={totalMatches === 0}
-		onclick={onnext}
-	>
-		<ChevronDown size={14} />
-	</Button>
+		<Button
+			icon
+			size="base"
+			variant="ghost"
+			aria-label="Next match"
+			onkeydown={handleKeydown}
+			tooltip="Next match (Enter)"
+			disabled={totalMatches === 0}
+			onclick={onnext}
+		>
+			<ChevronDown size={14} />
+		</Button>
+	</div>
 
-	<span
-		class="mx-1 h-4 w-px shrink-0 bg-border-strong"
-		aria-hidden="true"
-	></span>
 	<Button
 		icon
 		size="base"
