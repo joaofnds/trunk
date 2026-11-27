@@ -2,11 +2,13 @@
 import Search from "@lucide/svelte/icons/search";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
+import { MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { exactDate } from "../lib/exact-date.js";
 import { findScope } from "../lib/find-scope.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { onMac } from "../lib/keyboard.js";
+import type { MatchRange } from "../lib/literal-pattern.js";
 import { nativeMenu } from "../lib/native-menu.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
@@ -102,22 +104,49 @@ const uid = $props.id();
 const messageEditorId = `${uid}-message-editor`;
 let listEl: HTMLDivElement | undefined = $state();
 
-let planFind = $state<ReturnType<typeof PaneFind<number>>>();
-const foundRow = $derived(planFind?.currentMatch());
+interface PlanMatch extends MatchRange {
+	row: number;
+	field: "message" | "sha";
+}
+
+let planFind = $state<ReturnType<typeof PaneFind<PlanMatch>>>();
+const found = $derived(planFind?.currentMatch());
 
 export function openFind() {
 	if (!starting) planFind?.openFind();
 }
 
-function matchingCommits(query: string): number[] {
+function messageMatch(text: string, needle: string): MatchRange | undefined {
+	const lower = text.toLowerCase();
+	const at = lower.indexOf(needle);
+	if (at < 0) return;
+	const until = at + needle.length;
+	if (lower.length === text.length) return { start: at, end: until };
+
+	// Lowercasing İ produces two code points. Any hit touching either
+	// belongs to the same source letter when the row paints the result.
+	let lowerOffset = 0;
+	let start = 0;
+	let end = 0;
+	for (const letter of text) {
+		if (lowerOffset <= at) start = end;
+		end += letter.length;
+		lowerOffset += letter.toLowerCase().length;
+		if (lowerOffset >= until) break;
+	}
+	return { start, end };
+}
+
+function matchingCommits(query: string): PlanMatch[] {
 	const needle = query.toLowerCase();
-	const rows: number[] = [];
-	for (const [idx, item] of items.entries()) {
-		if (
-			(item.newMessage ?? item.summary).toLowerCase().includes(needle) ||
-			item.oid.startsWith(needle)
-		)
-			rows.push(idx);
+	const rows: PlanMatch[] = [];
+	for (const [row, item] of items.entries()) {
+		const hit = messageMatch(item.newMessage ?? item.summary, needle);
+		if (hit) {
+			rows.push({ row, field: "message", ...hit });
+		} else if (item.oid.startsWith(needle)) {
+			rows.push({ row, field: "sha", start: 0, end: query.length });
+		}
 	}
 	return rows;
 }
@@ -125,15 +154,18 @@ function matchingCommits(query: string): number[] {
 // Finding only moves the reading position. Selecting a row reads its files
 // and stats, so commit that selection once when the reader leaves Find.
 $effect(() => {
-	if (foundRow !== undefined) scrollRowIntoView(foundRow);
+	if (found)
+		listEl
+			?.querySelector("mark")
+			?.scrollIntoView({ block: "nearest", inline: "nearest" });
 });
 
-function leaveFind(idx: number | undefined) {
+function leaveFind(match: PlanMatch | undefined) {
 	if (editingIdx !== null) {
 		document.getElementById(messageEditorId)?.querySelector("input")?.focus();
 		return;
 	}
-	if (idx !== undefined) focusedIndex = idx;
+	if (match) focusedIndex = match.row;
 	listEl
 		?.querySelector<HTMLElement>(`[data-rebase-row="${focusedIndex}"]`)
 		?.focus();
@@ -218,6 +250,24 @@ const MIN_WIDTHS: RebaseColumnWidths = {
 	author: headerMinAuthor,
 	date: headerMinDate,
 };
+const metadataColumns = ["sha", "author", "date"] as const;
+const tableTracks = $derived.by(() => {
+	const visible = metadataColumns.filter((column) => columnVisibility[column]);
+	const metadataFloor = visible.reduce(
+		(sum, column) => sum + MIN_WIDTHS[column],
+		0,
+	);
+	const room = `100% - var(--rebase-action-width) - ${metadataFloor}px`;
+	const message = `minmax(clamp(0px, ${room}, ${MESSAGE_FLOOR}px), 1fr)`;
+	return [
+		"var(--rebase-action-width)",
+		message,
+		...visible.map(
+			(column) => `minmax(${MIN_WIDTHS[column]}px, ${columnWidths[column]}px)`,
+		),
+	].join(" ");
+});
+
 const MAX_WIDTHS: RebaseColumnWidths = { sha: 120, author: 400, date: 400 };
 
 function resizeColumn(column: keyof RebaseColumnWidths, width: number) {
@@ -547,6 +597,13 @@ registerUpdateBlocker(
 );
 </script>
 
+{#snippet passage(text: string, match: MatchRange)}
+	{text.slice(0, match.start)}<mark
+		class="find-match inline-block max-w-full align-middle whitespace-pre-wrap wrap-anywhere"
+		>{text.slice(match.start, match.end)}</mark
+	>{text.slice(match.end)}
+{/snippet}
+
 <svelte:document
 	onkeydown={handleEditorKeydown}
 	oncontextmenu={openMenuIfOnHeader}
@@ -566,6 +623,7 @@ registerUpdateBlocker(
 
 <div
 	class="rebase-editor"
+	style:--rebase-columns={tableTracks}
 	tabindex="-1"
 	aria-owns={editingIdx === null ? undefined : messageEditorId}
 	bind:this={editorEl}
@@ -615,14 +673,11 @@ registerUpdateBlocker(
 
 	<!-- Column header -->
 	<div class="rebase-header" bind:this={headerEl}>
-		<div class="rebase-col-action" style:padding="0 {COLUMN_PADDING_X}px">
-			Action
-		</div>
-		<div class="flex-1" style:padding="0 {COLUMN_PADDING_X}px"> Message </div>
+		<div style:padding="0 {COLUMN_PADDING_X}px"> Action </div>
+		<div style:padding="0 {COLUMN_PADDING_X}px">Message</div>
 		{#if columnVisibility.sha}
 			<div
-				class="relative flex h-full flex-shrink-0 items-center"
-				style:width="{columnWidths.sha}px"
+				class="relative flex h-full items-center"
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				SHA
@@ -631,8 +686,7 @@ registerUpdateBlocker(
 		{/if}
 		{#if columnVisibility.author}
 			<div
-				class="relative flex h-full flex-shrink-0 items-center"
-				style:width="{columnWidths.author}px"
+				class="relative flex h-full items-center"
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Author
@@ -641,8 +695,7 @@ registerUpdateBlocker(
 		{/if}
 		{#if columnVisibility.date}
 			<div
-				class="relative flex h-full flex-shrink-0 items-center"
-				style:width="{columnWidths.date}px"
+				class="relative flex h-full items-center"
 				style:padding="0 {COLUMN_PADDING_X}px"
 			>
 				Date
@@ -660,9 +713,12 @@ registerUpdateBlocker(
 			bind:this={listEl}
 		>
 			{#each items as item, idx (item.oid)}
+				{@const match = found?.row === idx ? found : undefined}
+				{@const message = item.newMessage ?? item.summary}
 				<div class="rebase-row-wrapper">
 					<div
-						class="rebase-row h-row"
+						class="rebase-row"
+						class:h-row={!match}
 						role="option"
 						aria-selected={focusedIndex === idx}
 						aria-describedby={errorForIndex(idx)
@@ -670,7 +726,7 @@ registerUpdateBlocker(
 							: undefined}
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
-						class:rebase-row-match={foundRow === idx}
+						class:rebase-row-match={!!match}
 						class:rebase-row-drop={item.action === "drop"}
 						class:rebase-row-squash={item.action === "squash"}
 						data-rebase-row={idx}
@@ -693,7 +749,7 @@ registerUpdateBlocker(
 						{/if}
 						<!-- Action column -->
 						<div
-							class="rebase-cell-action"
+							class="rebase-cell-action min-h-row"
 							style:padding="0 {COLUMN_PADDING_X}px"
 						>
 							<span
@@ -720,21 +776,25 @@ registerUpdateBlocker(
 
 						<!-- Message column -->
 						<div
-							class="rebase-cell rebase-cell-message flex-1"
+							class="rebase-cell rebase-cell-message"
 							style:padding="0 {COLUMN_PADDING_X}px"
 						>
-							<span class:rebase-text-drop={item.action === "drop"}
-								>{item.newMessage ?? item.summary}</span
-							>
+							{#if match?.field === "message"}
+								<span
+									class="block overflow-hidden"
+									class:rebase-text-drop={item.action === "drop"}
+									>{@render passage(message, match)}</span
+								>
+							{:else}
+								<span class:rebase-text-drop={item.action === "drop"}
+									>{message}</span
+								>
+							{/if}
 						</div>
 
 						<!-- SHA column -->
 						{#if columnVisibility.sha}
-							<div
-								class="rebase-cell flex-shrink-0"
-								style:width="{columnWidths.sha}px"
-								style:padding="0 {COLUMN_PADDING_X}px"
-							>
+							<div class="rebase-cell" style:padding="0 {COLUMN_PADDING_X}px">
 								<LinkButton
 									mono
 									truncate
@@ -752,11 +812,7 @@ registerUpdateBlocker(
 
 						<!-- Author column -->
 						{#if columnVisibility.author}
-							<div
-								class="rebase-cell flex-shrink-0"
-								style:width="{columnWidths.author}px"
-								style:padding="0 {COLUMN_PADDING_X}px"
-							>
+							<div class="rebase-cell" style:padding="0 {COLUMN_PADDING_X}px">
 								<span class:rebase-text-drop={item.action === "drop"}
 									>{item.authorName}</span
 								>
@@ -766,8 +822,7 @@ registerUpdateBlocker(
 						<!-- Date column -->
 						{#if columnVisibility.date}
 							<div
-								class="rebase-cell flex-shrink-0 rebase-cell-date"
-								style:width="{columnWidths.date}px"
+								class="rebase-cell rebase-cell-date"
 								style:padding="0 {COLUMN_PADDING_X}px"
 							>
 								<span
@@ -775,6 +830,13 @@ registerUpdateBlocker(
 									use:exactDate={item.authorTimestamp}
 									>{relativeLabel(item.authorTimestamp, nowMinute)}</span
 								>
+							</div>
+						{/if}
+						{#if match?.field === "sha"}
+							<div
+								class="col-span-full min-w-0 px-2 pb-1 break-all text-small font-mono text-text-muted"
+							>
+								SHA {@render passage(item.oid, match)}
 							</div>
 						{/if}
 					</div>
@@ -872,6 +934,7 @@ registerUpdateBlocker(
 
 <style>
 .rebase-editor {
+	--rebase-action-width: calc(45 * var(--u) / 2);
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -951,8 +1014,13 @@ registerUpdateBlocker(
 
 /* --- Column header --- */
 
+.rebase-header,
+.rebase-row {
+	display: grid;
+	grid-template-columns: var(--rebase-columns);
+}
+
 .rebase-header {
-	display: flex;
 	align-items: center;
 	height: var(--bar-h);
 	flex-shrink: 0;
@@ -960,10 +1028,6 @@ registerUpdateBlocker(
 	box-shadow: inset 0 -1px 0 var(--color-border);
 	font-size: var(--text-small);
 	color: var(--color-text-muted);
-}
-
-.rebase-col-action {
-	flex-shrink: 0;
 }
 
 /* --- Commit list --- */
@@ -975,7 +1039,6 @@ registerUpdateBlocker(
 
 .rebase-row {
 	position: relative;
-	display: flex;
 	align-items: center;
 	font-size: var(--text-body);
 	color: var(--color-text);
@@ -1078,12 +1141,6 @@ registerUpdateBlocker(
 	white-space: nowrap;
 }
 
-.rebase-cell-message {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
 .rebase-cell-date {
 	color: var(--color-text-muted);
 }
@@ -1146,10 +1203,5 @@ registerUpdateBlocker(
 	padding: var(--space-1) var(--space-3);
 	font-size: var(--text-small);
 	color: var(--color-danger);
-}
-
-.rebase-col-action,
-.rebase-cell-action {
-	width: calc(45 * var(--u) / 2);
 }
 </style>

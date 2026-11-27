@@ -64,6 +64,7 @@ await driveScenario(
 			deleteTheRebasingBranch,
 			undoAndRedoFromTheKeyboard,
 			readTheResetSubmenu,
+			findInNarrowCommitPane,
 			openAnotherRepository,
 			findInDiffKeepsItsViewport,
 			findFromTheMenuBar,
@@ -216,6 +217,68 @@ async function findInDiffKeepsItsViewport(instance: Instance): Promise<void> {
 		console.log("ok: the first and last occurrences are visible beside Find");
 	} finally {
 		await callHook(instance, "click", ["button", "Close diff"], DEADLINE_MS);
+	}
+}
+
+async function findInNarrowCommitPane(instance: Instance): Promise<void> {
+	const detail = `document.querySelector('[data-testid="commit-detail"]')`;
+	const splitter = `document.querySelector('[aria-label="Resize detail pane"]')`;
+	const oid = git(repo, "rev-parse", "--short=7", "HEAD");
+	const options = (await callHook(
+		instance,
+		"list",
+		["option"],
+		DEADLINE_MS,
+	)) as string[];
+	const commit = options.find((option) => option.endsWith(` ${oid}`));
+	if (!commit) throw new Error(`no displayed commit for ${oid}`);
+	await callHook(instance, "click", ["option", commit], DEADLINE_MS);
+	await until(instance, `${detail} !== null`, DEADLINE_MS);
+	try {
+		await evaluate(instance, `${splitter}.focus()`, DEADLINE_MS);
+		// Ten 8px arrow steps take the default 280px pane to its 200px floor.
+		for (let step = 0; step < 10; step++)
+			await callHook(instance, "key", ["ArrowRight"], DEADLINE_MS);
+		await until(instance, `${detail}.clientWidth === 200`, DEADLINE_MS);
+		await callHook(
+			instance,
+			"click",
+			["button", "Find in commit message"],
+			DEADLINE_MS,
+		);
+		await callHook(
+			instance,
+			"type",
+			["textbox", "Find in commit message…", "reconciliation"],
+			DEADLINE_MS,
+		);
+		const fits = await evaluate(
+			instance,
+			`(() => {
+			const input = ${detail}.querySelector('search input');
+			const sha = ${detail}.querySelector('button[title="Copy SHA"]');
+			const rect = sha.getBoundingClientRect();
+			const y = rect.top + rect.height / 2;
+			return input.scrollWidth <= input.clientWidth &&
+				[rect.left + 1, rect.right - 1].every(x => sha.contains(document.elementFromPoint(x, y)));
+		})()`,
+			DEADLINE_MS,
+		);
+		check(
+			fits === true,
+			"the narrow commit pane shows the query and complete SHA",
+			"the query or SHA is clipped at the detail pane minimum",
+		);
+	} finally {
+		await evaluate(instance, `${splitter}.focus()`, DEADLINE_MS);
+		for (let step = 0; step < 10; step++)
+			await callHook(instance, "key", ["ArrowLeft"], DEADLINE_MS);
+		await callHook(
+			instance,
+			"click",
+			["button", "Close commit detail"],
+			DEADLINE_MS,
+		);
 	}
 }
 

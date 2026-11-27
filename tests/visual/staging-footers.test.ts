@@ -20,6 +20,32 @@ describe.concurrent("staging panel footers at the detail pane's floor", () => {
 
 	afterAll(() => suite.teardown());
 
+	test("keeps a collapsed section's filtered action visible under a full unstaged list", async (context) => {
+		const files = Array.from({ length: 24 }, (_, i) => ({
+			step: "file" as const,
+			path: `file-${i}.ts`,
+			content: "change",
+		}));
+		const header = await harness.filteredStagingHeader(
+			{
+				steps: [
+					{ step: "file", path: "base.txt", content: "base" },
+					{ step: "commit", message: "base" },
+					...files,
+				],
+			},
+			DETAIL_PANE_FLOOR,
+			context,
+		);
+
+		expect(header).toEqual({
+			sectionWidth: DETAIL_PANE_FLOOR,
+			labelFits: true,
+			actionFits: true,
+			gutterCollapses: true,
+		});
+	});
+
 	async function expectBaseline(name: string, capture: Buffer): Promise<void> {
 		const reason = await mismatch(name, capture, (baseline, actual) =>
 			harness.difference(baseline, actual),

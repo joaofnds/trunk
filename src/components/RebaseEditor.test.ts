@@ -149,13 +149,14 @@ describe("RebaseEditor", () => {
 	};
 
 	function renderEditor({
+		commits = TEST_ITEMS,
 		onclose = () => {},
 		onstart = (_items: StartedItem[]): Promise<void> => Promise.resolve(),
 	} = {}) {
 		return render(RebaseEditor, {
 			props: {
 				repoPath: "/test/repo",
-				commits: TEST_ITEMS,
+				commits,
 				branchName: "feature/login",
 				base: { kind: "branch", name: "main" },
 				onclose,
@@ -163,6 +164,27 @@ describe("RebaseEditor", () => {
 			},
 		});
 	}
+
+	it.each([
+		["i", "İ"],
+		["\u0307s", "İS"],
+		["stanbul", "STANBUL"],
+	])(
+		"highlights %s at its source offset when a subject expands in lowercase",
+		async (query, source) => {
+			renderEditor({ commits: [{ ...TEST_ITEMS[0], summary: "İSTANBUL" }] });
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Find in rebase plan" }),
+			);
+			const field = screen.getByRole("textbox", {
+				name: "Find in rebase plan…",
+			});
+
+			await fireEvent.input(field, { target: { value: query } });
+
+			expect(screen.getByRole("mark").textContent).toBe(source);
+		},
+	);
 
 	it("jumps to a matching subject or full SHA without hiding or editing plan steps", async () => {
 		const { container } = renderEditor();
@@ -178,7 +200,12 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("1 of 3")).toBeVisible();
 		await fireEvent.keyDown(field, { key: "Enter", shiftKey: true });
 		expect(screen.getByText("3 of 3")).toBeVisible();
-		expect(scrolled.at(-1)).toHaveTextContent("feat: add login");
+		const subjectHit = within(plan).getByRole("mark");
+		expect(subjectHit.textContent).toBe(":");
+		expect(subjectHit.closest('[role="option"]')).toHaveTextContent(
+			"feat: add login",
+		);
+		expect(scrolled.at(-1)).toBe(subjectHit);
 		const next = screen.getByRole("button", { name: "Next match" });
 		next.focus();
 		await fireEvent.keyDown(next, { key: "d" });
@@ -188,6 +215,7 @@ describe("RebaseEditor", () => {
 			target: { value: TEST_ITEMS[1].oid.toUpperCase() },
 		});
 		expect(screen.getByText("1 of 1")).toBeVisible();
+		expect(within(plan).getByRole("mark")).toHaveTextContent(TEST_ITEMS[1].oid);
 		await fireEvent.keyDown(field, { key: "Escape" });
 		const selected = within(plan).getByRole("option", {
 			selected: true,

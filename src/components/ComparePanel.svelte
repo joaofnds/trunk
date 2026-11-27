@@ -49,7 +49,8 @@ let {
 {#snippet commitCard(commit: CommitDetail)}
 	<div class="min-w-0">
 		<div
-			class="text-body font-semibold text-text overflow-hidden text-ellipsis whitespace-nowrap"
+			title={commit.summary}
+			class="text-body font-semibold text-text line-clamp-2 wrap-anywhere"
 			>{commit.summary}</div
 		>
 		<div class="flex items-center gap-2 mt-1 min-w-0 text-small">

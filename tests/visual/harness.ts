@@ -234,6 +234,12 @@ export class VisualHarness {
 		);
 	}
 
+	filteredStagingHeader(repo: RepoSpec, width: number, test: CaptureTest) {
+		return this.onPage(test, (page) =>
+			page.filteredStagingHeader(repo, width, test.signal),
+		);
+	}
+
 	readInlineReview(
 		repo: RepoSpec,
 		file: string,
@@ -540,6 +546,68 @@ class AppPage {
 				signal: abandoned,
 			});
 		});
+	}
+
+	async filteredStagingHeader(
+		repo: RepoSpec,
+		width: number,
+		abandoned: AbortSignal,
+	) {
+		const options = { signal: abandoned };
+		await this.page.setViewportSize({ width: VIEWPORT.width, height: 600 });
+		try {
+			await this.openRepository(repo, { right_pane_width: width }, abandoned);
+			await this.page
+				.getByRole("button", { name: "Filter files" })
+				.click(options);
+			const filter = this.page.getByRole("textbox", { name: "Filter files" });
+			await filter.fill("file-0.ts", options);
+			await this.page
+				.getByRole("button", { name: "Stage 1 match", exact: true })
+				.click(options);
+			await filter.fill("file-", options);
+			const section = this.page.getByTestId("staging-staged-section");
+			const title = section.getByText("Staged files", { exact: true });
+			const action = section.getByRole("button", { name: "Unstage 1 match" });
+			const file = section.getByTitle("file-0.ts", { exact: true });
+			await file.waitFor(options);
+			const gutter = await action.evaluate(
+				(e) => {
+					const { right, top, height } = e.getBoundingClientRect();
+					return { x: right + 1, y: top + height / 2 };
+				},
+				undefined,
+				options,
+			);
+
+			await this.page.mouse.click(gutter.x, gutter.y);
+			const gutterCollapses = !(await file.isVisible());
+
+			const labelFits = await title.evaluate(
+				(e) => e.scrollWidth <= e.clientWidth,
+				undefined,
+				options,
+			);
+			const actionFits = await action.evaluate(
+				(e) => {
+					const { left, right, top, bottom } = e.getBoundingClientRect();
+					const x = (left + right) / 2;
+					return [top + 1, bottom - 1].every((y) =>
+						e.contains(document.elementFromPoint(x, y)),
+					);
+				},
+				undefined,
+				options,
+			);
+			const sectionWidth = await section.evaluate(
+				(e) => e.getBoundingClientRect().width,
+				undefined,
+				options,
+			);
+			return { sectionWidth, labelFits, actionFits, gutterCollapses };
+		} finally {
+			await this.page.setViewportSize(VIEWPORT);
+		}
 	}
 
 	async dragDiffText(

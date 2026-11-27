@@ -48,6 +48,8 @@ interface Props extends Omit<HTMLButtonAttributes, "class" | "style" | "role"> {
 	tone?: RowTone;
 	/** The controls drawn at the row's trailing edge, beside the primary button. */
 	actions?: Snippet;
+	/** Let a section's actions move below its label when the pane narrows. */
+	wrapActions?: boolean;
 	/** A second line under an `entry`'s label, inside the primary button, which
 	 *  runs the row's whole width beneath the actions while they stay on the
 	 *  label's line. */
@@ -66,6 +68,7 @@ let {
 	indent,
 	tone = "plain",
 	actions,
+	wrapActions = false,
 	detail,
 	reveal = "hover",
 	type = "button",
@@ -227,6 +230,7 @@ const REVEALS: Record<RowReveal, string> = {
 <div
 	class={[
 		CONTAINER,
+		wrapActions && "row-wrap-actions",
 		SHAPES[variant],
 		TONES[tone],
 		tone !== "current" && WEIGHTS[variant],
@@ -279,6 +283,32 @@ const REVEALS: Record<RowReveal, string> = {
 .row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
+}
+.row-wrap-actions {
+	position: relative;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	height: auto;
+}
+.row-wrap-actions > button {
+	display: flex;
+	flex: 1 1 max-content;
+	max-width: 100%;
+	min-width: 0;
+	min-height: var(--bar-h);
+}
+.row-wrap-actions > button::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+}
+.row-wrap-actions > div {
+	position: relative;
+	margin-inline-start: auto;
+}
+.row-wrap-actions > div:has(:global(button)) {
+	min-height: var(--bar-h);
 }
 .row-ruled {
 	box-shadow:

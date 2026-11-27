@@ -347,7 +347,7 @@ import ToastCard from "./ToastCard.svelte";
 			</div>
 			<div class="flex flex-col gap-1 bg-surface py-1">
 				{#each BAR_ROWS as variant (variant)}
-					<Row {variant} actions={eye} reveal="always"
+					<Row {variant} actions={eye} reveal="always" wrapActions
 						><span data-catalog-text class="text-callout">{variant}</span></Row
 					>
 				{/each}

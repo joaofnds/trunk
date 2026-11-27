@@ -1255,10 +1255,11 @@ registerUpdateBlocker(() => {
 				<div
 					class="flex flex-col overflow-hidden min-h-0"
 					class:flex-1={conflicted_expanded && staged_expanded}
-					class:section-capped={conflicted_expanded && !staged_expanded}
+					class:shrink-0={!conflicted_expanded}
 				>
 					<Row
 						variant="band"
+						wrapActions
 						reveal="always"
 						onclick={() => (conflicted_expanded = !conflicted_expanded)}
 					>
@@ -1323,10 +1324,11 @@ registerUpdateBlocker(() => {
 					data-testid="staging-unstaged-section"
 					class="flex flex-col overflow-hidden min-h-0"
 					class:flex-1={unstaged_expanded && staged_expanded}
-					class:section-capped={unstaged_expanded && !staged_expanded}
+					class:shrink-0={!unstaged_expanded}
 				>
 					<Row
 						variant="band"
+						wrapActions
 						reveal="always"
 						onclick={() => (unstaged_expanded = !unstaged_expanded)}
 					>
@@ -1402,10 +1404,11 @@ registerUpdateBlocker(() => {
 				data-testid="staging-staged-section"
 				class="flex flex-col overflow-hidden min-h-0"
 				class:flex-1={staged_expanded && unstaged_expanded}
-				class:section-capped={staged_expanded && !unstaged_expanded}
+				class:shrink-0={!staged_expanded}
 			>
 				<Row
 					variant="band"
+					wrapActions
 					reveal="always"
 					onclick={() => (staged_expanded = !staged_expanded)}
 				>
@@ -1570,10 +1573,3 @@ registerUpdateBlocker(() => {
 		{/if}
 	{/if}
 </div>
-
-<style>
-/* A section left open on its own stops short of the other section's collapsed bar */
-.section-capped {
-	max-height: calc(100% - var(--bar-h));
-}
-</style>

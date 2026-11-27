@@ -817,13 +817,14 @@ registerUpdateBlocker(() =>
 	<!-- Search input (sticky at top) -->
 	<div class="p-2 shadow-hairline">
 		<div
-			class="flex items-center gap-2 h-control-lg py-0 px-3 bg-bg border border-border rounded"
+			class="flex items-center gap-1 h-control-lg py-0 px-2 bg-bg border border-border rounded focus-within:border-accent"
 		>
 			<Search size={12} color="var(--color-text-subtle)" class="shrink-0" />
 			<input
 				type="text"
-				placeholder="Filter branches, tags, stashes…"
+				placeholder="Filter"
 				aria-label="Filter branches, tags, stashes"
+				aria-keyshortcuts="/"
 				bind:this={searchInput}
 				onkeydown={(event) => {
 					if (event.key === "Escape" && search && !event.isComposing) {

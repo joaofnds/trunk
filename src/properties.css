@@ -61,6 +61,13 @@
 	initial-value: 0px;
 }
 
+/* The rebase plan's header and rows share the visible column widths. */
+@property --rebase-columns {
+	syntax: "*";
+	inherits: true;
+	initial-value: none;
+}
+
 /* ── Commit message: how many body lines show before the fade ── */
 @property --body-clamp-lines {
 	syntax: "<integer>";

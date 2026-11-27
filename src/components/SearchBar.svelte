@@ -99,7 +99,7 @@ function autofocus(node: HTMLElement) {
 	transition:slide={{ duration: animate ? motionDuration(150) : 0, axis: "y" }}
 	class={[
 		inline
-			? "border-b border-border bg-surface"
+			? "inline-finder flex-wrap border-b border-border bg-surface"
 			: [
 					atBottom ? "bottom-2" : "top-2",
 					"floating absolute right-2 z-10 bg-surface-chip border border-border-strong rounded shadow-md",
@@ -107,7 +107,7 @@ function autofocus(node: HTMLElement) {
 		"search-bar flex items-center pl-3 pr-1 py-1 gap-1",
 	]}
 >
-	<label class="min-w-0 flex-1 flex items-center gap-2 cursor-text">
+	<label class="query-field min-w-0 flex-1 flex items-center gap-2 cursor-text">
 		<Search size={14} aria-hidden="true" class="shrink-0 text-text-muted" />
 		<input
 			class="search-bar-input flex-1 border-none bg-transparent text-body text-text-strong caret-accent focus:outline-hidden min-w-0"
@@ -122,61 +122,67 @@ function autofocus(node: HTMLElement) {
 		>
 	</label>
 
-	{#if query.length > 0 && !searching}
-		<span
-			aria-live="polite"
-			class="mx-1 shrink-0 text-small tabular-nums text-text-muted whitespace-nowrap"
-		>
-			{#if totalMatches > 0}
-				{`${currentIndex + 1} of ${totalMatches}`}
-			{:else}
-				0 matches
-			{/if}
-		</span>
-	{/if}
+	<div class="ml-auto flex items-center gap-1">
+		{#if query.length > 0 && !searching}
+			<span
+				aria-live="polite"
+				class="mx-1 shrink-0 text-small tabular-nums text-text-muted whitespace-nowrap"
+			>
+				{#if totalMatches > 0}
+					{`${currentIndex + 1} of ${totalMatches}`}
+				{:else}
+					0 matches
+				{/if}
+			</span>
+		{/if}
 
-	<div class="flex gap-1 me-1">
+		<div class="flex gap-1 me-1">
+			<Button
+				icon
+				size="base"
+				variant="ghost"
+				aria-label="Previous match"
+				onkeydown={handleKeydown}
+				tooltip="Previous match (Shift+Enter)"
+				disabled={totalMatches === 0}
+				onclick={onprev}
+			>
+				<ChevronUp size={14} />
+			</Button>
+
+			<Button
+				icon
+				size="base"
+				variant="ghost"
+				aria-label="Next match"
+				onkeydown={handleKeydown}
+				tooltip="Next match (Enter)"
+				disabled={totalMatches === 0}
+				onclick={onnext}
+			>
+				<ChevronDown size={14} />
+			</Button>
+		</div>
+
 		<Button
 			icon
 			size="base"
 			variant="ghost"
-			aria-label="Previous match"
+			aria-label="Close search"
 			onkeydown={handleKeydown}
-			tooltip="Previous match (Shift+Enter)"
-			disabled={totalMatches === 0}
-			onclick={onprev}
+			tooltip="Close search (Esc)"
+			onclick={onclose}
 		>
-			<ChevronUp size={14} />
-		</Button>
-
-		<Button
-			icon
-			size="base"
-			variant="ghost"
-			aria-label="Next match"
-			onkeydown={handleKeydown}
-			tooltip="Next match (Enter)"
-			disabled={totalMatches === 0}
-			onclick={onnext}
-		>
-			<ChevronDown size={14} />
+			<X size={14} />
 		</Button>
 	</div>
-
-	<Button
-		icon
-		size="base"
-		variant="ghost"
-		aria-label="Close search"
-		onkeydown={handleKeydown}
-		tooltip="Close search (Esc)"
-		onclick={onclose}
-	>
-		<X size={14} />
-	</Button>
 </search>
 
 <style>
+.inline-finder .query-field {
+	flex-basis: 16ch;
+}
+
 .search-bar.floating {
 	width: calc(84 * var(--u));
 	max-width: calc(100% - 2 * var(--space-2));

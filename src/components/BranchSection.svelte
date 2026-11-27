@@ -84,6 +84,7 @@ let allHidden = $derived(groupState === "all");
 <div data-testid="branch-section-{label.toLowerCase()}">
 	<Row
 		variant="header"
+		wrapActions
 		reveal="always"
 		data-testid="branch-section-header"
 		onclick={toggle}
@@ -97,7 +98,7 @@ let allHidden = $derived(groupState === "all");
 				<ChevronRight size={12} />
 			{/if}
 		</span>
-		<span class="text-callout font-semibold text-text flex-1 min-w-0 truncate">
+		<span class="text-callout font-semibold text-text min-w-0 wrap-anywhere">
 			{label} ({count}{filteredFrom === undefined ? "" : ` of ${filteredFrom}`})
 		</span>
 	</Row>

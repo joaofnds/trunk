@@ -149,8 +149,10 @@ let commitNotes = $derived(
 	class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface"
 >
 	<!-- Toolbar -->
-	<div class="h-bar shadow-hairline py-0 px-2 flex items-center gap-2 shrink-0">
-		<span class="flex-1 min-w-0 overflow-hidden flex items-center">
+	<div
+		class="min-h-bar shadow-hairline py-1 px-1 flex flex-wrap items-center gap-1 shrink-0"
+	>
+		<span class="flex-1 flex items-center">
 			<Badge title="Copy SHA" onclick={() => copySha(commitDetail.oid)}
 				>{commitDetail.short_oid}</Badge
 			>
@@ -272,13 +274,11 @@ let commitNotes = $derived(
 .pager {
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-1);
 	flex-shrink: 0;
 }
 .pager-pos {
 	font-size: var(--text-caption);
 	color: var(--color-text-subtle);
 	font-variant-numeric: tabular-nums;
-	padding: 0 var(--space-1);
 }
 </style>

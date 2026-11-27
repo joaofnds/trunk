@@ -69,33 +69,41 @@ function showContextMenu(
 	class={fill ? "flex min-h-0 flex-1 flex-col" : undefined}
 	use:filterShortcut={() => filter.focus()}
 >
-	<div class="h-bar py-0 px-3 flex items-center gap-1 shadow-hairline shrink-0">
-		<span
-			aria-live="polite"
+	<div
+		class="min-h-bar py-1 px-3 flex items-center gap-1 shadow-hairline shrink-0"
+	>
+		<div
 			class={open
-				? "text-small tabular-nums text-text-muted shrink-0"
-				: "text-callout font-medium text-text flex-1"}
+				? "shrink-0"
+				: "min-w-0 flex-1 flex flex-wrap items-center justify-between gap-x-1"}
 		>
-			{#if open}
-				<span class="sr-only"
-					>{matches.length} of {files.length}
-					{files.length === 1 ? "file" : "files"} changed</span
-				>
-				<span aria-hidden="true">{matches.length} / {files.length}</span>
-			{:else}
-				{files.length} {files.length === 1 ? "file" : "files"} changed
-			{/if}
-		</span>
-		{#if !open && stat && (stat.insertions > 0 || stat.deletions > 0)}
-			<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
-				{#if stat.insertions > 0}
-					<span class="text-diff-add">+{stat.insertions}</span>
-				{/if}
-				{#if stat.deletions > 0}
-					<span class="text-diff-delete">−{stat.deletions}</span>
+			<span
+				aria-live="polite"
+				class={open
+					? "text-small tabular-nums text-text-muted shrink-0"
+					: "text-callout font-medium text-text"}
+			>
+				{#if open}
+					<span class="sr-only"
+						>{matches.length} of {files.length}
+						{files.length === 1 ? "file" : "files"} changed</span
+					>
+					<span aria-hidden="true">{matches.length} / {files.length}</span>
+				{:else}
+					{files.length} {files.length === 1 ? "file" : "files"} changed
 				{/if}
 			</span>
-		{/if}
+			{#if !open && stat && (stat.insertions > 0 || stat.deletions > 0)}
+				<span class="inline-flex gap-2 font-mono text-caption">
+					{#if stat.insertions > 0}
+						<span class="text-diff-add">+{stat.insertions}</span>
+					{/if}
+					{#if stat.deletions > 0}
+						<span class="text-diff-delete">−{stat.deletions}</span>
+					{/if}
+				</span>
+			{/if}
+		</div>
 		<ListFilter bind:this={filter} label="Filter files" bind:query bind:open />
 		{#if ontreeviewtoggle}
 			<Button

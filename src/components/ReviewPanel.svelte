@@ -1170,27 +1170,32 @@ registerUpdateBlocker(() =>
 							{/if}
 						{/each}
 					</ul>
-					<span class="ml-auto"></span>
-					<ListFilter
-						label="Filter threads"
-						bind:query={threadQuery}
-						bind:this={threadFilterControl}
-					/>
-					<ButtonGroup size="base">
-						{#each THREAD_PRESETS as preset (preset.id)}
-							<Button
-								joined
-								size="base"
-								aria-pressed={activePreset === preset.id}
-								onclick={() => onthreadfilterchange?.(preset.filter)}
-							>
-								{preset.label}
-								<span class="font-mono"
-									>{presetCount(preset.filter.states)}</span
+					<div
+						class="thread-tools ml-auto flex max-w-full flex-wrap items-center justify-end gap-2"
+					>
+						<div class="thread-filter flex min-w-0">
+							<ListFilter
+								label="Filter threads"
+								bind:query={threadQuery}
+								bind:this={threadFilterControl}
+							/>
+						</div>
+						<ButtonGroup size="base">
+							{#each THREAD_PRESETS as preset (preset.id)}
+								<Button
+									joined
+									size="base"
+									aria-pressed={activePreset === preset.id}
+									onclick={() => onthreadfilterchange?.(preset.filter)}
 								>
-							</Button>
-						{/each}
-					</ButtonGroup>
+									{preset.label}
+									<span class="font-mono"
+										>{presetCount(preset.filter.states)}</span
+									>
+								</Button>
+							{/each}
+						</ButtonGroup>
+					</div>
 				{/if}
 			</div>
 		{/if}
@@ -1574,6 +1579,13 @@ registerUpdateBlocker(() =>
 {/snippet}
 
 <style>
+.thread-tools:has(:global(input)) {
+	flex: 1 1 calc(96 * var(--u));
+}
+.thread-filter:has(:global(input)) {
+	flex: 1 1 16ch;
+}
+
 .review-toggle-off {
 	outline: 1px dashed var(--color-border-strong);
 	outline-offset: calc(3 * var(--u) / 4);

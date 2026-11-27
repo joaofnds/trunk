@@ -85,11 +85,14 @@ function reload() {
 	>
 	<div bind:this={resultList} class="mt-2 max-h-dropdown-max overflow-y-auto">
 		{#each rows as row (row.oid)}
-			<Row variant="flush" onclick={() => onselect(row.oid)}>
-				<span class="font-mono text-text-muted shrink-0"
+			<Row variant="entry" onclick={() => onselect(row.oid)}>
+				<span
+					class="mr-2 shrink-0 self-start font-mono text-callout text-text-muted"
 					>{row.oid.slice(0, 7)}</span
 				>
-				<span data-testid="path-history-summary" class="truncate"
+				<span
+					data-testid="path-history-summary"
+					class="text-callout wrap-anywhere"
 					>{row.summary}</span
 				>
 			</Row>
