@@ -98,7 +98,7 @@ function autofocus(node: HTMLElement) {
 	]}
 >
 	<input
-		class="search-bar-input flex-1 border-none bg-transparent text-body text-text min-w-0"
+		class="search-bar-input flex-1 border-none bg-transparent text-body text-text caret-accent focus:outline-hidden min-w-0"
 		type="text"
 		{placeholder}
 		aria-label={placeholder}
@@ -159,5 +159,13 @@ function autofocus(node: HTMLElement) {
 .search-bar {
 	width: calc(75 * var(--u));
 	max-width: calc(100% - var(--space-2));
+}
+
+.search-bar:has(> input:focus) {
+	border-color: color-mix(
+		in oklch,
+		var(--color-accent) 65%,
+		var(--color-border)
+	);
 }
 </style>
