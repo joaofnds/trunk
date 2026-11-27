@@ -344,7 +344,7 @@ fn rebase_continue_after_resolving_conflict_completes() {
 
     // Resolve the conflict and stage it, as the merge editor's "Mark Resolved" does.
     std::fs::write(ctx.repo_path().join("file.txt"), "resolved content\n").unwrap();
-    ctx.stage_file("file.txt").unwrap();
+    ctx.mark_resolved("file.txt").unwrap();
 
     // Must complete, not hang or error, and leave the repo out of the rebase.
     let result = ctx.rebase_continue(None);
@@ -576,7 +576,7 @@ mod when_another_writer_runs_meanwhile {
 
     fn resolve(ctx: &TestContext) {
         std::fs::write(ctx.repo_path().join("file.txt"), "resolved content\n").unwrap();
-        ctx.stage_file("file.txt").unwrap();
+        ctx.mark_resolved("file.txt").unwrap();
     }
 
     fn has_conflicts(ctx: &TestContext) -> bool {

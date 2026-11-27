@@ -4,6 +4,24 @@ use trunk_lib::commands::merge_editor;
 use trunk_lib::types::MergeSides;
 
 impl TestContext {
+    pub fn mark_resolved(&self, file: &str) -> Result<(), TrunkError> {
+        let approved = merge_editor::mark::prepare_mark_resolved_inner(
+            self.path(),
+            &[file.to_owned()],
+            self.state_map(),
+        )?;
+        assert_eq!(
+            approved.marked,
+            Vec::<String>::new(),
+            "resolution still contains conflict markers"
+        );
+        merge_editor::mark::mark_conflicts_resolved_inner(
+            self.path(),
+            &approved.files,
+            self.state_map(),
+        )
+    }
+
     pub fn get_merge_sides(&self, file: &str) -> Result<MergeSides, TrunkError> {
         merge_editor::get_merge_sides_inner(
             self.path(),

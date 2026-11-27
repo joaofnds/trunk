@@ -2,6 +2,25 @@ use crate::error::TrunkError;
 use crate::types::{RefLabel, RefType};
 use std::collections::HashMap;
 
+/// An object recorded from Git has no worktree stat information.
+#[must_use]
+pub fn index_entry(path: &[u8], id: git2::Oid, mode: u32) -> git2::IndexEntry {
+    git2::IndexEntry {
+        id,
+        mode,
+        path: path.to_vec(),
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        flags: 0,
+        flags_extended: 0,
+    }
+}
+
 /// Returns true if the repo has any tracked modifications that would block checkout.
 /// Untracked files (`WT_NEW`) are deliberately excluded — git allows checkout with untracked files.
 ///

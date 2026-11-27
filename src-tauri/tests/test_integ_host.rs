@@ -766,7 +766,7 @@ fn continuing_a_resolved_pick_asks_for_its_message_without_rebuilding_the_graph(
     )
     .unwrap_err();
     std::fs::write(ctx.repo_path().join("f.txt"), "resolved\n").unwrap();
-    ctx.stage_file("f.txt").unwrap();
+    ctx.mark_resolved("f.txt").unwrap();
     let before = graph_revision(&app, &ctx);
 
     let conclusion = invoke(

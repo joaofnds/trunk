@@ -786,7 +786,7 @@ fn revert_continue_skips_a_resolution_back_to_head_and_reverts_the_rest_of_the_s
         .set_str("core.editor", "false")
         .unwrap();
     std::fs::write(ctx.repo_path().join("f.txt"), "c\n").unwrap();
-    ctx.stage_file("f.txt").unwrap();
+    ctx.mark_resolved("f.txt").unwrap();
 
     let conclusion = ctx.revert_continue_unasked().unwrap();
 
@@ -914,7 +914,7 @@ mod cherry_pick_lifecycle {
         ctx.cherry_pick(&side_oid).unwrap_err();
         let head_before = ctx.resolve_ref("HEAD").unwrap();
         std::fs::write(ctx.repo_path().join("f.txt"), "main\n").unwrap();
-        ctx.stage_file("f.txt").unwrap();
+        ctx.mark_resolved("f.txt").unwrap();
         std::fs::write(ctx.repo_path().join("notes.txt"), "kept\n").unwrap();
 
         let conclusion = ctx.cherry_pick_continue_unasked().unwrap();
@@ -991,7 +991,7 @@ mod cherry_pick_lifecycle {
     fn cherry_pick_continue_skips_a_resolution_back_to_head_and_applies_the_rest_of_the_sequence() {
         let ctx = stopped_two_commit_pick_ctx();
         std::fs::write(ctx.repo_path().join("f.txt"), "main\n").unwrap();
-        ctx.stage_file("f.txt").unwrap();
+        ctx.mark_resolved("f.txt").unwrap();
 
         let conclusion = ctx.cherry_pick_continue_unasked().unwrap();
 

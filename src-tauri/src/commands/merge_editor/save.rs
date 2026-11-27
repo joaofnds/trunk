@@ -266,19 +266,10 @@ pub(super) fn stage_entry(
     let Some((id, mode)) = object else {
         return Ok(());
     };
-    index.add(&git2::IndexEntry {
+    index.add(&trunk_git::repository::index_entry(
+        path.as_bytes(),
         id,
         mode,
-        path: path.as_bytes().to_vec(),
-        ctime: git2::IndexTime::new(0, 0),
-        mtime: git2::IndexTime::new(0, 0),
-        dev: 0,
-        ino: 0,
-        uid: 0,
-        gid: 0,
-        file_size: 0,
-        flags: 0,
-        flags_extended: 0,
-    })?;
+    ))?;
     Ok(())
 }

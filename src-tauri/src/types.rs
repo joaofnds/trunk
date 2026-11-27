@@ -90,6 +90,10 @@ pub enum FileStatusType {
 pub struct FileStatus {
     pub path: String,
     pub old_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_bytes: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_path_bytes: Option<Vec<u8>>,
     pub status: FileStatusType,
     pub is_binary: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,6 +265,31 @@ pub enum DiffStatus {
     Unknown,
 }
 
+/// An exact Git path at the JSON boundary. UTF-8 names travel as ordinary strings.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum GitPath {
+    Text(String),
+    Bytes(Vec<u8>),
+}
+
+impl AsRef<[u8]> for GitPath {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Text(path) => path.as_bytes(),
+            Self::Bytes(bytes) => bytes,
+        }
+    }
+}
+
+/// The readable label and, when it needs escapes, the original name.
+pub(crate) fn display_git_path(bytes: &[u8]) -> (String, Option<Vec<u8>>) {
+    std::str::from_utf8(bytes).map_or_else(
+        |_| (bytes.escape_ascii().to_string(), Some(bytes.to_vec())),
+        |text| (text.to_owned(), None),
+    )
+}
+
 /// One file's place in a diff.
 ///
 /// `path` is the new-side path, and for a delta libgit2's rename detection paired,
@@ -270,6 +299,11 @@ pub enum DiffStatus {
 pub struct FileDiff {
     pub path: String,
     pub old_path: Option<String>,
+    /// Populated only when a displayed name needs byte escapes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_bytes: Option<Vec<u8>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub old_path_bytes: Option<Vec<u8>>,
     pub status: DiffStatus,
     pub is_binary: bool,
     /// The file's size in bytes on each side. `None` on a side where the file

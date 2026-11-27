@@ -1278,7 +1278,7 @@ fn stage_files_empty_vec_is_noop() {
 }
 
 #[test]
-fn stage_files_resolves_every_conflicted_path_it_names() {
+fn ordinary_file_actions_leave_new_conflicts_and_other_selected_files_untouched() {
     let ctx = TestContext::builder()
         .with_file("edited.txt", "original")
         .with_file("removed.txt", "original")
@@ -1297,18 +1297,25 @@ fn stage_files_resolves_every_conflicted_path_it_names() {
     std::fs::write(ctx.repo_path().join("edited.txt"), "resolved").unwrap();
     std::fs::remove_file(ctx.repo_path().join("removed.txt")).unwrap();
 
-    ctx.stage_files(&["edited.txt", "removed.txt"])
-        .expect("stage_files failed");
-
-    let status = ctx.get_status().expect("get_status failed");
-    let staged: Vec<_> = status
-        .staged
-        .iter()
-        .map(|file| format!("{} {:?}", file.path, file.status))
-        .collect();
-    assert!(status.conflicted.is_empty(), "{:?}", status.conflicted);
-    assert_eq!(staged, ["edited.txt Modified", "removed.txt Deleted"]);
-    assert_eq!(ctx.staged_content("edited.txt"), "resolved");
+    std::fs::write(ctx.repo_path().join("ordinary"), "keep unstaged").unwrap();
+    let before = ctx.get_status().unwrap();
+    for result in [
+        ctx.stage_file("edited.txt"),
+        ctx.stage_files(&["ordinary", "edited.txt"]),
+        ctx.unstage_file("edited.txt"),
+        ctx.unstage_files(&["removed.txt"]),
+        ctx.discard_files(&["ordinary", "edited.txt"]),
+        ctx.discard_all_of(&["ordinary", "edited.txt"]),
+    ] {
+        assert_eq!(result.unwrap_err().code, "file_conflicted");
+    }
+    let after = ctx.get_status().unwrap();
+    assert_eq!(after.conflicted.len(), 2);
+    assert_eq!(after.staged.len(), before.staged.len());
+    assert_eq!(
+        std::fs::read(ctx.repo_path().join("ordinary")).unwrap(),
+        b"keep unstaged"
+    );
 }
 
 #[test]
@@ -1347,6 +1354,200 @@ fn unstage_files_unstages_multiple_files() {
         3,
         "expected 3 unstaged files after unstage_files"
     );
+}
+
+#[test]
+#[cfg(unix)] // Windows does not permit * or ? in file names.
+fn unstaging_a_literal_file_keeps_its_glob_neighbors_staged() {
+    let ctx = TestContext::builder()
+        .with_file("one*.txt", "base")
+        .with_file("oneA.txt", "neighbor")
+        .with_file("old[12].txt", "renamed")
+        .with_file("old1.txt", "neighbor")
+        .with_file("new1.txt", "neighbor")
+        .with_file("!#leading", "punctuation")
+        .with_file(r"back\slash", "backslash")
+        .with_commit("base")
+        .build();
+    std::fs::rename(
+        ctx.repo_path().join("old[12].txt"),
+        ctx.repo_path().join("new?.txt"),
+    )
+    .unwrap();
+    for path in [
+        "one*.txt",
+        "oneA.txt",
+        "old1.txt",
+        "new1.txt",
+        "!#leading",
+        r"back\slash",
+    ] {
+        std::fs::write(ctx.repo_path().join(path), "edit").unwrap();
+    }
+    ctx.stage_all().unwrap();
+
+    ctx.unstage_files(&["one*.txt", "new?.txt", "!#leading", r"back\slash"])
+        .unwrap();
+
+    assert_eq!(ctx.staged_content("one*.txt"), "base");
+    assert_eq!(ctx.staged_content("old[12].txt"), "renamed");
+    assert_eq!(ctx.staged_content("!#leading"), "punctuation");
+    assert_eq!(ctx.staged_content(r"back\slash"), "backslash");
+    assert_eq!(staged_rows(&ctx), ["new1.txt", "old1.txt", "oneA.txt"]);
+}
+
+#[test]
+fn staging_a_file_directory_swap_requires_its_colliding_entries() {
+    let ctx = TestContext::builder()
+        .with_file("item", "original")
+        .with_commit("base")
+        .build();
+    let item = ctx.repo_path().join("item");
+    std::fs::remove_file(&item).unwrap();
+    std::fs::create_dir(&item).unwrap();
+    std::fs::write(item.join("nested"), "unrelated new content").unwrap();
+
+    let error = ctx.stage_files(&["item/nested"]).unwrap_err();
+
+    assert_eq!(error.code, "index_conflict");
+    assert_eq!(staged_rows(&ctx), Vec::<String>::new());
+    ctx.stage_files(&["item", "item/nested"]).unwrap();
+    assert_eq!(staged_rows(&ctx), ["item", "item/nested"]);
+    assert_eq!(ctx.staged_content("item/nested"), "unrelated new content");
+}
+
+#[test]
+fn unstaging_a_file_directory_swap_requires_its_colliding_entries() {
+    let ctx = TestContext::builder()
+        .with_file("item", "original")
+        .with_commit("base")
+        .build();
+    let item = ctx.repo_path().join("item");
+    std::fs::remove_file(&item).unwrap();
+    std::fs::create_dir(&item).unwrap();
+    std::fs::write(item.join("nested"), "unrelated new content").unwrap();
+    ctx.stage_all().unwrap();
+    assert_eq!(staged_rows(&ctx), ["item", "item/nested"]);
+
+    let error = ctx.unstage_file("item").unwrap_err();
+
+    assert_eq!(error.code, "index_conflict");
+    assert_eq!(staged_rows(&ctx), ["item", "item/nested"]);
+    ctx.unstage_files(&["item", "item/nested"]).unwrap();
+    assert_eq!(staged_rows(&ctx), Vec::<String>::new());
+    assert_eq!(ctx.staged_content("item"), "original");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_byte_named_index_entry_and_its_utf8_lookalike_keep_separate_status_and_actions() {
+    use trunk_lib::commands::staging::{stage_file_inner, unstage_files_inner};
+    let ctx = TestContext::builder()
+        .with_file("anchor", "base")
+        .with_commit("base")
+        .build();
+    let raw = b"name-\xff".as_slice();
+    let label = r"name-\xff";
+    std::fs::write(ctx.repo_path().join(label), "keep staged").unwrap();
+    ctx.stage_file(label).unwrap();
+
+    // The Git index accepts every Git filename even on a filesystem that
+    // cannot create the working file (APFS rejects this byte sequence).
+    let insert_raw = || {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        let id = repo.blob(b"raw").unwrap();
+        index
+            .add(&trunk_git::repository::index_entry(raw, id, 0o100_644))
+            .unwrap();
+        index.write().unwrap();
+    };
+    insert_raw();
+    let status = ctx.get_status().unwrap();
+    assert_eq!(status.staged.len(), 2);
+    assert!(
+        status
+            .staged
+            .iter()
+            .any(|f| f.path == label && f.path_bytes.as_deref() == Some(raw))
+    );
+    assert!(
+        status
+            .staged
+            .iter()
+            .any(|f| f.path == label && f.path_bytes.is_none())
+    );
+    assert!(
+        status
+            .unstaged
+            .iter()
+            .any(|f| f.path == label && f.path_bytes.as_deref() == Some(raw))
+    );
+    #[cfg(target_os = "macos")]
+    {
+        // APFS cannot restore this pathname. Returning success here would
+        // hide a still-deleted working file.
+        let result =
+            trunk_lib::commands::staging::discard_files_inner(ctx.path(), &[raw], ctx.state_map());
+        assert!(result.is_err(), "discard must report the refused checkout");
+        assert_eq!(
+            std::fs::read(ctx.repo_path().join(label)).unwrap(),
+            b"keep staged"
+        );
+    }
+    unstage_files_inner(ctx.path(), &[raw], ctx.state_map()).unwrap();
+    assert_eq!(ctx.staged_content(label), "keep staged");
+    assert_eq!(ctx.get_status().unwrap().staged.len(), 1);
+
+    insert_raw();
+    stage_file_inner(ctx.path(), raw, ctx.state_map()).unwrap();
+    assert_eq!(ctx.staged_content(label), "keep staged");
+    assert_eq!(ctx.get_status().unwrap().staged.len(), 1);
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+#[test]
+fn status_and_file_actions_distinguish_git_bytes_from_their_display_spelling() {
+    use std::os::unix::ffi::OsStrExt;
+    use trunk_lib::commands::staging::{
+        discard_all_inner, discard_files_inner, stage_files_inner, unstage_files_inner,
+    };
+
+    let ctx = TestContext::builder()
+        .with_file("anchor", "base")
+        .with_commit("base")
+        .build();
+    let raw = b"name-\xff".as_slice();
+    let lookalike = br"name-\xff".as_slice();
+    let file = |bytes| ctx.repo_path().join(std::ffi::OsStr::from_bytes(bytes));
+    std::fs::write(file(raw), "raw").unwrap();
+    std::fs::write(file(lookalike), "other").unwrap();
+    let status = ctx.get_status().unwrap();
+    let escaped = status
+        .unstaged
+        .iter()
+        .find(|f| f.path_bytes.as_deref() == Some(raw))
+        .unwrap();
+    assert_eq!(escaped.path, r"name-\xff");
+    assert!(
+        status
+            .unstaged
+            .iter()
+            .any(|f| f.path == escaped.path && f.path_bytes.is_none())
+    );
+    stage_files_inner(ctx.path(), &[raw], ctx.state_map()).unwrap();
+    let status = ctx.get_status().unwrap();
+    assert_eq!(status.staged.len(), 1);
+    assert_eq!(status.staged[0].path_bytes.as_deref(), Some(raw));
+    assert_eq!(status.unstaged.len(), 1);
+    std::fs::write(file(raw), "changed").unwrap();
+    discard_files_inner(ctx.path(), &[raw], ctx.state_map()).unwrap();
+    assert_eq!(std::fs::read(file(raw)).unwrap(), b"raw");
+    unstage_files_inner(ctx.path(), &[raw], ctx.state_map()).unwrap();
+    assert_eq!(ctx.get_status().unwrap().unstaged.len(), 2);
+    discard_all_inner(ctx.path(), &[raw], ctx.state_map()).unwrap();
+    assert!(!file(raw).exists());
+    assert_eq!(std::fs::read(file(lookalike)).unwrap(), b"other");
 }
 
 #[test]

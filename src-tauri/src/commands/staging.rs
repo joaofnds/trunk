@@ -1,11 +1,15 @@
 use crate::commands::diff::{hunks_of, new_diff_options, staged_view_diff, unstaged_view_diff};
 use crate::state::{OpenRepos, RepoState};
-use crate::types::{DiffRequestOptions, FileStatus, FileStatusType, ShownHunk, WorkingTreeStatus};
+use crate::types::{
+    DiffRequestOptions, FileStatus, FileStatusType, GitPath, ShownHunk, WorkingTreeStatus,
+    display_git_path,
+};
 use git2::{Status, StatusOptions};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tauri::State;
 use trunk_git::error::TrunkError;
+use trunk_git::repository::index_entry;
 use trunk_git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
 
 const fn classify_index(s: Status) -> Option<FileStatusType> {
@@ -49,20 +53,22 @@ const fn classify_workdir(s: Status) -> Option<FileStatusType> {
     None
 }
 
-/// Where a renamed entry came from, taken from the status delta that carries
-/// both sides. `None` whenever the two sides name the same path, which is every
-/// status but a rename — the same rule `commands::diff::file_diff_of` applies,
-/// so a file list renders a rename identically whether it came from the status
-/// or from a diff.
-fn renamed_from(delta: Option<git2::DiffDelta<'_>>) -> Option<String> {
-    let delta = delta?;
-    let old = delta.old_file().path()?;
-
-    if Some(old) == delta.new_file().path() {
-        return None;
+fn status_file(path: &[u8], old_path: Option<&[u8]>, status: FileStatusType) -> FileStatus {
+    let old = old_path.filter(|old| *old != path);
+    let (path, path_bytes) = display_git_path(path);
+    let (old_path, old_path_bytes) = old.map_or((None, None), |old| {
+        let (label, raw) = display_git_path(old);
+        (Some(label), raw)
+    });
+    FileStatus {
+        path,
+        path_bytes,
+        old_path,
+        old_path_bytes,
+        status,
+        can_take_sides: None,
+        is_binary: false,
     }
-
-    Some(old.to_string_lossy().into_owned())
 }
 
 /// Dirty entries with each staged rename paired into one, which is how the staging
@@ -93,56 +99,36 @@ pub fn get_status_inner(
 
     for entry in statuses.iter() {
         let status = entry.status();
-        let file_path = entry.path().unwrap_or("").to_owned();
-
-        // Check for conflicts first
         if status.contains(Status::CONFLICTED) {
-            let sides = super::merge_editor::check_text_sides(&repo, &file_path);
-            conflicted.push(FileStatus {
-                path: file_path.clone(),
-                old_path: None,
-                status: FileStatusType::Conflicted,
-                can_take_sides: Some(sides.is_ok()),
-                is_binary: sides.is_err_and(|e| e.code == "binary_conflict"),
-            });
+            let mut file = status_file(entry.path_bytes(), None, FileStatusType::Conflicted);
+            if let Ok(path) = entry.path() {
+                let sides = super::merge_editor::check_text_sides(&repo, path);
+                file.can_take_sides = Some(sides.is_ok());
+                file.is_binary = sides.is_err_and(|e| e.code == "binary_conflict");
+            }
+            conflicted.push(file);
             continue;
         }
 
-        // Index (staged) entries. `entry.path()` reads the delta's old side, so a
-        // paired rename needs its current path read from the delta's new side
-        // instead — otherwise the row would carry the same path twice.
-        if let Some(status_type) = classify_index(status) {
-            let path = entry
-                .head_to_index()
-                .and_then(|delta| delta.new_file().path())
-                .map_or_else(|| file_path.clone(), |p| p.to_string_lossy().into_owned());
-
-            staged.push(FileStatus {
-                path,
-                old_path: renamed_from(entry.head_to_index()),
-                status: status_type,
-                is_binary: false,
-                can_take_sides: None,
-            });
+        // A staged rename can have a subsequent unstaged edit. Each delta
+        // knows which side names the current path in its section.
+        if let Some(kind) = classify_index(status) {
+            let delta = entry.head_to_index();
+            let current = delta
+                .as_ref()
+                .and_then(|d| d.new_file().path_bytes())
+                .unwrap_or_else(|| entry.path_bytes());
+            let old = delta.as_ref().and_then(|d| d.old_file().path_bytes());
+            staged.push(status_file(current, old, kind));
         }
-
-        // Working directory (unstaged) entries — a file can appear in both.
-        // `file_path` reads the same delta's old side when `head_to_index` pairs
-        // a rename, so it needs the same current-path correction as the staged
-        // branch above, even though this branch's own delta is `index_to_workdir`.
-        if let Some(status_type) = classify_workdir(status) {
-            let path = entry
-                .head_to_index()
-                .and_then(|delta| delta.new_file().path())
-                .map_or_else(|| file_path.clone(), |p| p.to_string_lossy().into_owned());
-
-            unstaged.push(FileStatus {
-                path,
-                old_path: renamed_from(entry.index_to_workdir()),
-                status: status_type,
-                is_binary: false,
-                can_take_sides: None,
-            });
+        if let Some(kind) = classify_workdir(status) {
+            let delta = entry.index_to_workdir();
+            let current = delta
+                .as_ref()
+                .and_then(|d| d.new_file().path_bytes())
+                .unwrap_or_else(|| entry.path_bytes());
+            let old = delta.as_ref().and_then(|d| d.old_file().path_bytes());
+            unstaged.push(status_file(current, old, kind));
         }
     }
 
@@ -160,6 +146,37 @@ fn present_in_workdir(abs_path: &Path) -> bool {
     abs_path.symlink_metadata().is_ok()
 }
 
+/// Git paths are bytes on Unix. Keep that identity at the filesystem and
+/// index boundary and reject wire values that cannot name a repository file.
+fn git_path(bytes: &[u8]) -> Result<&Path, TrunkError> {
+    #[cfg(unix)]
+    let path = {
+        use std::os::unix::ffi::OsStrExt;
+        Path::new(std::ffi::OsStr::from_bytes(bytes))
+    };
+    #[cfg(not(unix))]
+    let path = Path::new(
+        std::str::from_utf8(bytes)
+            .map_err(|_| TrunkError::new("invalid_path", "Invalid filename on this platform"))?,
+    );
+    if bytes.is_empty()
+        || bytes.contains(&0)
+        || !path
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err(TrunkError::new(
+            "invalid_path",
+            "Expected a relative file path",
+        ));
+    }
+    Ok(path)
+}
+
+fn selected_paths(paths: &[impl AsRef<[u8]>]) -> Result<HashSet<&Path>, TrunkError> {
+    paths.iter().map(|p| git_path(p.as_ref())).collect()
+}
+
 /// Stage one path, recording a deletion when it is gone from the working tree.
 ///
 /// # Errors
@@ -168,23 +185,10 @@ fn present_in_workdir(abs_path: &Path) -> bool {
 /// the index will not update.
 pub fn stage_file_inner(
     path: &str,
-    file_path: &str,
+    file_path: impl AsRef<[u8]>,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    state_map.hold_for_writing(path, |repo| {
-        let mut index = repo.index()?;
-        let abs_path = repo
-            .workdir()
-            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?
-            .join(file_path);
-        if present_in_workdir(&abs_path) {
-            index.add_path(Path::new(file_path))?;
-        } else {
-            index.remove_path(Path::new(file_path))?;
-        }
-        index.write()?;
-        Ok(())
-    })
+    stage_files_inner(path, &[file_path], state_map)
 }
 
 /// Stage several paths in one index write. An empty list is a no-op.
@@ -195,7 +199,7 @@ pub fn stage_file_inner(
 /// the index will not update.
 pub fn stage_files_inner(
     path: &str,
-    file_paths: &[String],
+    file_paths: &[impl AsRef<[u8]>],
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     if file_paths.is_empty() {
@@ -206,17 +210,68 @@ pub fn stage_files_inner(
             .workdir()
             .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?;
         let mut index = repo.index()?;
-        for fp in file_paths {
-            let abs_path = workdir.join(fp);
-            if present_in_workdir(&abs_path) {
-                index.add_path(Path::new(fp))?;
-            } else {
-                index.remove_path(Path::new(fp))?;
+        let paths = selected_paths(file_paths)?;
+        ensure_no_conflicts(&index, &paths)?;
+        let outside = entries_outside_selection(&index, &paths);
+        for path in &paths {
+            if !present_in_workdir(&workdir.join(path)) {
+                index.remove_path(path)?;
+                continue;
             }
+            // An ordinary directory in place of a tracked file is that
+            // file's deletion. libgit2 stages a Git submodule at a directory.
+            match index.add_path(path) {
+                Err(error) if error.code() == git2::ErrorCode::Directory => {
+                    index.remove_path(path)?;
+                }
+                result => result?,
+            }
+        }
+        if entries_outside_selection(&index, &paths) != outside {
+            return Err(index_path_conflict());
         }
         index.write()?;
         Ok(())
     })
+}
+
+/// Stage and unstage operate on ordinary changes. A conflict which appeared
+/// since the list was read goes through the explicit resolution workflow.
+fn ensure_no_conflicts(index: &git2::Index, paths: &HashSet<&Path>) -> Result<(), TrunkError> {
+    for path in paths {
+        if (1..=3).any(|stage| index.get_path(path, stage).is_some()) {
+            return Err(TrunkError::new(
+                "file_conflicted",
+                format!(
+                    "{} now has a conflict. Resolve it from Conflicted files.",
+                    display_git_path(path.as_os_str().as_encoded_bytes()).0
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Adding a file can implicitly evict an ancestor or its descendants from the
+/// index. Other entries can only disappear during this operation. Count the
+/// selection on either side to detect an eviction without walking the index.
+fn entries_outside_selection(index: &git2::Index, paths: &HashSet<&Path>) -> usize {
+    let selected = paths
+        .iter()
+        .filter(|path| {
+            index
+                .get_path(path, 0)
+                .is_some_and(|entry| entry.path.as_slice() == path.as_os_str().as_encoded_bytes())
+        })
+        .count();
+    index.len() - selected
+}
+
+fn index_path_conflict() -> TrunkError {
+    TrunkError::new(
+        "index_conflict",
+        "Include both the file and its conflicting paths in the selection.",
+    )
 }
 
 fn is_head_unborn(repo: &git2::Repository) -> bool {
@@ -234,51 +289,10 @@ fn is_head_unborn(repo: &git2::Repository) -> bool {
 /// will not update.
 pub fn unstage_file_inner(
     path: &str,
-    file_path: &str,
+    file_path: impl AsRef<[u8]>,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    state_map.hold_for_writing(path, |repo| {
-        if is_head_unborn(repo) {
-            // No commits yet, so just remove it from the index
-            let mut index = repo.index()?;
-            index.remove_path(Path::new(file_path))?;
-            index.write()?;
-        } else {
-            let head_commit = repo.head()?.peel_to_commit()?;
-            let paths = with_staged_rename_sources(repo, &[file_path])?;
-            repo.reset_default(
-                Some(head_commit.as_object()),
-                paths.iter().map(String::as_str),
-            )?;
-        }
-
-        Ok(())
-    })
-}
-
-/// The given paths, each followed by the path it was renamed from when the index
-/// holds it as a staged rename. The staging list shows a staged rename as one row
-/// named by its new path, so unstaging that row has to put back both sides.
-fn with_staged_rename_sources(
-    repo: &git2::Repository,
-    paths: &[&str],
-) -> Result<Vec<String>, TrunkError> {
-    let head_tree = repo.head()?.peel_to_tree()?;
-    let mut diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
-    diff.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
-
-    let mut out: Vec<String> = paths.iter().map(|p| (*p).to_owned()).collect();
-    for delta in diff.deltas() {
-        let is_wanted = delta
-            .new_file()
-            .path()
-            .is_some_and(|new| paths.iter().any(|p| Path::new(p) == new));
-        if delta.status() == git2::Delta::Renamed && is_wanted {
-            out.extend(renamed_from(Some(delta)));
-        }
-    }
-
-    Ok(out)
+    unstage_files_inner(path, &[file_path], state_map)
 }
 
 /// Restore several paths in the index to their HEAD state.
@@ -289,31 +303,77 @@ fn with_staged_rename_sources(
 /// will not update.
 pub fn unstage_files_inner(
     path: &str,
-    file_paths: &[String],
+    file_paths: &[impl AsRef<[u8]>],
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     if file_paths.is_empty() {
         return Ok(());
     }
     state_map.hold_for_writing(path, |repo| {
-        if is_head_unborn(repo) {
-            let mut index = repo.index()?;
-            for fp in file_paths {
-                index.remove_path(Path::new(fp))?;
+        let mut index = repo.index()?;
+        let paths = selected_paths(file_paths)?;
+        ensure_no_conflicts(&index, &paths)?;
+        match repo.head() {
+            Ok(head) => {
+                let tree = head.peel_to_tree()?;
+                let mut diff = repo.diff_tree_to_index(Some(&tree), Some(&index), None)?;
+                diff.find_similar(Some(git2::DiffFindOptions::new().renames(true)))?;
+                restore_staged_paths(&mut index, &diff, &paths)?;
             }
-            index.write()?;
-        } else {
-            let head_commit = repo.head()?.peel_to_commit()?;
-            let wanted: Vec<&str> = file_paths.iter().map(String::as_str).collect();
-            let paths = with_staged_rename_sources(repo, &wanted)?;
-            repo.reset_default(
-                Some(head_commit.as_object()),
-                paths.iter().map(String::as_str),
-            )?;
+            Err(error) if error.code() == git2::ErrorCode::UnbornBranch => {
+                for path in paths {
+                    index.remove_path(path)?;
+                }
+            }
+            Err(error) => return Err(error.into()),
         }
-
+        index.write()?;
         Ok(())
     })
+}
+
+/// The index takes literal paths. A rename is displayed as the destination, so
+/// selecting it also restores the source. Removing all selected entries before
+/// restoring HEAD lets a file and a directory at the same path trade places.
+fn restore_staged_paths(
+    index: &mut git2::Index,
+    diff: &git2::Diff<'_>,
+    paths: &HashSet<&Path>,
+) -> Result<(), TrunkError> {
+    let mut restore = Vec::new();
+    for delta in diff.deltas() {
+        let destination = delta.new_file().path().filter(|path| paths.contains(path));
+        if let Some(path) = destination {
+            index.remove_path(path)?;
+        }
+
+        let head = delta.old_file();
+        if let Some(path) = head
+            .path()
+            .filter(|path| head.exists() && (destination.is_some() || paths.contains(path)))
+        {
+            if destination != Some(path) {
+                index.remove_path(path)?;
+            }
+            restore.push(index_entry(
+                path.as_os_str().as_encoded_bytes(),
+                head.id(),
+                head.mode().into(),
+            ));
+        }
+    }
+
+    for entry in restore {
+        let before = index.len();
+        index.add(&entry)?;
+        // libgit2 evicts a file's ancestors or descendants if they collide.
+        // Every selected path was removed above, so an eviction here would
+        // silently unstage a different row. Leave the on-disk index untouched.
+        if index.len() != before + 1 {
+            return Err(index_path_conflict());
+        }
+    }
+    Ok(())
 }
 
 /// A working-tree change to a file the index already tracks.
@@ -333,10 +393,10 @@ const TRACKED_WORKTREE_CHANGE: Status = Status::WT_MODIFIED
 /// git error when the checkout fails.
 pub fn discard_file_inner(
     path: &str,
-    file_path: &str,
+    file_path: impl AsRef<[u8]>,
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    discard_files_inner(path, &[file_path.to_string()], state_map)
+    discard_files_inner(path, &[file_path], state_map)
 }
 
 /// Throw away the named paths' working-tree changes, keeping what is staged.
@@ -354,7 +414,7 @@ pub fn discard_file_inner(
 /// git error when the checkout fails.
 pub fn discard_files_inner(
     path: &str,
-    file_paths: &[String],
+    file_paths: &[impl AsRef<[u8]>],
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     if file_paths.is_empty() {
@@ -362,25 +422,27 @@ pub fn discard_files_inner(
     }
 
     state_map.hold_for_writing(path, |repo| {
+        let paths = selected_paths(file_paths)?;
+        ensure_no_conflicts(&repo.index()?, &paths)?;
         let mut opts = StatusOptions::new();
-        for file_path in file_paths {
-            opts.pathspec(file_path);
+        for path in &paths {
+            opts.pathspec(*path);
         }
         opts.disable_pathspec_match(true)
             .include_untracked(true)
             .include_ignored(false)
             .recurse_untracked_dirs(true);
         let statuses = repo.statuses(Some(&mut opts))?;
-        let status_by_path: HashMap<String, Status> = statuses
+        let status_by_path: HashMap<Vec<u8>, Status> = statuses
             .iter()
-            .filter_map(|entry| Some((entry.path().ok()?.to_string(), entry.status())))
+            .map(|entry| (entry.path_bytes().to_vec(), entry.status()))
             .collect();
 
         let mut untracked = Vec::new();
         let mut tracked = Vec::new();
-        for file_path in file_paths {
+        for file_path in paths {
             let status = status_by_path
-                .get(file_path)
+                .get(file_path.as_os_str().as_encoded_bytes())
                 .copied()
                 .unwrap_or(Status::CURRENT);
             if status.contains(Status::WT_NEW) {
@@ -390,7 +452,7 @@ pub fn discard_files_inner(
             } else {
                 return Err(TrunkError::new(
                     "file_not_found",
-                    format!("File not in working tree changes: {file_path}"),
+                    format!("File not in working tree changes: {}", file_path.display()),
                 ));
             }
         }
@@ -403,7 +465,10 @@ pub fn discard_files_inner(
             })?;
             for file_path in untracked {
                 std::fs::remove_file(workdir.join(file_path)).map_err(|e| {
-                    TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
+                    TrunkError::new(
+                        "io_error",
+                        format!("Failed to delete {}: {e}", file_path.display()),
+                    )
                 })?;
             }
         }
@@ -417,7 +482,7 @@ pub fn discard_files_inner(
 /// From the index, not HEAD: a HEAD checkout resets the index entry too and
 /// throws away the part of the file the user staged. An empty list restores
 /// nothing, where a checkout with no pathspec would restore every path.
-fn restore_from_index<S: AsRef<str>>(
+fn restore_from_index<S: AsRef<Path>>(
     repo: &git2::Repository,
     paths: &[S],
 ) -> Result<(), TrunkError> {
@@ -447,7 +512,7 @@ fn restore_from_index<S: AsRef<str>>(
 /// one is deleted.
 pub fn discard_all_inner(
     path: &str,
-    file_paths: &[String],
+    file_paths: &[impl AsRef<[u8]>],
     state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     state_map.hold_for_writing(path, |repo| {
@@ -460,31 +525,32 @@ pub fn discard_all_inner(
         let workdir = repo
             .workdir()
             .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
-        let confirmed: HashSet<&str> = file_paths.iter().map(String::as_str).collect();
+        let confirmed = selected_paths(file_paths)?;
         let confirmed_entries = || {
-            statuses
-                .iter()
-                .filter(|entry| entry.path().is_ok_and(|path| confirmed.contains(path)))
+            statuses.iter().filter(|entry| {
+                git_path(entry.path_bytes()).is_ok_and(|path| confirmed.contains(path))
+            })
         };
 
+        ensure_no_conflicts(&repo.index()?, &confirmed)?;
         // Collect untracked file paths before checkout. A directory listed whole is
         // a repository nested in this one, and deleting it would take its history,
         // so it stays, as `git clean -fd` leaves it.
-        let untracked_paths: Vec<PathBuf> = confirmed_entries()
+        let untracked_paths = confirmed_entries()
             .filter(|entry| entry.status().contains(Status::WT_NEW))
             .filter_map(|entry| {
-                let path = entry.path().ok()?;
-                (!path.ends_with('/')).then(|| workdir.join(path))
+                let raw = entry.path_bytes();
+                (!raw.ends_with(b"/")).then(|| git_path(raw).map(|path| workdir.join(path)))
             })
-            .collect();
+            .collect::<Result<Vec<PathBuf>, _>>()?;
 
         // Naming the changed paths keeps a conflicted file's resolution in progress:
         // a checkout of every path rewrites its conflict markers, and libgit2's
         // skip_unmerged deletes it.
-        let changed_paths: Vec<String> = confirmed_entries()
+        let changed_paths = confirmed_entries()
             .filter(|entry| entry.status().intersects(TRACKED_WORKTREE_CHANGE))
-            .filter_map(|entry| entry.path().ok().map(str::to_string))
-            .collect();
+            .map(|entry| git_path(entry.path_bytes()).map(Path::to_owned))
+            .collect::<Result<Vec<_>, _>>()?;
 
         restore_from_index(repo, &changed_paths)?;
 
@@ -762,7 +828,7 @@ pub fn get_dirty_counts_inner(
 pub async fn discard_file(
     activity: crate::activity::Activity,
     path: String,
-    file_path: String,
+    file_path: GitPath,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -785,7 +851,7 @@ pub async fn discard_file(
 pub async fn discard_files(
     activity: crate::activity::Activity,
     path: String,
-    file_paths: Vec<String>,
+    file_paths: Vec<GitPath>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -808,7 +874,7 @@ pub async fn discard_files(
 pub async fn discard_all(
     activity: crate::activity::Activity,
     path: String,
-    file_paths: Vec<String>,
+    file_paths: Vec<GitPath>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -875,7 +941,7 @@ pub async fn get_status(
 pub async fn stage_file(
     activity: crate::activity::Activity,
     path: String,
-    file_path: String,
+    file_path: GitPath,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -898,7 +964,7 @@ pub async fn stage_file(
 pub async fn unstage_file(
     activity: crate::activity::Activity,
     path: String,
-    file_path: String,
+    file_path: GitPath,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -921,7 +987,7 @@ pub async fn unstage_file(
 pub async fn stage_files(
     activity: crate::activity::Activity,
     path: String,
-    file_paths: Vec<String>,
+    file_paths: Vec<GitPath>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();
@@ -944,7 +1010,7 @@ pub async fn stage_files(
 pub async fn unstage_files(
     activity: crate::activity::Activity,
     path: String,
-    file_paths: Vec<String>,
+    file_paths: Vec<GitPath>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.snapshot();

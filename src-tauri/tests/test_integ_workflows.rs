@@ -339,7 +339,7 @@ fn state_transition_merge_conflict_resolve_commit() {
 
     // Resolve the conflict
     std::fs::write(ctx.repo_path().join("shared.txt"), "resolved content").unwrap();
-    ctx.stage_file("shared.txt").unwrap();
+    ctx.mark_resolved("shared.txt").unwrap();
 
     // Continue the merge
     ctx.merge_continue(Some("Merge commit")).unwrap();
