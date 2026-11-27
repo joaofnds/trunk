@@ -817,7 +817,7 @@ registerUpdateBlocker(() =>
 	<!-- Search input (sticky at top) -->
 	<div class="p-2 shadow-hairline">
 		<div
-			class="flex items-center gap-1 h-control-lg py-0 px-2 bg-bg border border-border rounded focus-within:border-accent"
+			class="flex items-center gap-1 h-control-lg py-0 px-2 bg-bg border border-border rounded"
 		>
 			<Search size={12} color="var(--color-text-subtle)" class="shrink-0" />
 			<input
@@ -834,7 +834,7 @@ registerUpdateBlocker(() =>
 					}
 				}}
 				bind:value={search}
-				class="flex-1 min-w-0 h-full bg-transparent border-none text-text-muted text-callout"
+				class="flex-1 min-w-0 h-full bg-transparent border-none text-text-muted text-callout focus:outline-hidden"
 			>
 		</div>
 	</div>

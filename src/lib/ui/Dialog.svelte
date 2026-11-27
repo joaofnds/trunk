@@ -3,8 +3,7 @@ export type DialogSize = "sm" | "md";
 export type DialogVariant = "modal" | "anchored" | "palette";
 
 export const paletteInputClass =
-	"shrink-0 w-full px-3 py-2 bg-surface-raised border-b border-border text-body text-text " +
-	"focus:outline-2 focus:-outline-offset-2 focus:outline-accent";
+	"shrink-0 w-full px-3 py-2 bg-surface-raised border-b border-border text-body text-text focus:outline-hidden";
 </script>
 
 <script lang="ts">

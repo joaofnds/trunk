@@ -187,12 +187,4 @@ function autofocus(node: HTMLElement) {
 	width: calc(84 * var(--u));
 	max-width: calc(100% - 2 * var(--space-2));
 }
-
-.search-bar:has(input:focus) {
-	border-color: color-mix(
-		in oklch,
-		var(--color-accent) 65%,
-		var(--color-border)
-	);
-}
 </style>

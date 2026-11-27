@@ -61,7 +61,7 @@ function keydown(event: KeyboardEvent) {
 	{#if open}
 		<input
 			type="text"
-			class="h-control-sm flex-1 min-w-0 rounded border border-border bg-surface px-2 text-callout text-text"
+			class="h-control-sm flex-1 min-w-0 rounded border border-border bg-surface px-2 text-callout text-text focus:outline-hidden"
 			bind:this={input}
 			bind:value={query}
 			aria-label={label}
