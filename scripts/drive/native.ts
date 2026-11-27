@@ -224,15 +224,17 @@ async function findInNarrowCommitPane(instance: Instance): Promise<void> {
 	const detail = `document.querySelector('[data-testid="commit-detail"]')`;
 	const splitter = `document.querySelector('[aria-label="Resize detail pane"]')`;
 	const oid = git(repo, "rev-parse", "--short=7", "HEAD");
-	const options = (await callHook(
+	await until(
 		instance,
-		"list",
-		["option"],
+		`(() => {
+			const cells = document.querySelectorAll('[role="option"] [data-column="sha"]');
+			const cell = [...cells].find(cell => cell.textContent.trim() === ${JSON.stringify(oid)});
+			if (!cell) return false;
+			cell.closest('[role="option"]').click();
+			return true;
+		})()`,
 		DEADLINE_MS,
-	)) as string[];
-	const commit = options.find((option) => option.endsWith(` ${oid}`));
-	if (!commit) throw new Error(`no displayed commit for ${oid}`);
-	await callHook(instance, "click", ["option", commit], DEADLINE_MS);
+	);
 	await until(instance, `${detail} !== null`, DEADLINE_MS);
 	try {
 		await evaluate(instance, `${splitter}.focus()`, DEADLINE_MS);
