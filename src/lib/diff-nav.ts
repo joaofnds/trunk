@@ -11,7 +11,7 @@ import type { Side } from "./types.js";
  */
 export interface DiffNav {
 	searchRows(): readonly DiffRow[];
-	revealSearchRow(row: number): void;
+	revealSearchRow(row: number, onrevealed?: (mark: HTMLElement) => void): void;
 	/** Whether the rows can receive a jump. */
 	isReady(): boolean;
 	/** A hunk's place in that sequence, or -1 when it is not rendered. */

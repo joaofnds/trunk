@@ -22,6 +22,7 @@ import {
 	callHook,
 	commitRows,
 	DriveError,
+	evaluate,
 	type Instance,
 	request,
 	until,
@@ -64,6 +65,7 @@ await driveScenario(
 			undoAndRedoFromTheKeyboard,
 			readTheResetSubmenu,
 			openAnotherRepository,
+			findInDiffKeepsItsViewport,
 			findFromTheMenuBar,
 		]) {
 			try {
@@ -125,6 +127,96 @@ function seedRebasingWorktree(): void {
 			env: { ...process.env, GIT_SEQUENCE_EDITOR: "echo break >" },
 		},
 	);
+}
+
+async function findInDiffKeepsItsViewport(instance: Instance): Promise<void> {
+	const name = "find-overlay.txt";
+	const line = `${"x".repeat(90)}needle`;
+	writeFileSync(
+		join(other, name),
+		[`first ${line}`, ...Array<string>(160).fill("body"), `last ${line}`].join(
+			"\n",
+		),
+	);
+	await until(
+		instance,
+		`document.querySelector('[data-path="${name}"]') !== null`,
+		DEADLINE_MS,
+	);
+	await evaluate(
+		instance,
+		`document.querySelector('[data-path="${name}"]').click()`,
+		DEADLINE_MS,
+	);
+
+	const viewport = `document.querySelector('[data-testid="diff-viewport"]')`;
+	try {
+		await until(
+			instance,
+			`${viewport}?.scrollHeight > ${viewport}?.clientHeight`,
+			DEADLINE_MS,
+		);
+		await evaluate(
+			instance,
+			`${viewport}.scrollTop = ${viewport}.scrollHeight`,
+			DEADLINE_MS,
+		);
+		const geometry = `(() => {
+			const view = ${viewport};
+			const { top, height } = view.getBoundingClientRect();
+			return JSON.stringify([top, height, view.scrollTop]);
+		})()`;
+		const before = await until(
+			instance,
+			`${viewport}.scrollTop > 0 && ${geometry}`,
+			DEADLINE_MS,
+		);
+		await request(instance, { op: "chord", chord: "Meta+f" }, DEADLINE_MS);
+		await until(
+			instance,
+			'document.activeElement.placeholder === "Find in diff…"',
+			DEADLINE_MS,
+		);
+		const after = await evaluate(instance, geometry, DEADLINE_MS);
+		check(
+			before === after,
+			"opening Find preserves the scrolled diff viewport",
+			`opening Find changed [top, height, scrollTop] from ${before} to ${after}`,
+		);
+		const overCode = await evaluate(
+			instance,
+			`(() => {
+			const rect = document.activeElement.getBoundingClientRect();
+			const view = ${viewport}.getBoundingClientRect();
+			return rect.left >= view.left && rect.right <= view.right && rect.top >= view.top && rect.bottom <= view.bottom;
+		})()`,
+			DEADLINE_MS,
+		);
+		check(
+			overCode === true,
+			"the Find field floats within the diff",
+			"the Find field is outside the diff",
+		);
+
+		await callHook(
+			instance,
+			"type",
+			["textbox", "Find in diff…", "needle"],
+			DEADLINE_MS,
+		);
+		const exposed = (rowLabel: string) => `(() => {
+			const mark = document.querySelector("[data-diff-match]");
+			if (!mark?.closest("[data-line-index]")?.textContent.includes(${JSON.stringify(rowLabel)})) return false;
+			const rect = mark.getBoundingClientRect();
+			return mark.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+		})()`;
+		await until(instance, exposed("first"), DEADLINE_MS);
+		await callHook(instance, "key", ["Enter"], DEADLINE_MS);
+		await until(instance, exposed("last"), DEADLINE_MS);
+		console.log("ok: the first and last occurrences are visible beside Find");
+	} finally {
+		await callHook(instance, "click", ["button", "Close diff"], DEADLINE_MS);
+	}
 }
 
 async function findFromTheMenuBar(instance: Instance): Promise<void> {

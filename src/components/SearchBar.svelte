@@ -8,7 +8,7 @@ import Button from "../lib/ui/Button.svelte";
 
 interface Props {
 	placeholder?: string;
-	floating?: boolean;
+	animate?: boolean;
 	query: string;
 	currentIndex: number;
 	totalMatches: number;
@@ -22,7 +22,7 @@ interface Props {
 
 let {
 	placeholder = "Search commits…",
-	floating = true,
+	animate = true,
 	query,
 	currentIndex,
 	totalMatches,
@@ -60,6 +60,24 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 let input: HTMLInputElement;
+let bar: HTMLDivElement;
+let atBottom = $state(false);
+
+export function avoidCovering(mark: HTMLElement, clip: Element | null) {
+	const bounds = bar.getBoundingClientRect();
+	const visible = clip?.getBoundingClientRect() ?? bounds;
+	if (
+		Array.from(mark.getClientRects()).some(
+			(rect) =>
+				Math.max(rect.left, visible.left, bounds.left) <
+					Math.min(rect.right, visible.right, bounds.right) &&
+				rect.top < bounds.bottom &&
+				rect.bottom > bounds.top,
+		)
+	) {
+		atBottom = !atBottom;
+	}
+}
 
 export function focusQuery() {
 	input.focus();
@@ -72,10 +90,11 @@ function autofocus(node: HTMLElement) {
 </script>
 
 <div
-	transition:slide={{ duration: floating ? motionDuration(150) : 0, axis: "y" }}
+	bind:this={bar}
+	transition:slide={{ duration: animate ? motionDuration(150) : 0, axis: "y" }}
 	class={[
-		floating ? "absolute top-0 right-2 z-10" : "self-end shrink-0",
-		"search-bar h-control-lg bg-surface-raised border border-border rounded shadow-md flex items-center py-0 px-2 gap-1",
+		atBottom ? "bottom-0" : "top-0",
+		"search-bar absolute right-2 z-10 h-control-lg bg-surface-raised border border-border rounded shadow-md flex items-center py-0 px-2 gap-1",
 	]}
 >
 	<input
@@ -139,6 +158,6 @@ function autofocus(node: HTMLElement) {
 <style>
 .search-bar {
 	width: calc(75 * var(--u));
-	max-width: 100%;
+	max-width: calc(100% - var(--space-2));
 }
 </style>

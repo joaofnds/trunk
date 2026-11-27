@@ -1353,17 +1353,6 @@ function extendDrag(e: MouseEvent) {
 		{backLabel}
 		showsLines={!selectedFile?.is_binary}
 	/>
-	<DiffFind
-		bind:this={find}
-		{focusDiff}
-		source={nav}
-		subject={sourceSubject}
-		enabled={keysActive &&
-			!renderedView &&
-			!emptyCommit &&
-			!loadError &&
-			fileDiffs.some((file) => !file.is_binary && file.hunks.length > 0)}
-	/>
 	<DiffViewer
 		activeMatch={find?.currentMatch()}
 		{folds}
@@ -1429,5 +1418,17 @@ function extendDrag(e: MouseEvent) {
 		onextendcomment={handleExtendFullFileComment}
 		composer={diffComposer}
 		bind:fullFileView
-	/>
+	>
+		<DiffFind
+			bind:this={find}
+			{focusDiff}
+			source={nav}
+			subject={sourceSubject}
+			enabled={keysActive &&
+				!renderedView &&
+				!emptyCommit &&
+				!loadError &&
+				fileDiffs.some((file) => !file.is_binary && file.hunks.length > 0)}
+		/>
+	</DiffViewer>
 </div>

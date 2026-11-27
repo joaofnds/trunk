@@ -378,7 +378,10 @@ export function revealIndex(index: number): void {
 	navigate(index, true);
 }
 
-export function revealSearchRow(index: number): void {
+export function revealSearchRow(
+	index: number,
+	onrevealed?: (mark: HTMLElement) => void,
+): void {
 	navigate(index, true, () => {
 		void tick().then(() => {
 			const mark = rows?.querySelector<HTMLElement>("[data-diff-match]");
@@ -391,6 +394,7 @@ export function revealSearchRow(index: number): void {
 				recordScrollTop(scroller.scrollTop);
 				panLeft = scroller.scrollLeft;
 			});
+			onrevealed?.(mark);
 		});
 	});
 }
@@ -468,6 +472,7 @@ async function revealFocused(target: HTMLElement) {
 </script>
 
 <div
+	data-testid="diff-viewport"
 	class="exact-virtual-viewport absolute inset-0 overflow-y-auto overscroll-x-none"
 	class:overflow-x-auto={horizontal}
 	class:overflow-x-hidden={!horizontal}

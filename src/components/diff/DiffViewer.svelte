@@ -1,5 +1,5 @@
 <script lang="ts">
-import { untrack } from "svelte";
+import { type Snippet, untrack } from "svelte";
 import { isImagePath } from "../../lib/binary-file.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffMatch } from "../../lib/diff-find.js";
@@ -32,6 +32,7 @@ import type { SelectionCommentPlace } from "./SelectionComment.svelte";
 import SplitView from "./SplitView.svelte";
 
 interface Props {
+	children?: Snippet;
 	activeMatch?: DiffMatch | null;
 	contentMode: ContentMode;
 	contextLines: number;
@@ -112,6 +113,7 @@ interface Props {
 }
 
 let {
+	children,
 	activeMatch = null,
 	contentMode,
 	contextLines,
@@ -309,6 +311,7 @@ function isLoaded(diff: FileDiff | undefined): boolean {
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
 <div class="flex-1 overflow-clip min-h-0 relative @container overscroll-x-none">
+	{@render children?.()}
 	{#if pane === "placeholder"}
 		<div
 			class="flex-1 flex items-center justify-center text-text-muted text-body"

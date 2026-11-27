@@ -63,8 +63,12 @@ $effect(() => {
 
 	const target = source;
 	const targetRow = row;
-	untrack(() => target.revealSearchRow(targetRow));
+	untrack(() => target.revealSearchRow(targetRow, avoidCoveringMatch));
 });
+
+function avoidCoveringMatch(mark: HTMLElement) {
+	bar?.avoidCovering(mark, mark.closest(".split-window"));
+}
 
 function changeQuery(value: string) {
 	query = value;
@@ -72,7 +76,8 @@ function changeQuery(value: string) {
 }
 
 function step(direction: number) {
-	if (total === 1 && match) source?.revealSearchRow(match.row);
+	if (total === 1 && match)
+		source?.revealSearchRow(match.row, avoidCoveringMatch);
 	else if (total > 1) ordinal = (index + direction + total) % total;
 }
 
@@ -107,7 +112,7 @@ function handleEscape(event: KeyboardEvent) {
 	<SearchBar
 		bind:this={bar}
 		placeholder="Find in diff…"
-		floating={false}
+		animate={false}
 		{query}
 		currentIndex={index}
 		totalMatches={total}
