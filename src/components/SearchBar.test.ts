@@ -95,24 +95,21 @@ describe("SearchBar", () => {
 		expect(onclose).toHaveBeenCalled();
 	});
 
-	it("draws its stepping and close as small ghost icon controls", () => {
-		render(SearchBar, { props: defaultProps });
-
-		for (const name of ["Previous match", "Next match", "Close search"]) {
-			expect(screen.getByLabelText(name)).toHaveClass(
-				"w-control-sm",
-				"bg-transparent",
-			);
-		}
+	it("closes on Escape from a finder button", async () => {
+		const onclose = vi.fn();
+		render(SearchBar, { props: { ...defaultProps, onclose } });
+		const close = screen.getByRole("button", { name: "Close search" });
+		close.focus();
+		expect(await fireEvent.keyDown(close, { key: "Escape" })).toBe(false);
+		expect(onclose).toHaveBeenCalledOnce();
 	});
 
-	it("disables nav buttons when totalMatches=0", () => {
-		render(SearchBar, {
-			props: { ...defaultProps, totalMatches: 0 },
-		});
-		const buttons = screen.getAllByRole("button");
-		// prev and next buttons (not close) should be disabled
-		const disabledButtons = buttons.filter((b) => b.hasAttribute("disabled"));
-		expect(disabledButtons.length).toBeGreaterThanOrEqual(2);
+	it("keeps Close available when there are no matches to step through", () => {
+		render(SearchBar, { props: defaultProps });
+		expect(
+			screen.getByRole("button", { name: "Previous match" }),
+		).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Close search" })).toBeEnabled();
 	});
 });

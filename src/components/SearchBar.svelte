@@ -1,6 +1,7 @@
 <script lang="ts">
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
+import Search from "@lucide/svelte/icons/search";
 import X from "@lucide/svelte/icons/x";
 import { slide } from "svelte/transition";
 import { motionDuration } from "../lib/motion-duration.js";
@@ -45,11 +46,13 @@ function handleInput() {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-	if (e.isComposing) return;
+	if (e.isComposing || e.defaultPrevented) return;
 
 	if (e.key === "Escape") {
 		e.preventDefault();
 		onclose();
+	} else if (e.target !== input) {
+		return;
 	} else if (e.key === "Enter" && e.shiftKey) {
 		e.preventDefault();
 		onprev();
@@ -60,7 +63,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 let input: HTMLInputElement;
-let bar: HTMLDivElement;
+let bar: HTMLElement;
 let atBottom = $state(false);
 
 export function avoidCovering(mark: HTMLElement, clip: Element | null) {
@@ -89,30 +92,33 @@ function autofocus(node: HTMLElement) {
 }
 </script>
 
-<div
+<search
 	bind:this={bar}
 	transition:slide={{ duration: animate ? motionDuration(150) : 0, axis: "y" }}
 	class={[
-		atBottom ? "bottom-0" : "top-0",
-		"search-bar absolute right-2 z-10 h-control-lg bg-surface-raised border border-border rounded shadow-md flex items-center py-0 px-2 gap-1",
+		atBottom ? "bottom-2" : "top-2",
+		"search-bar absolute right-2 z-10 bg-surface-chip border border-border-strong rounded shadow-md flex items-center pl-3 pr-1 py-1 gap-1",
 	]}
 >
-	<input
-		class="search-bar-input flex-1 border-none bg-transparent text-body text-text caret-accent focus:outline-hidden min-w-0"
-		type="text"
-		{placeholder}
-		aria-label={placeholder}
-		bind:this={input}
-		bind:value={inputValue}
-		oninput={handleInput}
-		onkeydown={handleKeydown}
-		use:autofocus
-	>
+	<label class="min-w-0 flex-1 flex items-center gap-2 cursor-text">
+		<Search size={14} aria-hidden="true" class="shrink-0 text-text-muted" />
+		<input
+			class="search-bar-input flex-1 border-none bg-transparent text-body text-text-strong caret-accent focus:outline-hidden min-w-0"
+			type="text"
+			{placeholder}
+			aria-label={placeholder}
+			bind:this={input}
+			bind:value={inputValue}
+			oninput={handleInput}
+			onkeydown={handleKeydown}
+			use:autofocus
+		>
+	</label>
 
 	{#if query.length > 0 && !searching}
 		<span
 			aria-live="polite"
-			class="shrink-0 text-small text-text-muted whitespace-nowrap"
+			class="mx-1 shrink-0 text-small tabular-nums text-text-muted whitespace-nowrap"
 		>
 			{#if totalMatches > 0}
 				{`${currentIndex + 1} of ${totalMatches}`}
@@ -124,9 +130,11 @@ function autofocus(node: HTMLElement) {
 
 	<Button
 		icon
-		size="sm"
+		size="base"
 		variant="ghost"
 		aria-label="Previous match"
+		onkeydown={handleKeydown}
+		tooltip="Previous match (Shift+Enter)"
 		disabled={totalMatches === 0}
 		onclick={onprev}
 	>
@@ -135,33 +143,41 @@ function autofocus(node: HTMLElement) {
 
 	<Button
 		icon
-		size="sm"
+		size="base"
 		variant="ghost"
 		aria-label="Next match"
+		onkeydown={handleKeydown}
+		tooltip="Next match (Enter)"
 		disabled={totalMatches === 0}
 		onclick={onnext}
 	>
 		<ChevronDown size={14} />
 	</Button>
 
+	<span
+		class="mx-1 h-4 w-px shrink-0 bg-border-strong"
+		aria-hidden="true"
+	></span>
 	<Button
 		icon
-		size="sm"
+		size="base"
 		variant="ghost"
 		aria-label="Close search"
+		onkeydown={handleKeydown}
+		tooltip="Close search (Esc)"
 		onclick={onclose}
 	>
 		<X size={14} />
 	</Button>
-</div>
+</search>
 
 <style>
 .search-bar {
-	width: calc(75 * var(--u));
-	max-width: calc(100% - var(--space-2));
+	width: calc(84 * var(--u));
+	max-width: calc(100% - 2 * var(--space-2));
 }
 
-.search-bar:has(> input:focus) {
+.search-bar:has(input:focus) {
 	border-color: color-mix(
 		in oklch,
 		var(--color-accent) 65%,

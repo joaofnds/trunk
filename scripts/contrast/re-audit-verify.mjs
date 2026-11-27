@@ -259,6 +259,9 @@ check("message --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0
 check("author --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });
 check("date --fg-2 (transient)", "var(--fg-2)", "var(--color-selected-row)", { opacity: 0.8, target: 4.5 });
 
+section("Floating finder");
+check("placeholder and match count", "var(--color-text-muted)", "var(--color-surface-chip)");
+
 section("Search-dim (new --opacity-search-dim 0.75): non-match content AA (transient)");
 check("row sub-text --fg-2 / bg-1", "var(--fg-2)", PANEL, { opacity: 0.75, target: 4.5 });
 check("row sub-text --fg-2 / bg-selected", "var(--fg-2)", "var(--bg-selected)", { opacity: 0.75, target: 4.5 });
