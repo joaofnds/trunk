@@ -23,6 +23,7 @@
 		"@tauri-apps/plugin-opener": "^2.7.2",
 		"@tauri-apps/plugin-window-state": "^2.5.0",
 		"esm-env": "^1.2.2",
+		"fzf": "0.5.2",
 		"sortablejs": "^1.15.7"
 	},
 	"devDependencies": {
@@ -45,5 +46,8 @@
 		"typescript": "~6.0.3",
 		"vite": "^8.3.7",
 		"vitest": "^5.1.0"
+	},
+	"patchedDependencies": {
+		"fzf@0.5.2": "patches/fzf@0.5.2.patch"
 	}
 }

@@ -83,17 +83,3 @@ function listingOf(status: WorkingTreeStatus): string {
 		sections.map((files) => files.map((file) => [fileKey(file), file.status])),
 	);
 }
-
-/** Displayed names and source names of moves both identify the changed file. */
-export function matchingFiles(
-	files: FileStatus[],
-	query: string,
-): FileStatus[] {
-	if (!query) return files;
-	const needle = query.toLowerCase();
-	return files.filter(
-		(file) =>
-			file.path.toLowerCase().includes(needle) ||
-			file.old_path?.toLowerCase().includes(needle),
-	);
-}

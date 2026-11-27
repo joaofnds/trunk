@@ -166,16 +166,17 @@ describe("FileFinder", () => {
 		expect(rowLabels().length).toBeGreaterThan(mountedRows);
 	});
 
-	it("narrows the list as the query is typed", async () => {
+	it("narrows the list and highlights the letters typed", async () => {
 		open();
 
 		await fireEvent.input(screen.getByRole("combobox"), {
-			target: { value: "alpha" },
+			target: { value: "lph" },
 		});
 
 		const rows = screen.getAllByRole("option");
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toHaveAccessibleName("src/alpha.ts");
+		expect(rows[0].querySelector("mark")).toHaveTextContent(/^lph$/);
 	});
 
 	it("selects the first row when it opens", () => {

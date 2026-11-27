@@ -1,142 +1,135 @@
-import { splitFilePath } from "./file-path.js";
+import { decodeGitName, filePathText, splitFilePath } from "./file-path.js";
 import { fileKey, pathKey } from "./file-status.js";
+import type { FilteredFile } from "./path-filter.js";
 import { sumTallies } from "./review-filter.js";
-import type { FileStatus, ReviewTally } from "./types.js";
+import type { ReviewTally } from "./types.js";
 
 export interface DirectoryNode {
 	type: "directory";
 	name: string; // Display name, may be compressed ("src/lib")
 	path: string; // Full relative path prefix ("src/lib")
 	children: TreeNode[];
+	positions?: number[];
 }
 
 export interface FileNode {
 	type: "file";
 	name: string; // Filename only ("App.svelte")
 	path: string; // Full relative path ("src/App.svelte")
-	file: FileStatus; // Original FileStatus for downstream rendering
+	file: FilteredFile; // Original FileStatus for downstream rendering
 }
 
 export type TreeNode = DirectoryNode | FileNode;
 
-/** Intermediate trie node used during tree construction. */
-interface IntermediateDir {
-	name: string;
-	children: Map<string, IntermediateDir>;
-	files: FileNode[];
-	path: string;
+function directoryMatches(file: FilteredFile, directory: string) {
+	const match = file.match;
+	if (
+		!match?.oldPath.length ||
+		!file.old_path ||
+		splitFilePath(filePathText(file.old_path, file.old_path_bytes))
+			.directory !== directory
+	)
+		return match?.path;
+
+	return [...match.path, ...match.oldPath].sort((a, b) => a - b);
 }
 
-const gitNameDecoder = new TextDecoder("utf-8", {
-	fatal: true,
-	ignoreBOM: true,
-});
-function decodeGitName(bytes: number[]): string | undefined {
-	try {
-		return gitNameDecoder.decode(Uint8Array.from(bytes));
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * Transform a flat array of FileStatus into a nested TreeNode[] tree.
- *
- * - Single-child directory chains are compressed (e.g. src/lib/utils becomes one node)
- * - A directory with exactly one child that is a file is NOT compressed
- * - Directories sort before files at every level
- * - Items within each group sort alphabetically case-insensitive
- * - Does not mutate the input array
- */
-export function buildTree(files: FileStatus[]): TreeNode[] {
-	if (files.length === 0) return [];
-
-	// Phase 1: Build intermediate trie
-	const root: IntermediateDir = {
-		name: "",
-		children: new Map(),
-		files: [],
-		path: "",
-	};
+/** Insert files in input order so each directory inherits the rank of its
+ *  first matching descendant. Unfiltered trees use the normal alphabetical
+ *  directory-first order. */
+export function buildTree(files: FilteredFile[]): TreeNode[] {
+	const roots: TreeNode[] = [];
+	const directories = new Map<string, DirectoryNode>();
+	const matched = new Map<DirectoryNode, Set<number>>();
 
 	for (const file of files) {
-		const { directory, name } = splitFilePath(file.path);
-		let current = root;
-		let start = 0;
+		const { directory, name } = splitFilePath(
+			filePathText(file.path, file.path_bytes),
+		);
+		const segments = directory ? directory.split("/") : [];
+		const rawSegments = file.path_bytes ? file.path.split("/") : segments;
+		const positions = directoryMatches(file, directory);
+		let labelStart = 0;
+		let children = roots;
+		let byteStart = 0;
+		let cursor = 0;
 		let prefix = "";
-		for (const segment of directory ? directory.split("/") : []) {
+		for (const [index, label] of segments.entries()) {
+			const segment = rawSegments[index];
 			prefix = prefix ? `${prefix}/${segment}` : segment;
 			let key = prefix;
-			let label = segment;
 			if (file.path_bytes) {
-				const end = file.path_bytes.indexOf(47, start);
+				const end = file.path_bytes.indexOf(47, byteStart);
 				const rawPrefix = file.path_bytes.slice(0, end);
-				const textPrefix = decodeGitName(rawPrefix);
-				key = textPrefix ?? pathKey(prefix, rawPrefix);
-				label = decodeGitName(file.path_bytes.slice(start, end)) ?? segment;
-				start = end + 1;
+				key = decodeGitName(rawPrefix) ?? pathKey(prefix, rawPrefix);
+				byteStart = end + 1;
 			}
-			let child = current.children.get(key);
-			if (!child) {
-				child = {
-					children: new Map(),
-					files: [],
-					name: label,
-					path: key,
-				};
-				current.children.set(key, child);
+
+			let node = directories.get(key);
+			if (!node) {
+				node = { type: "directory", name: label, path: key, children: [] };
+				directories.set(key, node);
+				children.push(node);
 			}
-			current = child;
+			children = node.children;
+
+			const labelEnd = labelStart + label.length;
+			if (positions && positions[cursor] <= labelEnd) {
+				const hits = matched.get(node) ?? new Set<number>();
+				while (positions[cursor] <= labelEnd) {
+					hits.add(positions[cursor++] - labelStart);
+				}
+				matched.set(node, hits);
+			}
+			labelStart = labelEnd + 1;
 		}
-		current.files.push({ type: "file", name, path: fileKey(file), file });
+		children.push({ type: "file", name, path: fileKey(file), file });
 	}
 
-	// Phase 2: Convert trie to TreeNode[]
-	return convert(root);
+	finishTree(roots, files[0]?.match !== undefined, matched);
+	return roots;
 }
 
-/** Recursively convert an IntermediateDir into sorted TreeNode[]. */
-function convert(dir: IntermediateDir): TreeNode[] {
-	const result: TreeNode[] = [];
+function finishTree(
+	nodes: TreeNode[],
+	ranked: boolean,
+	matched: Map<DirectoryNode, Set<number>>,
+): void {
+	for (const node of nodes) {
+		if (node.type === "file") continue;
 
-	// Convert subdirectories
-	for (const child of dir.children.values()) {
-		const dirNode: DirectoryNode = {
-			type: "directory",
-			name: child.name,
-			path: child.path,
-			children: convert(child),
-		};
-		result.push(compress(dirNode));
+		const positions: number[] = [];
+		let part = node;
+		let start = 0;
+		for (;;) {
+			const single = part.children.length === 1 ? part.children[0] : undefined;
+			const next = single?.type === "directory" ? single : undefined;
+			const hits = matched.get(part);
+			if (hits) for (const pos of hits) positions.push(start + pos);
+			if (!next) {
+				if (hits?.has(part.name.length)) node.name += "/";
+				break;
+			}
+
+			start = node.name.length + 1;
+			node.name += `/${next.name}`;
+			node.path = next.path;
+			node.children = next.children;
+			part = next;
+		}
+		if (positions.length) node.positions = positions.sort((a, b) => a - b);
+		finishTree(node.children, ranked, matched);
 	}
 
-	return sortNodes(result.concat(dir.files));
-}
-
-/**
- * Compress single-child directory chains into combined names.
- * Only compresses when the single child is another directory (D-05:
- * a directory with exactly one child that is a file is NOT compressed).
- */
-function compress(node: DirectoryNode): DirectoryNode {
-	while (node.children.length === 1 && node.children[0].type === "directory") {
-		const child = node.children[0] as DirectoryNode;
-		node = {
-			type: "directory",
-			name: `${node.name}/${child.name}`,
-			path: child.path,
-			children: child.children,
-		};
-	}
-	return node;
+	if (!ranked) sortNodes(nodes);
 }
 
 /**
  * Sort nodes: directories before files (D-06),
  * alphabetically case-insensitive within each group (D-07).
  */
-function sortNodes(nodes: TreeNode[]): TreeNode[] {
-	return nodes.sort((a, b) => {
+function sortNodes(nodes: TreeNode[]): void {
+	nodes.sort((a, b) => {
 		if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
 		return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
 	});

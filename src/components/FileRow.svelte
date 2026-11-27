@@ -2,16 +2,18 @@
 import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
+import { filePathText } from "../lib/file-path.js";
+import type { FilteredFile } from "../lib/path-filter.js";
 import { singleClick } from "../lib/single-click.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
-import type { FileStatus, ReviewTally } from "../lib/types.js";
+import type { ReviewTally } from "../lib/types.js";
 import Row, { type RowRole } from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 import FilePathLabel from "./FilePathLabel.svelte";
 
 interface Props {
-	file: FileStatus;
+	file: FilteredFile;
 	/** `option` in a flat list, `treeitem` in a tree, whatever its depth. */
 	role: RowRole;
 	isLoading?: boolean;
@@ -99,8 +101,9 @@ function openMenu(e: MouseEvent) {
 	>
 
 	<FilePathLabel
-		path={file.path}
-		oldPath={file.old_path}
+		path={filePathText(file.path, file.path_bytes)}
+		oldPath={file.old_path && filePathText(file.old_path, file.old_path_bytes)}
+		match={file.match}
 		tree={role === "treeitem"}
 	/>
 

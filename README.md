@@ -25,7 +25,9 @@ Most Git GUIs feel heavy or hide what Git is doing. Trunk renders the full commi
 
 Press **⌘F** on macOS or **Ctrl+F** on Windows and Linux to find text in the commit graph, a source diff, the selected commit message, or an interactive rebase plan. Click the commit message to search its subject and body while a diff is open. Enter and Shift+Enter step through matches. Escape closes Find.
 
-Focus a file list and press **/**, or click its filter icon, to narrow it by path. Either name of a rename matches in Commit, Compare and the staged file list. The working tree shows how many files match in each section. A button such as **Stage 3 matches** acts on those files, and **Commit** includes the entire index. In the sidebar, **/** focuses the branch, tag and stash filter. In Review, it filters threads by path or discussion text within the selected state preset.
+In Commit, Compare, or the working tree, focus the file list and press **/** or click the filter icon. The filter uses fzf syntax. Type `ntv` to find `native.ts`. The matching letters light up in the filename, its folders, or both. A lowercase term ignores case. An uppercase letter makes that term case-sensitive. Combine terms to narrow a search, for example `drive .ts$ !test` for TypeScript paths matching `drive` that exclude `test`. Either name of a rename can match.
+
+The working tree shows how many files match in each section. A button such as **Stage 3 matches** acts on those files, and **Commit** includes the entire index. In the sidebar, **/** focuses the branch, tag and stash filter. In Review, it filters threads by path or discussion text within the selected state preset.
 
 In Commit or Compare, right-click a changed file or press **Shift+F10** on its row. Choose **Show commits touching this path**. Pick a commit to open its change to that file. The list searches visible history at the exact path and compares merge commits with their first parent.
 

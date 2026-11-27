@@ -16,12 +16,7 @@ import type { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { fileMenuPosition, pathMenuEntriesOf } from "../lib/file-menu.js";
-import {
-	displayPath,
-	fileKey,
-	gitPathArgument,
-	matchingFiles,
-} from "../lib/file-status.js";
+import { displayPath, fileKey, gitPathArgument } from "../lib/file-status.js";
 import { filterShortcut } from "../lib/filter-shortcut.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
@@ -31,6 +26,7 @@ import {
 } from "../lib/merge-parser.js";
 import { createMergePicks, type MergePicksStore } from "../lib/merge-picks.js";
 import { nativeMenu } from "../lib/native-menu.js";
+import { createPathFilter } from "../lib/path-filter.js";
 import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
@@ -117,12 +113,21 @@ let query = $state("");
 let filterOpen = $state(false);
 let filter = $state<ListFilter>();
 
-export function filteredFiles(files: FileStatus[]) {
-	return matchingFiles(files, query);
+const filterUnstaged = $derived(createPathFilter(status?.unstaged ?? []));
+const filterStaged = $derived(createPathFilter(status?.staged ?? []));
+const filterConflicted = $derived(createPathFilter(status?.conflicted ?? []));
+const unstagedMatches = $derived(filterUnstaged(query));
+const stagedMatches = $derived(filterStaged(query));
+const conflictedMatches = $derived(filterConflicted(query));
+
+export function filteredFiles(section: keyof WorkingTreeStatus) {
+	if (!status) return undefined;
+	return {
+		unstaged: unstagedMatches,
+		staged: stagedMatches,
+		conflicted: conflictedMatches,
+	}[section];
 }
-const unstagedMatches = $derived(filteredFiles(status?.unstaged ?? []));
-const stagedMatches = $derived(filteredFiles(status?.staged ?? []));
-const conflictedMatches = $derived(filteredFiles(status?.conflicted ?? []));
 
 function matchLabel(verb: string, count: number) {
 	return `${verb} ${count} ${count === 1 ? "match" : "matches"}`;

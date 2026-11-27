@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankFiles } from "./file-finder.js";
+import { createFileFinder } from "./file-finder.js";
 import type { TrackedFile } from "./types.js";
 
 function tracked(path: string, changed = false): TrackedFile {
@@ -10,7 +10,7 @@ function paths(files: TrackedFile[]): string[] {
 	return files.map((f) => f.path);
 }
 
-describe("rankFiles", () => {
+describe("tracked file finder", () => {
 	it("ranks changed files before unchanged ones", () => {
 		const files = [
 			tracked("src/alpha.ts"),
@@ -18,7 +18,7 @@ describe("rankFiles", () => {
 			tracked("src/gamma.ts"),
 		];
 
-		expect(paths(rankFiles(files, ""))).toEqual([
+		expect(paths(createFileFinder(files)(""))).toEqual([
 			"src/beta.ts",
 			"src/alpha.ts",
 			"src/gamma.ts",
@@ -28,13 +28,13 @@ describe("rankFiles", () => {
 	it("lists every tracked file when the query is empty", () => {
 		const files = [tracked("a.ts"), tracked("b.ts")];
 
-		expect(rankFiles(files, "")).toHaveLength(2);
+		expect(createFileFinder(files)("")).toHaveLength(2);
 	});
 
 	it("keeps a file whose path contains the query's characters in order", () => {
 		const files = [tracked("src/components/DiffPanel.svelte")];
 
-		expect(paths(rankFiles(files, "dfpnl"))).toEqual([
+		expect(paths(createFileFinder(files)("dfpnl"))).toEqual([
 			"src/components/DiffPanel.svelte",
 		]);
 	});
@@ -42,19 +42,19 @@ describe("rankFiles", () => {
 	it("drops a file whose path lacks the query's characters", () => {
 		const files = [tracked("src/alpha.ts"), tracked("src/beta.ts")];
 
-		expect(paths(rankFiles(files, "zzz"))).toEqual([]);
+		expect(paths(createFileFinder(files)("zzz"))).toEqual([]);
 	});
 
 	it("drops a file whose characters appear out of order", () => {
 		const files = [tracked("abc.ts")];
 
-		expect(rankFiles(files, "cba")).toEqual([]);
+		expect(createFileFinder(files)("cba")).toEqual([]);
 	});
 
-	it("matches without regard to case", () => {
+	it("matches a mixed-case filename with a lowercase query", () => {
 		const files = [tracked("src/RepoView.svelte")];
 
-		expect(paths(rankFiles(files, "repoview"))).toEqual([
+		expect(paths(createFileFinder(files)("repoview"))).toEqual([
 			"src/RepoView.svelte",
 		]);
 	});
@@ -65,7 +65,7 @@ describe("rankFiles", () => {
 			tracked("src/something.ts"),
 		];
 
-		expect(paths(rankFiles(files, "something"))).toEqual([
+		expect(paths(createFileFinder(files)("something"))).toEqual([
 			"src/something.ts",
 			"s/o/m/e/t/h/i/n/g.ts",
 		]);
@@ -74,7 +74,7 @@ describe("rankFiles", () => {
 	it("ranks a filename match above a directory match", () => {
 		const files = [tracked("panel/other.ts"), tracked("src/panel.ts")];
 
-		expect(paths(rankFiles(files, "panel"))).toEqual([
+		expect(paths(createFileFinder(files)("panel"))).toEqual([
 			"src/panel.ts",
 			"panel/other.ts",
 		]);
@@ -83,7 +83,7 @@ describe("rankFiles", () => {
 	it("ranks a filename match above a directory match that shares the query", () => {
 		const files = [tracked("panel/other.ts"), tracked("panel/src/panel.ts")];
 
-		expect(paths(rankFiles(files, "panel"))).toEqual([
+		expect(paths(createFileFinder(files)("panel"))).toEqual([
 			"panel/src/panel.ts",
 			"panel/other.ts",
 		]);
@@ -92,30 +92,35 @@ describe("rankFiles", () => {
 	it("ranks a changed file first even when an unchanged one matches better", () => {
 		const files = [tracked("panel.ts"), tracked("a/b/c/p/n/l.ts", true)];
 
-		expect(paths(rankFiles(files, "pnl"))[0]).toBe("a/b/c/p/n/l.ts");
+		expect(paths(createFileFinder(files)("pnl"))[0]).toBe("a/b/c/p/n/l.ts");
 	});
 
 	it("breaks a tie by path so the order is stable", () => {
 		const files = [tracked("b.ts"), tracked("a.ts")];
 
-		expect(paths(rankFiles(files, ""))).toEqual(["a.ts", "b.ts"]);
+		expect(paths(createFileFinder(files)(""))).toEqual(["a.ts", "b.ts"]);
 	});
 
 	it("keeps an empty query's list in path order, whatever the lengths", () => {
 		const files = [tracked("bb.ts"), tracked("a/z.ts")];
 
-		expect(paths(rankFiles(files, ""))).toEqual(["a/z.ts", "bb.ts"]);
+		expect(paths(createFileFinder(files)(""))).toEqual(["a/z.ts", "bb.ts"]);
 	});
 
 	it("ranks the shorter of two equal matches first, as the tighter fit", () => {
-		const files = [tracked("f142.txt"), tracked("f42.txt")];
+		const files = [tracked("a42-long.txt"), tracked("z42.txt")];
 
-		expect(paths(rankFiles(files, "42"))).toEqual(["f42.txt", "f142.txt"]);
+		expect(paths(createFileFinder(files)("42"))).toEqual([
+			"z42.txt",
+			"a42-long.txt",
+		]);
 	});
 
 	it("ignores whitespace around the query", () => {
 		const files = [tracked("src/alpha.ts")];
 
-		expect(paths(rankFiles(files, "  alpha  "))).toEqual(["src/alpha.ts"]);
+		expect(paths(createFileFinder(files)("  alpha  "))).toEqual([
+			"src/alpha.ts",
+		]);
 	});
 });

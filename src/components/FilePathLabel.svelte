@@ -1,14 +1,17 @@
 <script lang="ts">
 import { getFileLabelStyle } from "../lib/file-label-style.svelte.js";
 import { splitFilePath } from "../lib/file-path.js";
+import type { PathMatch } from "../lib/path-filter.js";
+import PathMatchText from "./PathMatchText.svelte";
 
 interface Props {
 	path: string;
 	oldPath?: string | null;
 	tree?: boolean;
+	match?: PathMatch;
 }
 
-let { path, oldPath = null, tree = false }: Props = $props();
+let { path, oldPath = null, tree = false, match }: Props = $props();
 
 const style = getFileLabelStyle();
 let fullPath = $derived(!tree && style.current === "full-path");
@@ -20,33 +23,74 @@ let moved = $derived(
 let from = $derived(fullPath ? oldPath : previous?.name);
 let to = $derived(fullPath ? path : current.name);
 let title = $derived(oldPath === null ? path : `${oldPath} → ${path}`);
+let toOffset = $derived(path.length - to.length);
+let fromOffset = $derived(oldPath && from ? oldPath.length - from.length : 0);
+
+// A shared basename or directory is printed once for both names of a rename.
+function sharedPositions(shift: number) {
+	if (!match?.oldPath.length) return match?.path;
+
+	const positions = new Set(match.path);
+	for (const position of match.oldPath) positions.add(position + shift);
+	return [...positions].sort((a, b) => a - b);
+}
+
+let namePositions = $derived(
+	from === to ? sharedPositions(toOffset - fromOffset) : match?.path,
+);
+let directoryPositions = $derived(
+	previous && !moved ? sharedPositions(0) : match?.path,
+);
 </script>
 
-{#snippet directory(value: string)}
-	<span class="directory"><bdi>{value}</bdi></span>
+{#snippet label(text: string, positions?: readonly number[], offset = 0)}
+	<bdi
+		>{#if positions?.length}
+			<PathMatchText {text} {positions} {offset} />
+		{:else}
+			{text}
+		{/if}</bdi
+	>
+{/snippet}
+
+{#snippet directory(value: string, positions?: readonly number[])}
+	<span class="directory">
+		{#if value}
+			{@const suffix = moved || positions?.includes(value.length) ? "/" : ""}
+			{@render label(value + suffix, positions)}
+		{:else}
+			<bdi>./</bdi>
+		{/if}
+	</span>
 {/snippet}
 
 <span class="file-label text-small" {title}>
 	<span class="names text-callout">
 		{#if from && from !== to}
-			<span class="leaf former"><bdi>{from}</bdi></span>
+			<span class="leaf former"
+				>{@render label(from, match?.oldPath, fromOffset)}</span
+			>
 			<span class="arrow">→</span>
 		{/if}
-		<span class="leaf" class:font-semibold={!fullPath}><bdi>{to}</bdi></span>
+		<span class="leaf" class:font-semibold={!fullPath}
+			>{@render label(to, namePositions, toOffset)}</span
+		>
 	</span>
 	{#if previous && moved}
 		<span class="context">
 			{#if tree}
 				<span class="arrow">from</span>
 			{/if}
-			{@render directory(previous.directory ? `${previous.directory}/` : "./")}
+			{@render directory(previous.directory, match?.oldPath)}
 			{#if !tree}
 				<span class="arrow">→</span>
-				{@render directory(current.directory ? `${current.directory}/` : "./")}
+				{@render directory(current.directory, match?.path)}
 			{/if}
 		</span>
 	{:else if !tree && !fullPath && current.directory}
-		<span class="context">{@render directory(current.directory)}</span>
+		<span class="context"
+			>{@render directory(current.directory, directoryPositions)}</span
+		>
 	{/if}
 </span>
 

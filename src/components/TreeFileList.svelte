@@ -14,13 +14,14 @@ import {
 	flattenTree,
 	migrateExpanded,
 } from "../lib/flatten-tree.js";
+import type { FilteredFile } from "../lib/path-filter.js";
 import type { FileStatus, ReviewTally } from "../lib/types.js";
 import { buildOffsets, windowFor } from "../lib/virtual-window.js";
 import DirectoryRow from "./DirectoryRow.svelte";
 import FileRow from "./FileRow.svelte";
 
 interface Props {
-	files: FileStatus[];
+	files: FilteredFile[];
 	treeMode: boolean;
 	filterQuery?: string;
 	actionLabel: string;

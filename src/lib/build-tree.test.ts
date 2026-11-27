@@ -7,6 +7,8 @@ import {
 	countFiles,
 	sumCommentsInSubtree,
 } from "./build-tree.js";
+import { gitPathArgument } from "./file-status.js";
+import { createPathFilter, type FilteredFile } from "./path-filter.js";
 import type { FileStatus } from "./types.js";
 
 /** Extract names from a TreeNode[] for concise assertions */
@@ -254,6 +256,74 @@ describe("buildTree", () => {
 			expect((result[0] as FileNode).file.status).toBe("New");
 			expect((result[1] as FileNode).file.status).toBe("Modified");
 			expect((result[2] as FileNode).file.status).toBe("Deleted");
+		});
+	});
+});
+
+describe("tree of ranked file matches", () => {
+	function hit(path: string, positions: number[]): FilteredFile {
+		return { ...makeFile(path), match: { path: positions, oldPath: [] } };
+	}
+
+	it("groups siblings by their best descendant and combines hits on a compressed path", () => {
+		const files = [
+			hit("scripts/drive/native.ts", [0, 7, 8, 14]),
+			hit("README.md", [0]),
+			hit("app/source.ts", [0]),
+			hit("scripts/drive/test.ts", [5, 9]),
+		];
+		const tree = buildTree(files);
+
+		expect(getNames(tree)).toEqual(["scripts/drive", "README.md", "app"]);
+		expect(tree[0]).toMatchObject({ positions: [0, 5, 7, 8, 9] });
+		expect(collectFilePaths(tree)).toEqual([
+			files[0].path,
+			files[3].path,
+			files[1].path,
+			files[2].path,
+		]);
+	});
+
+	it("projects a former name's matches onto a shared directory label", () => {
+		const renamed = {
+			...hit("docs/new.md", []),
+			old_path: "docs/old.md",
+			match: { path: [], oldPath: [1, 6] },
+		};
+		expect(buildTree([renamed])[0]).toMatchObject({
+			name: "docs",
+			positions: [1],
+		});
+	});
+
+	it("shows a matching separator at the boundary between tree rows", () => {
+		expect(buildTree([hit("src/lib/a.ts", [7])])[0]).toMatchObject({
+			name: "src/lib/",
+			path: "src/lib",
+			positions: [7],
+		});
+	});
+
+	it("keeps byte-path identity and offsets highlights in a decoded directory", () => {
+		const file = {
+			...makeFile("caf\\xc3\\xa9s/\\xff"),
+			path_bytes: [99, 97, 102, 195, 169, 115, 47, 255],
+		};
+		const filter = createPathFilter([file]);
+		const tree = buildTree(filter("és"));
+		expect(filter("xc3")).toEqual([]);
+		expect(tree[0]).toMatchObject({ name: "cafés", positions: [3, 4] });
+		expect(collectFilePaths(tree).map(gitPathArgument)).toEqual([
+			file.path_bytes,
+		]);
+
+		const astral = {
+			...makeFile("\\xf0\\x9f\\x9a\\x80/\\xff"),
+			path_bytes: [240, 159, 154, 128, 47, 255],
+		};
+		expect(buildTree(createPathFilter([astral])("🚀"))[0]).toMatchObject({
+			name: "🚀",
+			positions: [0, 1],
 		});
 	});
 });

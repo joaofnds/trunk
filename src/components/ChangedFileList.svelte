@@ -2,12 +2,9 @@
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import { showFilePathMenu } from "../lib/file-menu.js";
-import {
-	fileKey,
-	matchingFiles,
-	toFileStatusList,
-} from "../lib/file-status.js";
+import { fileKey, toFileStatusList } from "../lib/file-status.js";
 import { filterShortcut } from "../lib/filter-shortcut.js";
+import { createPathFilter } from "../lib/path-filter.js";
 import type {
 	DiffStat,
 	FileDiff,
@@ -48,7 +45,8 @@ let query = $state("");
 let open = $state(false);
 let filter: ListFilter;
 const files = $derived(toFileStatusList(fileDiffs));
-const matches = $derived(matchingFiles(files, query));
+const filterPaths = $derived(createPathFilter(files));
+const matches = $derived(filterPaths(query));
 
 function showContextMenu(
 	anchor: DOMRect | undefined,

@@ -7,6 +7,82 @@ import { treeIndent } from "../lib/chrome-heights.js";
 import { FILE_LABEL_STYLE } from "../lib/file-label-style.svelte.js";
 
 describe("FileRow", () => {
+	it.each([
+		[
+			"option",
+			"filename-first",
+			"scripts/drive/native.ts",
+			null,
+			[8, 9, 10, 14, 15, 17],
+			[],
+			["na", "i", "dri"],
+		],
+		[
+			"treeitem",
+			"filename-first",
+			"scripts/drive/native.ts",
+			null,
+			[8, 9, 10, 14, 15, 17],
+			[],
+			["na", "i"],
+		],
+		[
+			"option",
+			"full-path",
+			"scripts/drive/native.ts",
+			null,
+			[8, 9, 10, 14, 15, 17],
+			[],
+			["dri", "na", "i"],
+		],
+		[
+			"treeitem",
+			"filename-first",
+			"new/tool.ts",
+			"retired/tool.ts",
+			[],
+			[0, 1, 2, 8, 9],
+			["to", "ret"],
+		],
+		[
+			"option",
+			"filename-first",
+			"src/main.ts",
+			"src/entry.ts",
+			[],
+			[0, 1, 2, 4, 5],
+			["en", "src"],
+		],
+	] as const)(
+		"highlights the matching parts of %s labels in %s for %s",
+		(role, style, path, oldPath, positions, oldPositions, expected) => {
+			render(FileRow, {
+				context: new Map([[FILE_LABEL_STYLE, { current: style }]]),
+				props: {
+					file: {
+						...makeFile(path),
+						old_path: oldPath,
+						match: { path: positions, oldPath: oldPositions },
+					},
+					role,
+					actionLabel: "",
+					onaction: vi.fn(),
+				},
+			});
+
+			const label = screen.getByTitle(oldPath ? `${oldPath} → ${path}` : path);
+			if (style === "full-path") {
+				expect(label).toHaveTextContent(path);
+				expect(screen.getByRole(role)).toHaveAccessibleName(
+					/scripts\/drive\/native\.ts/,
+				);
+			}
+			expect(
+				Array.from(label.querySelectorAll("mark"), (mark) => mark.textContent),
+			).toEqual(expected);
+		},
+	);
+
 	it("renders file path", () => {
 		render(FileRow, {
 			props: {

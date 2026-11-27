@@ -7,7 +7,7 @@
 // itself; picking a row reports the path and the host opens it.
 
 import { onMount } from "svelte";
-import { rankFiles } from "../lib/file-finder.js";
+import { createFileFinder } from "../lib/file-finder.js";
 import { tallyBreakdown, tallyEntries } from "../lib/review-filter.js";
 import type { ReviewTally, TrackedFile } from "../lib/types.js";
 import Dialog, { paletteInputClass } from "../lib/ui/Dialog.svelte";
@@ -68,7 +68,8 @@ onMount(() => {
 	};
 });
 
-const matches = $derived(files === null ? [] : rankFiles(files, query));
+const findFiles = $derived(createFileFinder(files ?? []));
+const matches = $derived(findFiles(query));
 const viewportTop = $derived(
 	Math.max(0, Math.min(scrollTop, matches.length * rowHeight - viewportHeight)),
 );
@@ -273,7 +274,7 @@ function rowLabel(file: TrackedFile): string {
 				{:else}
 					<span aria-hidden="true" class="dot-slot shrink-0"></span>
 				{/if}
-				<FilePathLabel path={file.path} />
+				<FilePathLabel path={file.path} match={file.match} />
 				{#if (commentCounts.get(file.path) ?? 0) > 0}
 					<span class="ml-auto shrink-0">
 						<CommentBadge

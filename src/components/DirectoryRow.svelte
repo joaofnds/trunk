@@ -16,6 +16,7 @@ import type { ReviewTally } from "../lib/types.js";
 import Row from "../lib/ui/Row.svelte";
 import RowAction from "../lib/ui/RowAction.svelte";
 import CommentBadge from "./CommentBadge.svelte";
+import PathMatchText from "./PathMatchText.svelte";
 
 interface Props {
 	node: DirectoryNode;
@@ -108,9 +109,13 @@ function openMenu(e: MouseEvent) {
 			<ChevronRight size={12} />
 		{/if}
 	</span>
-	<span class="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
-		>{node.name}</span
-	>
+	<span class="overflow-hidden text-ellipsis whitespace-nowrap font-medium">
+		{#if node.positions?.length}
+			<PathMatchText text={node.name} positions={node.positions} />
+		{:else}
+			{node.name}
+		{/if}
+	</span>
 	{#if displayPath(node.path) !== node.path}
 		<span
 			class="shrink-0 text-caption text-text-muted"

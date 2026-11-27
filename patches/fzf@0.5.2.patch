@@ -1,0 +1,554 @@
+diff --git a/dist/fzf.es.js b/dist/fzf.es.js
+index cecc0318248857861461fa1d943ad41830ee2db0..ebbd64788872d3a514f2c7d66c5eb0b77db237e9 100644
+--- a/dist/fzf.es.js
++++ b/dist/fzf.es.js
+@@ -3,222 +3,66 @@
+  * Copyright (c) 2021 Ajit
+  * Licensed under BSD 3-Clause
+  */
+-const normalized = {
+-  216: "O",
+-  223: "s",
+-  248: "o",
+-  273: "d",
+-  295: "h",
+-  305: "i",
+-  320: "l",
+-  322: "l",
+-  359: "t",
+-  383: "s",
+-  384: "b",
+-  385: "B",
+-  387: "b",
+-  390: "O",
+-  392: "c",
+-  393: "D",
+-  394: "D",
+-  396: "d",
+-  398: "E",
+-  400: "E",
+-  402: "f",
+-  403: "G",
+-  407: "I",
+-  409: "k",
+-  410: "l",
+-  412: "M",
+-  413: "N",
+-  414: "n",
+-  415: "O",
+-  421: "p",
+-  427: "t",
+-  429: "t",
+-  430: "T",
+-  434: "V",
+-  436: "y",
+-  438: "z",
+-  477: "e",
+-  485: "g",
+-  544: "N",
+-  545: "d",
+-  549: "z",
+-  564: "l",
+-  565: "n",
+-  566: "t",
+-  567: "j",
+-  570: "A",
+-  571: "C",
+-  572: "c",
+-  573: "L",
+-  574: "T",
+-  575: "s",
+-  576: "z",
+-  579: "B",
+-  580: "U",
+-  581: "V",
+-  582: "E",
+-  583: "e",
+-  584: "J",
+-  585: "j",
+-  586: "Q",
+-  587: "q",
+-  588: "R",
+-  589: "r",
+-  590: "Y",
+-  591: "y",
+-  592: "a",
+-  593: "a",
+-  595: "b",
+-  596: "o",
+-  597: "c",
+-  598: "d",
+-  599: "d",
+-  600: "e",
+-  603: "e",
+-  604: "e",
+-  605: "e",
+-  606: "e",
+-  607: "j",
+-  608: "g",
+-  609: "g",
+-  610: "G",
+-  613: "h",
+-  614: "h",
+-  616: "i",
+-  618: "I",
+-  619: "l",
+-  620: "l",
+-  621: "l",
+-  623: "m",
+-  624: "m",
+-  625: "m",
+-  626: "n",
+-  627: "n",
+-  628: "N",
+-  629: "o",
+-  633: "r",
+-  634: "r",
+-  635: "r",
+-  636: "r",
+-  637: "r",
+-  638: "r",
+-  639: "r",
+-  640: "R",
+-  641: "R",
+-  642: "s",
+-  647: "t",
+-  648: "t",
+-  649: "u",
+-  651: "v",
+-  652: "v",
+-  653: "w",
+-  654: "y",
+-  655: "Y",
+-  656: "z",
+-  657: "z",
+-  663: "c",
+-  665: "B",
+-  666: "e",
+-  667: "G",
+-  668: "H",
+-  669: "j",
+-  670: "k",
+-  671: "L",
+-  672: "q",
+-  686: "h",
+-  867: "a",
+-  868: "e",
+-  869: "i",
+-  870: "o",
+-  871: "u",
+-  872: "c",
+-  873: "d",
+-  874: "h",
+-  875: "m",
+-  876: "r",
+-  877: "t",
+-  878: "v",
+-  879: "x",
+-  7424: "A",
+-  7427: "B",
+-  7428: "C",
+-  7429: "D",
+-  7431: "E",
+-  7432: "e",
+-  7433: "i",
+-  7434: "J",
+-  7435: "K",
+-  7436: "L",
+-  7437: "M",
+-  7438: "N",
+-  7439: "O",
+-  7440: "O",
+-  7441: "o",
+-  7442: "o",
+-  7443: "o",
+-  7446: "o",
+-  7447: "o",
+-  7448: "P",
+-  7449: "R",
+-  7450: "R",
+-  7451: "T",
+-  7452: "U",
+-  7453: "u",
+-  7454: "u",
+-  7455: "m",
+-  7456: "V",
+-  7457: "W",
+-  7458: "Z",
+-  7522: "i",
+-  7523: "r",
+-  7524: "u",
+-  7525: "v",
+-  7834: "a",
+-  7835: "s",
+-  8305: "i",
+-  8341: "h",
+-  8342: "k",
+-  8343: "l",
+-  8344: "m",
+-  8345: "n",
+-  8346: "p",
+-  8347: "s",
+-  8348: "t",
+-  8580: "c"
+-};
+-for (let i = "\u0300".codePointAt(0); i <= "\u036F".codePointAt(0); ++i) {
+-  const diacritic = String.fromCodePoint(i);
+-  for (const asciiChar of "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") {
+-    const withDiacritic = (asciiChar + diacritic).normalize();
+-    const withDiacriticCodePoint = withDiacritic.codePointAt(0);
+-    if (withDiacriticCodePoint > 126) {
+-      normalized[withDiacriticCodePoint] = asciiChar;
+-    }
+-  }
+-}
+-const ranges = {
+-  a: [7844, 7863],
+-  e: [7870, 7879],
+-  o: [7888, 7907],
+-  u: [7912, 7921]
+-};
+-for (const lowerChar of Object.keys(ranges)) {
+-  const upperChar = lowerChar.toUpperCase();
+-  for (let i = ranges[lowerChar][0]; i <= ranges[lowerChar][1]; ++i) {
+-    normalized[i] = i % 2 === 0 ? upperChar : lowerChar;
+-  }
++// fzf v0.75.0 src/algo/normalize.go, grouped by the ASCII character each rune matches.
++const normalized = new Map();
++for (const [ascii, variants] of Object.entries({
++  ".": "｡",
++  "A": "ÀÁÂÃÄÅȺᴀẤẦẨẪẬẮẰẲẴẶ",
++  "B": "ƁɃʙᴃ",
++  "C": "ÇȻᴄ",
++  "D": "ƉƊᴅ",
++  "E": "ÈÉÊËƎƐɆᴇẾỀỂỄỆ",
++  "G": "Ɠɢʛ",
++  "H": "ʜ",
++  "I": "ÌÍÎÏİƗɪ",
++  "J": "Ɉᴊ",
++  "K": "ᴋ",
++  "L": "Ƚʟᴌ",
++  "M": "Ɯᴍ",
++  "N": "ÑƝȠɴᴎ",
++  "O": "ÒÓÔÕÖØƆƟᴏᴐỐỒỔỖỘỚỜỞỠỢ",
++  "P": "ᴘ",
++  "Q": "Ɋ",
++  "R": "Ɍʀʁᴙᴚ",
++  "T": "ƮȾᴛ",
++  "U": "ÙÚÛÜɄᴜỨỪỬỮỰ",
++  "V": "ƲɅᴠ",
++  "W": "ᴡ",
++  "Y": "ÝŸɎʏ",
++  "Z": "ᴢ",
++  "a": "àáâãäåāăąǎȁȃȧɐɑͣḁẚạảấầẩẫậắằẳẵặ",
++  "b": "ƀƃɓḃḅḇ",
++  "c": "çćĉċčƈȼɕʗͨↄ",
++  "d": "ďđƌȡɖɗͩḋḍḏḑḓ",
++  "e": "èéêëēĕėęěǝȅȇȩɇɘɛɜɝɞʚͤᴈḙḛẹẻẽếềểễệ",
++  "f": "ƒḟ",
++  "g": "ĝğġģǥǧǵɠɡḡ",
++  "h": "ĥħȟɥɦʮͪḣḥḧḩḫẖₕ",
++  "i": "ìíîïĩīĭįıǐȉȋɨͥᴉᵢḭỉịⁱ",
++  "j": "ĵǰȷɉɟʝ",
++  "k": "ķƙǩʞḱḳḵₖ",
++  "l": "ĺļľŀłƚȴɫɬɭḷḻḽₗ",
++  "m": "ɯɰɱͫᴟḿṁṃₘ",
++  "n": "ñńņňƞǹȵɲɳṅṇṉṋₙ",
++  "o": "òóôõöøōŏőơǒǫȍȏȯɔɵͦᴑᴒᴓᴖᴗọỏốồổỗộớờởỡợ",
++  "p": "ƥṕṗₚ",
++  "q": "ɋʠ",
++  "r": "ŕŗřȑȓɍɹɺɻɼɽɾɿͬᵣṙṛṟ",
++  "s": "ßśŝşšſșȿʂṡṣẛₛ",
++  "t": "ţťŧƫƭțȶʇʈͭṫṭṯṱẗₜ",
++  "u": "ùúûüũūŭůűųưǔȕȗʉͧᴝᴞᵤṳṵṷụủứừửữự",
++  "v": "ʋʌͮᵥṽṿ",
++  "w": "ŵʍẁẃẅẇẉẘ",
++  "x": "ͯẋẍ",
++  "y": "ýÿŷƴȳɏʎẏẙỳỵỷỹ",
++  "z": "źżžƶȥɀʐʑẑẓẕ"
++})) {
++  for (const variant of variants) normalized.set(variant.codePointAt(0), ascii.codePointAt(0));
+ }
+ function normalizeRune(rune) {
+-  if (rune < 192 || rune > 8580) {
+-    return rune;
+-  }
+-  const normalizedChar = normalized[rune];
+-  if (normalizedChar !== void 0)
+-    return normalizedChar.codePointAt(0);
+-  return rune;
++  if (rune < 0x00c0 || rune > 0xff61) return rune;
++  if (rune >= 0xff01 && rune <= 0xff5e) return rune - 0xfee0;
++  return normalized.get(rune) ?? rune;
+ }
+ function toShort(number) {
+   return number;
+@@ -229,10 +73,10 @@ function toInt(number) {
+ function maxInt16(num1, num2) {
+   return num1 > num2 ? num1 : num2;
+ }
+-const strToRunes = (str) => str.split("").map((s) => s.codePointAt(0));
++const strToRunes = (str) => Array.from(str, (s) => s.codePointAt(0));
+ const runesToStr = (runes) => runes.map((r) => String.fromCodePoint(r)).join("");
+ const whitespaceRunes = new Set(
+-  " \f\n\r	\v\xA0\u1680\u2028\u2029\u202F\u205F\u3000\uFEFF".split("").map((v) => v.codePointAt(0))
++  " \f\n\r	\v\xA0\u1680\u2028\u2029\u202F\u205F\u3000\u0085".split("").map((v) => v.codePointAt(0))
+ );
+ for (let codePoint = "\u2000".codePointAt(0); codePoint <= "\u200A".codePointAt(0); codePoint++) {
+   whitespaceRunes.add(codePoint);
+@@ -292,6 +136,8 @@ function alloc32(offset, slab2, size) {
+   }
+   return [offset, new Int32Array(size)];
+ }
++// fzf's path scheme treats the start of a path and "/" as delimiters.
++const charDelimiter = -1, charWhite = -2;
+ function charClassOfAscii(rune) {
+   if (rune >= SMALL_A_RUNE && rune <= SMALL_Z_RUNE) {
+     return 1;
+@@ -300,7 +146,7 @@ function charClassOfAscii(rune) {
+   } else if (rune >= NUMERAL_ZERO_RUNE && rune <= NUMERAL_NINE_RUNE) {
+     return 4;
+   } else {
+-    return 0;
++    return rune === 47 ? charDelimiter : isWhitespace(rune) ? charWhite : 0;
+   }
+ }
+ function charClassOfNonAscii(rune) {
+@@ -314,7 +160,7 @@ function charClassOfNonAscii(rune) {
+   } else if (char.match(/\p{Letter}/gu) !== null) {
+     return 3;
+   }
+-  return 0;
++  return isWhitespace(rune) ? charWhite : 0;
+ }
+ function charClassOf(rune) {
+   if (rune <= MAX_ASCII) {
+@@ -323,11 +169,11 @@ function charClassOf(rune) {
+   return charClassOfNonAscii(rune);
+ }
+ function bonusFor(prevClass, currClass) {
+-  if (prevClass === 0 && currClass !== 0) {
+-    return BONUS_BOUNDARY;
++  if (prevClass <= 0 && currClass !== charWhite) {
++    return prevClass === charDelimiter ? BONUS_BOUNDARY + 1 : BONUS_BOUNDARY;
+   } else if (prevClass === 1 && currClass === 2 || prevClass !== 4 && currClass === 4) {
+     return BONUS_CAMEL_123;
+-  } else if (currClass === 0) {
++  } else if (currClass <= 0) {
+     return BONUS_NON_WORD;
+   }
+   return 0;
+@@ -411,7 +257,7 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+   let maxScore = toShort(0), maxScorePos = 0;
+   let pidx = 0, lastIdx = 0;
+   const pchar0 = pattern[0];
+-  let pchar = pattern[0], prevH0 = toShort(0), prevCharClass = 0, inGap = false;
++  let pchar = pattern[0], prevH0 = toShort(0), prevCharClass = charDelimiter, inGap = false;
+   let Tsub = T.subarray(idx);
+   let H0sub = H0.subarray(idx).subarray(0, Tsub.length), C0sub = C0.subarray(idx).subarray(0, Tsub.length), Bsub = B.subarray(idx).subarray(0, Tsub.length);
+   for (let [off, char] of Tsub.entries()) {
+@@ -449,7 +295,7 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+       if (M === 1 && (forward && score > maxScore || !forward && score >= maxScore)) {
+         maxScore = score;
+         maxScorePos = idx + off;
+-        if (forward && bonus === BONUS_BOUNDARY) {
++        if (forward && bonus >= BONUS_BOUNDARY) {
+           break;
+         }
+       }
+@@ -516,10 +362,13 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+         s1 = Hdiag[off2] + SCORE_MATCH;
+         let b = Bsub2[off2];
+         consecutive = Cdiag[off2] + 1;
+-        if (b === BONUS_BOUNDARY) {
+-          consecutive = 1;
+-        } else if (consecutive > 1) {
+-          b = maxInt16(b, maxInt16(BONUS_CONSECUTIVE, B[col - consecutive + 1]));
++        if (consecutive > 1) {
++          const firstBonus = B[col - consecutive + 1];
++          if (b >= BONUS_BOUNDARY && b > firstBonus) {
++            consecutive = 1;
++          } else {
++            b = maxInt16(b, maxInt16(BONUS_CONSECUTIVE, firstBonus));
++          }
+         }
+         if (s1 + b < s2) {
+           s1 += Bsub2[off2];
+@@ -553,6 +402,7 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+       if (j > F[i]) {
+         s2 = H[I + j0 - 1];
+       }
++      const row = i;
+       if (s > s1 && (s > s2 || s === s2 && preferMatch)) {
+         pos.add(j);
+         if (i === 0) {
+@@ -560,7 +410,7 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+         }
+         i--;
+       }
+-      preferMatch = C[I + j0] > 1 || I + width + j0 + 1 < C.length && C[I + width + j0 + 1] > 0;
++      preferMatch = C[I + j0] > 1 || row + 1 < M && j < lastIdx && j + 1 >= F[row + 1] && C[I + width + j0 + 1] > 0;
+       j--;
+     }
+   }
+@@ -569,7 +419,7 @@ const fuzzyMatchV2 = (caseSensitive, normalize, forward, input, pattern, withPos
+ function calculateScore(caseSensitive, normalize, text, pattern, sidx, eidx, withPos) {
+   let pidx = 0, score = 0, inGap = false, consecutive = 0, firstBonus = toShort(0);
+   const pos = createPosSet(withPos);
+-  let prevCharClass = 0;
++  let prevCharClass = charDelimiter;
+   if (sidx > 0) {
+     prevCharClass = charClassOf(text[sidx - 1]);
+   }
+@@ -595,7 +445,7 @@ function calculateScore(caseSensitive, normalize, text, pattern, sidx, eidx, wit
+       if (consecutive === 0) {
+         firstBonus = bonus;
+       } else {
+-        if (bonus === BONUS_BOUNDARY) {
++        if (bonus >= BONUS_BOUNDARY && bonus > firstBonus) {
+           firstBonus = bonus;
+         }
+         bonus = maxInt16(maxInt16(bonus, firstBonus), BONUS_CONSECUTIVE);
+@@ -696,7 +546,7 @@ const fuzzyMatchV1 = (caseSensitive, normalize, forward, text, pattern, withPos,
+   }
+   return [{ start: -1, end: -1, score: 0 }, null];
+ };
+-const exactMatchNaive = (caseSensitive, normalize, forward, text, pattern, withPos, slab2) => {
++const exactMatchNaive = (caseSensitive, normalize, forward, text, pattern, withPos, slab2, boundary = false) => {
+   if (pattern.length === 0) {
+     return [{ start: 0, end: 0, score: 0 }, null];
+   }
+@@ -725,17 +575,22 @@ const exactMatchNaive = (caseSensitive, normalize, forward, text, pattern, withP
+     }
+     const pidx_ = indexAt(pidx, lenPattern, forward);
+     const pchar = pattern[pidx_];
+-    if (pchar === rune) {
+-      if (pidx_ === 0) {
+-        bonus = bonusAt(text, index_);
+-      }
++    let ok = pchar === rune;
++    if (ok && pidx_ === 0) {
++      bonus = bonusAt(text, index_);
++      if (boundary) ok = bonus >= BONUS_BOUNDARY && (index_ === 0 || charClassOf(text[index_ - 1]) <= 0);
++    }
++    if (ok && boundary && pidx_ === lenPattern - 1 && index_ + 1 < lenRunes) {
++      ok = charClassOf(text[index_ + 1]) <= 0;
++    }
++    if (ok) {
+       pidx++;
+       if (pidx === lenPattern) {
+         if (bonus > bestBonus) {
+           bestPos = index;
+           bestBonus = bonus;
+         }
+-        if (bonus === BONUS_BOUNDARY) {
++        if (bonus >= BONUS_BOUNDARY) {
+           break;
+         }
+         index -= pidx - 1;
+@@ -757,6 +612,16 @@ const exactMatchNaive = (caseSensitive, normalize, forward, text, pattern, withP
+       sidx = lenRunes - (bestPos + 1);
+       eidx = lenRunes - (bestPos - lenPattern + 1);
+     }
++    if (boundary) {
++      let score = bestBonus + SCORE_MATCH * lenPattern + BONUS_BOUNDARY * (lenPattern + 1);
++      let deduct = bestBonus - BONUS_BOUNDARY + 1;
++      if (text[sidx - 1] === 95) {
++        score -= deduct + 1;
++        deduct = 1;
++      }
++      if (text[eidx] === 95) score -= deduct;
++      return [{ start: sidx, end: eidx, score }, null];
++    }
+     const [score] = calculateScore(caseSensitive, normalize, text, pattern, sidx, eidx, false);
+     return [{ start: sidx, end: eidx, score }, null];
+   }
+@@ -858,7 +723,7 @@ const equalMatch = (caseSensitive, normalize, forward, text, pattern, withPos, s
+       }
+     }
+   } else {
+-    let runesStr = runesToStr(text).substring(trimmedLen, text.length - trimmedEndLen);
++    let runesStr = runesToStr(text.slice(trimmedLen, text.length - trimmedEndLen));
+     if (!caseSensitive) {
+       runesStr = runesStr.toLowerCase();
+     }
+@@ -898,13 +763,14 @@ const termTypeMap = {
+   [1]: exactMatchNaive,
+   [2]: prefixMatch,
+   [3]: suffixMatch,
+-  [4]: equalMatch
++  [4]: equalMatch,
++  [5]: (...args) => exactMatchNaive(...args, true)
+ };
+ function buildPatternForExtendedMatch(fuzzy, caseMode, normalize, str) {
+   let cacheable = true;
+-  str = str.trimLeft();
++  str = str.replace(/^ +/, "");
+   {
+-    const trimmedAtRightStr = str.trimRight();
++    const trimmedAtRightStr = str.replace(/ +$/, "");
+     if (trimmedAtRightStr.endsWith("\\") && str[trimmedAtRightStr.length] === " ") {
+       str = trimmedAtRightStr + " ";
+     } else {
+@@ -969,7 +835,10 @@ function parseTerms(fuzzy, caseMode, normalize, str) {
+       typ = 3;
+       text = text.substring(0, text.length - 1);
+     }
+-    if (text.startsWith("'")) {
++    if (text.length > 2 && text.startsWith("'") && text.endsWith("'")) {
++      typ = 5;
++      text = text.slice(1, -1);
++    } else if (text.startsWith("'")) {
+       if (fuzzy && !inv) {
+         typ = 1;
+       } else {
+@@ -1204,7 +1073,8 @@ function extendedMatch(query) {
+   for (let i = 0, len = this.runesList.length; i < len; ++i) {
+     iter2(i);
+   }
+-  return getResultFromScoreMap(scoreMap, this.opts.limit);
++  const result = getResultFromScoreMap(scoreMap, this.opts.limit);
++  return postProcessResultItems(result, this.opts, pattern.sortable);
+ }
+ const isNode = typeof require !== "undefined" && typeof window === "undefined";
+ function asyncMatcher(token, len, iter2, onFinish) {
+@@ -1270,7 +1140,7 @@ class BaseFinder {
+   constructor(list, ...optionsTuple) {
+     this.opts = { ...defaultOpts, ...optionsTuple[0] };
+     this.items = list;
+-    this.runesList = list.map((item) => strToRunes(this.opts.selector(item).normalize()));
++    this.runesList = list.map((item) => strToRunes(this.opts.selector(item)));
+     this.algoFn = exactMatchNaive;
+     switch (this.opts.fuzzy) {
+       case "v2":
+@@ -1294,9 +1164,8 @@ class SyncFinder extends BaseFinder {
+   find(query) {
+     if (query.length === 0 || this.items.length === 0)
+       return this.items.slice(0, this.opts.limit).map(createResultItemWithEmptyPos);
+-    query = query.normalize();
+-    let result = this.opts.match.bind(this)(query);
+-    return postProcessResultItems(result, this.opts);
++    const result = this.opts.match.bind(this)(query);
++    return this.opts.match === extendedMatch ? result : postProcessResultItems(result, this.opts);
+   }
+ }
+ const asyncDefaultOpts = {
+@@ -1314,7 +1183,6 @@ class AsyncFinder extends BaseFinder {
+     this.token = { cancelled: false };
+     if (query.length === 0 || this.items.length === 0)
+       return this.items.slice(0, this.opts.limit).map(createResultItemWithEmptyPos);
+-    query = query.normalize();
+     let result = await this.opts.match.bind(this)(query, this.token);
+     return postProcessResultItems(result, this.opts);
+   }
+@@ -1326,8 +1194,8 @@ const createResultItemWithEmptyPos = (item) => ({
+   score: 0,
+   positions: /* @__PURE__ */ new Set()
+ });
+-function postProcessResultItems(result, opts) {
+-  if (opts.sort) {
++function postProcessResultItems(result, opts, sortable = true) {
++  if (opts.sort && sortable) {
+     const { selector } = opts;
+     result.sort((a, b) => {
+       if (a.score === b.score) {

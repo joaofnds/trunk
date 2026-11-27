@@ -231,6 +231,8 @@ section("Unread marker and count (TRUNK-156)");
 check("unread label on a card header", "var(--color-accent-strong)", "var(--color-comment-card-header-bg)");
 check("unread label on a settled card header", "var(--color-accent-strong)", "var(--color-comment-card-bg)");
 check("unread count in the panel header", "var(--color-accent-strong)", "var(--color-surface)");
+check("file filter match on a selected row", "var(--color-accent-strong)", "var(--color-selected-row)");
+check("file filter match under the pointer", "var(--color-accent-strong)", "var(--color-hover)");
 check("unread dot on a card header", "var(--color-accent)", "var(--color-comment-card-header-bg)", { target: 3 });
 check("unread dot on a settled card header", "var(--color-accent)", "var(--color-comment-card-bg)", { target: 3 });
 check("unread dot in the panel header", "var(--color-accent)", "var(--color-surface)", { target: 3 });

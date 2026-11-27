@@ -561,7 +561,7 @@ class AppPage {
 				.getByRole("button", { name: "Filter files" })
 				.click(options);
 			const filter = this.page.getByRole("textbox", { name: "Filter files" });
-			await filter.fill("file-0.ts", options);
+			await filter.fill("^file-0.ts$", options);
 			await this.page
 				.getByRole("button", { name: "Stage 1 match", exact: true })
 				.click(options);

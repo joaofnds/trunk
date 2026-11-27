@@ -138,6 +138,29 @@ describe("ComparePanel", () => {
 		expect(onfileselect).toHaveBeenCalledWith("src/main.ts");
 	});
 
+	it("highlights a fuzzy path across its folder and filename", async () => {
+		stubLayout({ width: 300, height: 4000 });
+		onTestFinished(restoreLayout);
+		renderPanel({
+			treeViewEnabled: true,
+			fileDiffs: [{ ...fileDiffs[0], path: "scripts/drive/native.ts" }],
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Filter files" }));
+		await fireEvent.input(
+			screen.getByRole("textbox", { name: "Filter files" }),
+			{
+				target: { value: "dnv" },
+			},
+		);
+
+		const folder = screen.getByRole("treeitem", { expanded: true });
+		const filename = screen.getByTitle("scripts/drive/native.ts");
+		expect(folder.querySelector("mark")).toHaveTextContent(/^d$/);
+		expect(
+			Array.from(filename.querySelectorAll("mark"), (mark) => mark.textContent),
+		).toEqual(["n", "v"]);
+	});
+
 	it("filters renamed paths without opening a diff and restores the tree on Escape", async () => {
 		stubLayout({ width: 300, height: 4000 });
 		onTestFinished(restoreLayout);
@@ -162,9 +185,13 @@ describe("ComparePanel", () => {
 		await fireEvent.keyDown(tree, { key: "/" });
 		const filter = screen.getByRole("textbox", { name: "Filter files" });
 		expect(filter).toHaveFocus();
-		await fireEvent.input(filter, { target: { value: "OLD/foo" } });
+		await fireEvent.input(filter, { target: { value: "old/foo" } });
 		expect(screen.getByText("1 of 2 files changed")).toBeVisible();
-		expect(screen.getByTitle("old/Foo.ts → lib/new.ts")).toBeVisible();
+		const rename = screen.getByTitle("old/Foo.ts → lib/new.ts");
+		expect(rename).toBeVisible();
+		expect(
+			Array.from(rename.querySelectorAll("mark"), (mark) => mark.textContent),
+		).toEqual(["Foo", "old/"]);
 		expect(screen.queryByTitle("src/main.ts")).toBeNull();
 		expect(onfileselect).not.toHaveBeenCalled();
 

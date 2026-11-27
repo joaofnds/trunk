@@ -1508,8 +1508,7 @@ function advanceToNextFile(
 		return;
 	}
 	const rawFiles =
-		stagingPanelRef?.filteredFiles(cachedStatus[section]) ??
-		cachedStatus[section];
+		stagingPanelRef?.filteredFiles(section) ?? cachedStatus[section];
 	// Use the same ordering the visual list uses
 	const orderedPaths = treeViewEnabled
 		? collectFilePaths(buildTree(rawFiles))
