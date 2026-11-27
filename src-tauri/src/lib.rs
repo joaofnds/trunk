@@ -339,6 +339,7 @@ pub fn configure_with_fetch_worker<R: tauri::Runtime>(
         commands::history::commit_stat,
         commands::history::get_wip_diff_stats,
         commands::history::search_commits,
+        commands::path_history::path_history,
         commands::branches::list_refs,
         commands::branches::resolve_ref,
         commands::branches::checkout_branch,

@@ -12,6 +12,7 @@ import {
 } from "../lib/checkout.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { reportErrorToast } from "../lib/error-report.js";
+import { filterShortcut } from "../lib/filter-shortcut.js";
 import { safeInvoke, trackPending } from "../lib/invoke.js";
 import { nativeMenu } from "../lib/native-menu.js";
 import {
@@ -131,6 +132,8 @@ let refs = $state<RefsResponse | null>(null);
 let loading = $state(false);
 let loadSeq = 0;
 let search = $state("");
+let searchInput: HTMLInputElement;
+const query = $derived(search.toLowerCase());
 let checkingOutBranch = $state<{
 	kind: "local" | "remote";
 	name: string;
@@ -323,32 +326,30 @@ async function loadVisibility(view: VisibilityView) {
 
 let filteredLocal = $derived(
 	search
-		? (refs?.local ?? []).filter((b) =>
-				b.name.toLowerCase().includes(search.toLowerCase()),
-			)
+		? (refs?.local ?? []).filter((b) => b.name.toLowerCase().includes(query))
 		: (refs?.local ?? []),
 );
 
 let filteredRemote = $derived(
 	search
-		? (refs?.remote ?? []).filter((b) =>
-				b.name.toLowerCase().includes(search.toLowerCase()),
-			)
+		? (refs?.remote ?? []).filter((b) => b.name.toLowerCase().includes(query))
 		: (refs?.remote ?? []),
 );
 
 let filteredTags = $derived(
 	search
 		? (refs?.tags ?? []).filter((t) =>
-				t.short_name.toLowerCase().includes(search.toLowerCase()),
+				t.short_name.toLowerCase().includes(query),
 			)
 		: (refs?.tags ?? []),
 );
 
 let filteredStashes = $derived<StashEntry[]>(
 	search
-		? (refs?.stashes ?? []).filter((s) =>
-				s.name.toLowerCase().includes(search.toLowerCase()),
+		? (refs?.stashes ?? []).filter(
+				(s) =>
+					s.name.toLowerCase().includes(query) ||
+					s.short_name.toLowerCase().includes(query),
 			)
 		: (refs?.stashes ?? []),
 );
@@ -807,6 +808,10 @@ registerUpdateBlocker(() =>
 
 <aside
 	data-testid="branch-sidebar"
+	use:filterShortcut={() => {
+		searchInput.focus();
+		searchInput.select();
+	}}
 	class="w-full min-w-0 bg-surface flex flex-col overflow-hidden"
 >
 	<!-- Search input (sticky at top) -->
@@ -817,9 +822,18 @@ registerUpdateBlocker(() =>
 			<Search size={12} color="var(--color-text-subtle)" class="shrink-0" />
 			<input
 				type="text"
-				placeholder="Filter branches…"
+				placeholder="Filter branches, tags, stashes…"
+				aria-label="Filter branches, tags, stashes"
+				bind:this={searchInput}
+				onkeydown={(event) => {
+					if (event.key === "Escape" && search && !event.isComposing) {
+						event.preventDefault();
+						event.stopPropagation();
+						search = "";
+					}
+				}}
 				bind:value={search}
-				class="flex-1 min-w-0 h-full bg-transparent border-none text-text-muted text-callout outline-none"
+				class="flex-1 min-w-0 h-full bg-transparent border-none text-text-muted text-callout"
 			>
 		</div>
 	</div>
@@ -831,6 +845,7 @@ registerUpdateBlocker(() =>
 			<BranchSection
 				label="Local"
 				count={filteredLocal.length}
+				filterQuery={query}
 				filteredFrom={search ? (refs?.local.length ?? 0) : undefined}
 				expanded={localExpanded}
 				ontoggle={() => (localExpanded = !localExpanded)}
@@ -904,6 +919,7 @@ registerUpdateBlocker(() =>
 			<BranchSection
 				label="Remote"
 				count={filteredRemote.length}
+				filterQuery={query}
 				filteredFrom={search ? (refs?.remote.length ?? 0) : undefined}
 				expanded={remoteExpanded}
 				ontoggle={() => (remoteExpanded = !remoteExpanded)}
@@ -946,6 +962,7 @@ registerUpdateBlocker(() =>
 			<BranchSection
 				label="Tags"
 				count={filteredTags.length}
+				filterQuery={query}
 				filteredFrom={search ? (refs?.tags.length ?? 0) : undefined}
 				expanded={tagsExpanded}
 				ontoggle={() => (tagsExpanded = !tagsExpanded)}
@@ -973,6 +990,7 @@ registerUpdateBlocker(() =>
 		<BranchSection
 			label="Stashes"
 			count={filteredStashes.length}
+			filterQuery={query}
 			filteredFrom={search ? (refs?.stashes.length ?? 0) : undefined}
 			expanded={stashesExpanded}
 			ontoggle={() => (stashesExpanded = !stashesExpanded)}

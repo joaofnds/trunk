@@ -214,7 +214,12 @@ const pane = $derived.by(() => {
 	if (loadError) return "error";
 	if ((loading || payloadStale) && !hasContent) return "loading";
 	if (selectedFileDiff && !isLoaded(selectedFileDiff)) return "no-changes";
-	if (selectedFileDiff?.is_binary && isImagePath(selectedFileDiff.path))
+	if (
+		selectedFileDiff?.is_binary &&
+		!selectedFileDiff.path_bytes &&
+		!selectedFileDiff.old_path_bytes &&
+		isImagePath(selectedFileDiff.path)
+	)
 		return "image";
 	// A thread can follow a commit through an amend that drops its file, and
 	// the jump to it then selects a file the commit's list does not hold.

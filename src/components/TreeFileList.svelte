@@ -6,6 +6,7 @@ import {
 	type DirectoryNode,
 } from "../lib/build-tree.js";
 import { ROW_HEIGHT } from "../lib/chrome-heights.js";
+import { fileKey } from "../lib/file-status.js";
 import type { FlatRow } from "../lib/flatten-tree.js";
 import {
 	collectDirPaths,
@@ -21,13 +22,21 @@ import FileRow from "./FileRow.svelte";
 interface Props {
 	files: FileStatus[];
 	treeMode: boolean;
+	filterQuery?: string;
 	actionLabel: string;
 	loadingFiles?: Set<string>;
 	onfileaction: (path: string) => void;
 	onfileclick?: (path: string) => void;
-	onfilecontextmenu?: (e: MouseEvent, path: string, status: FileStatus) => void;
+	onfilecontextmenu?: (
+		anchor: DOMRect | undefined,
+		path: string,
+		status: FileStatus,
+	) => void;
 	ondirectoryaction?: (dirPath: string) => void;
-	ondirectorycontextmenu?: (e: MouseEvent, dirPath: string) => void;
+	ondirectorycontextmenu?: (
+		anchor: DOMRect | undefined,
+		dirPath: string,
+	) => void;
 	selectedPath?: string | null;
 	expandAllSignal?: number;
 	collapseAllSignal?: number;
@@ -40,6 +49,7 @@ interface Props {
 let {
 	files,
 	treeMode,
+	filterQuery = "",
 	actionLabel,
 	loadingFiles,
 	onfileaction,
@@ -68,7 +78,7 @@ let viewHeight = $state(0);
 // while no file is open, so a list the user never touched shows no selection.
 function isMarked(index: number, row: FlatRow): boolean {
 	if (listFocused) return index === focusIndex;
-	return row.type === "file" && row.node.file.path === selectedPath;
+	return row.type === "file" && row.node.path === selectedPath;
 }
 
 function holdsBusyFile(directory: DirectoryNode): boolean {
@@ -91,6 +101,7 @@ let dirPaths = $derived(collectDirPaths(tree));
 
 // Migrate expanded paths when tree structure changes (e.g. directory compression)
 $effect(() => {
+	if (filterQuery) return;
 	const current = untrack(() => expanded);
 	const migrated = migrateExpanded(current, dirPaths);
 	if (migrated) {
@@ -98,13 +109,24 @@ $effect(() => {
 	}
 });
 
+// Each query starts with its matching folders open. Toggling one during the
+// search edits that view only; clearing the query returns to the original tree.
+let matchingExpanded = $derived.by(() => {
+	void filterQuery;
+	return dirPaths;
+});
 let flatRows = $derived<FlatRow[]>(
 	treeMode
-		? flattenTree(tree, expanded)
+		? flattenTree(tree, filterQuery ? matchingExpanded : expanded)
 		: files.map((f) => ({
 				type: "file" as const,
 				depth: 0,
-				node: { type: "file" as const, name: f.path, path: f.path, file: f },
+				node: {
+					type: "file" as const,
+					name: f.path,
+					path: fileKey(f),
+					file: f,
+				},
 				parentPath: null,
 			})),
 );
@@ -130,7 +152,8 @@ let prevExpandAll = 0;
 $effect(() => {
 	if (expandAllSignal > 0 && expandAllSignal !== prevExpandAll) {
 		prevExpandAll = expandAllSignal;
-		expanded = dirPaths;
+		if (filterQuery) matchingExpanded = dirPaths;
+		else expanded = dirPaths;
 	}
 });
 
@@ -139,7 +162,8 @@ let prevCollapseAll = 0;
 $effect(() => {
 	if (collapseAllSignal > 0 && collapseAllSignal !== prevCollapseAll) {
 		prevCollapseAll = collapseAllSignal;
-		expanded = new Set();
+		if (filterQuery) matchingExpanded = new Set();
+		else expanded = new Set();
 	}
 });
 
@@ -147,7 +171,7 @@ $effect(() => {
 $effect(() => {
 	if (selectedPath && flatRows.length > 0) {
 		const idx = flatRows.findIndex(
-			(r) => r.type === "file" && r.node.file.path === selectedPath,
+			(r) => r.type === "file" && r.node.path === selectedPath,
 		);
 		if (idx >= 0) {
 			focusIndex = idx;
@@ -280,19 +304,33 @@ function takeFocus() {
 }
 
 function toggleExpanded(path: string) {
-	const next = new Set(expanded);
+	const next = new Set(filterQuery ? matchingExpanded : expanded);
 	if (next.has(path)) {
 		next.delete(path);
 	} else {
 		next.add(path);
 	}
-	expanded = next;
+	if (filterQuery) matchingExpanded = next;
+	else expanded = next;
 }
 
 function handleKeydown(e: KeyboardEvent) {
 	if (flatRows.length === 0) return;
 	const row = flatRows[focusIndex];
 	if (!row) return;
+	if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+		const anchor = list
+			?.querySelector('[aria-selected="true"]')
+			?.getBoundingClientRect();
+		if (row.type === "file" && onfilecontextmenu) {
+			e.preventDefault();
+			onfilecontextmenu(anchor, row.node.path, row.node.file);
+		} else if (row.type === "directory" && ondirectorycontextmenu) {
+			e.preventDefault();
+			ondirectorycontextmenu(anchor, row.node.path);
+		}
+		return;
+	}
 	const prevIndex = focusIndex;
 	// A directory's button holds the focus once clicked and answers Enter and
 	// Space itself, so the list leaves those two to it.
@@ -334,7 +372,7 @@ function handleKeydown(e: KeyboardEvent) {
 			if (fromRow) break;
 			e.preventDefault();
 			if (row.type === "file") {
-				onfileclick?.(row.node.file.path);
+				onfileclick?.(row.node.path);
 			} else {
 				toggleExpanded(row.node.path);
 			}
@@ -362,7 +400,7 @@ function handleKeydown(e: KeyboardEvent) {
 		focusIndex !== prevIndex
 	) {
 		if (focusedRow?.type === "file") {
-			onfileclick?.(focusedRow.node.file.path);
+			onfileclick?.(focusedRow.node.path);
 		}
 	}
 }
@@ -387,7 +425,7 @@ function handleKeydown(e: KeyboardEvent) {
 					? () => ondirectoryaction(row.node.path)
 					: undefined}
 				oncontextmenu={ondirectorycontextmenu
-					? (e) => ondirectorycontextmenu(e, row.node.path)
+					? () => ondirectorycontextmenu(undefined, row.node.path)
 					: undefined}
 				{commentCounts}
 				{commentTallies}
@@ -398,20 +436,20 @@ function handleKeydown(e: KeyboardEvent) {
 				file={row.node.file}
 				role={treeMode ? "treeitem" : "option"}
 				{actionLabel}
-				isLoading={loadingFiles?.has(row.node.file.path) ?? false}
-				onaction={() => onfileaction(row.node.file.path)}
+				isLoading={loadingFiles?.has(row.node.path) ?? false}
+				onaction={() => onfileaction(row.node.path)}
 				onclick={() => {
-					focusRow(i, row.node.file.path);
-					onfileclick?.(row.node.file.path);
+					focusRow(i, row.node.path);
+					onfileclick?.(row.node.path);
 				}}
 				onfocus={takeFocus}
 				oncontextmenu={onfilecontextmenu
-					? (e) => onfilecontextmenu(e, row.node.file.path, row.node.file)
+					? () => onfilecontextmenu(undefined, row.node.path, row.node.file)
 					: undefined}
 				depth={treeMode ? row.depth : 0}
 				selected={isMarked(i, row)}
-				commentCount={commentCounts?.get(row.node.file.path) ?? 0}
-				commentTally={commentTallies?.get(row.node.file.path) ?? null}
+				commentCount={commentCounts?.get(row.node.path) ?? 0}
+				commentTally={commentTallies?.get(row.node.path) ?? null}
 			/>
 		{/if}
 	{/each}

@@ -675,6 +675,41 @@ describe("CommitDetail", () => {
 			});
 		});
 
+		it("finds literal occurrences across subject and collapsed body, then returns to the message", async () => {
+			const scrolled: Element[] = [];
+			const previousScroll = Element.prototype.scrollIntoView;
+			Element.prototype.scrollIntoView = function () {
+				scrolled.push(this);
+			};
+			onTestFinished(() => {
+				Element.prototype.scrollIntoView = previousScroll;
+			});
+			const body =
+				Array.from({ length: BODY_CLAMP_LINES + 1 }, () => "line").join("\n") +
+				"\nNULL check";
+			renderWithBody(body);
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Find in commit message" }),
+			);
+			const field = screen.getByRole("textbox", {
+				name: "Find in commit message…",
+			});
+			await fireEvent.input(field, { target: { value: "null" } });
+			expect(screen.getByText("1 of 2")).toBeVisible();
+			await fireEvent.keyDown(field, { key: "Enter" });
+			expect(screen.getByText("2 of 2")).toBeVisible();
+			const bodyNode = screen.getByTestId("commit-body");
+			expect(bodyNode.querySelector("mark")).toHaveTextContent("NULL");
+			expect(scrolled.at(-1)).toBe(bodyNode.querySelector("mark"));
+			expect(bodyNode).toHaveAttribute("data-clamped", "false");
+			await fireEvent.keyDown(field, { key: "Escape" });
+			expect(bodyNode.querySelector("mark")).toBeNull();
+			expect(bodyNode).toHaveAttribute("data-clamped", "true");
+			expect(
+				screen.getByRole("region", { name: "Commit message" }),
+			).toHaveFocus();
+		});
+
 		it("clamps a body past the limit and offers to show the rest", () => {
 			renderWithBody(longBody);
 			expect(screen.getByTestId("commit-body")).toHaveAttribute(

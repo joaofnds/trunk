@@ -116,6 +116,25 @@ export class RepoDriver {
 		);
 	}
 
+	async readCommitBody(): Promise<void> {
+		const prose = await waitFor("the selected commit's body", () =>
+			document.querySelector<HTMLElement>(
+				'[data-testid="commit-body"] [data-prose-block]',
+			),
+		);
+		prose.dispatchEvent(
+			new MouseEvent("pointerdown", { bubbles: true, cancelable: true }),
+		);
+		prose.click();
+	}
+
+	markedPassage(): string | null {
+		return (
+			document.querySelector('[aria-label="Commit message"] mark')
+				?.textContent ?? null
+		);
+	}
+
 	/** Opens a file from the compare panel's file list in the center pane. */
 	async openCompareFile(path: string): Promise<void> {
 		await this.clickFileRow(path, `the ${path} compare row`);
@@ -167,6 +186,88 @@ export class RepoDriver {
 		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));
 
 		await openContextMenu(row, this.menu, summary);
+	}
+
+	async showOlderPathChanges(): Promise<void> {
+		await this.chooseInPathHistory("Show older commits");
+	}
+
+	async pathHistoryChanges(): Promise<string[]> {
+		return waitFor("the matching history entries", () => {
+			const entries = Array.from(
+				document.querySelectorAll('[data-testid="path-history-summary"]'),
+			);
+			return entries.length
+				? entries.map((entry) => entry.textContent ?? "")
+				: null;
+		});
+	}
+
+	async chooseInPathHistory(label: string): Promise<void> {
+		const row = await waitFor(
+			label,
+			() =>
+				Array.from(
+					document.querySelectorAll<HTMLButtonElement>("dialog button"),
+				).find((button) => button.textContent?.includes(label)) ?? null,
+		);
+		row.click();
+	}
+
+	async pressKeyInPathHistory(key: "j" | "k"): Promise<void> {
+		const button = await waitFor("a button in file history", () =>
+			document.querySelector<HTMLButtonElement>("dialog[open] button"),
+		);
+		button.focus();
+		button.dispatchEvent(
+			new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+		);
+	}
+
+	selectedCommitSummary(): string | null {
+		return (
+			document
+				.querySelector('[data-testid="commit-detail"] .summary')
+				?.textContent?.trim() ?? null
+		);
+	}
+
+	async stepToNewerCommit(): Promise<void> {
+		const button = await waitFor("the newer commit in the pager", () =>
+			document.querySelector<HTMLButtonElement>(
+				'[aria-label="Go to newer commit"]:enabled',
+			),
+		);
+		button.click();
+	}
+
+	canStepToNewerCommit(): boolean {
+		return (
+			document.querySelector('[aria-label="Go to newer commit"]:enabled') !==
+			null
+		);
+	}
+
+	async openFileMenuWithKey(key: "Shift+F10" | "ContextMenu"): Promise<void> {
+		const list = await waitFor("the selected commit's file list", () =>
+			document.querySelector<HTMLElement>(
+				'[data-testid="commit-detail"] :is([role="tree"], [role="listbox"])',
+			),
+		);
+		list.focus();
+		list.dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: key === "Shift+F10" ? "F10" : key,
+				shiftKey: key === "Shift+F10",
+				bubbles: true,
+				cancelable: true,
+			}),
+		);
+
+		await waitFor(
+			"the focused file's context menu",
+			() => this.menu.items().length > 0 || null,
+		);
 	}
 
 	/** Right-clicks a file in the selected commit's detail pane. */

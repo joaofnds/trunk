@@ -4,7 +4,7 @@ const PROSE =
 	"[data-prose-selection], .markdown-body:not([data-prose-selection] .markdown-body)";
 const BLOCK = "[data-prose-block], pre, p, h1, h2, h3, h4, h5, h6, li, td, th";
 const INLINE_MARK =
-	".word-add, .word-delete, .merge-word, .md-word-add, .md-word-delete, .invisible-char, [data-diff-match]";
+	".word-add, .word-delete, .merge-word, .md-word-add, .md-word-delete, .invisible-char, .find-match";
 
 interface Slice {
 	element: HTMLElement;

@@ -769,7 +769,9 @@ describe("RepoView", () => {
 
 	it("lets go of the focus in the sidebar when it collapses", async () => {
 		renderWithPanes({ leftPaneWidth: 84 });
-		const filter = await screen.findByPlaceholderText("Filter branches…");
+		const filter = await screen.findByRole("textbox", {
+			name: "Filter branches, tags, stashes",
+		});
 		filter.focus();
 
 		await fireEvent.keyDown(
@@ -2734,7 +2736,9 @@ describe("RepoView", () => {
 
 			it("keeps the full file selection while an editable field has focus", async () => {
 				await openReadmeWithALineSelected("full");
-				const field = screen.getByPlaceholderText("Filter branches…");
+				const field = screen.getByRole("textbox", {
+					name: "Filter branches, tags, stashes",
+				});
 				field.focus();
 
 				await fireEvent.keyDown(field, { key: "Escape" });

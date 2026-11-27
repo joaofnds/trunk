@@ -164,6 +164,45 @@ describe("RebaseEditor", () => {
 		});
 	}
 
+	it("jumps to a matching subject or full SHA without hiding or editing plan steps", async () => {
+		const { container } = renderEditor();
+		const plan = screen.getByRole("listbox", { name: "Commits to rebase" });
+		const original = within(plan)
+			.getAllByRole("combobox")
+			.map((box) => box.getAttribute("aria-label"));
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Find in rebase plan" }),
+		);
+		const field = screen.getByRole("textbox", { name: "Find in rebase plan…" });
+		await fireEvent.input(field, { target: { value: ":" } });
+		expect(screen.getByText("1 of 3")).toBeVisible();
+		await fireEvent.keyDown(field, { key: "Enter", shiftKey: true });
+		expect(screen.getByText("3 of 3")).toBeVisible();
+		expect(scrolled.at(-1)).toHaveTextContent("feat: add login");
+		const next = screen.getByRole("button", { name: "Next match" });
+		next.focus();
+		await fireEvent.keyDown(next, { key: "d" });
+		await fireEvent.keyDown(next, { key: "ArrowDown", shiftKey: true });
+		expect(actions(container)).toEqual(["pick", "pick", "pick"]);
+		await fireEvent.input(field, {
+			target: { value: TEST_ITEMS[1].oid.toUpperCase() },
+		});
+		expect(screen.getByText("1 of 1")).toBeVisible();
+		await fireEvent.keyDown(field, { key: "Escape" });
+		const selected = within(plan).getByRole("option", {
+			selected: true,
+			name: /fix: null check/,
+		});
+		expect(selected).toHaveTextContent("fix: null check");
+		expect(selected).toHaveFocus();
+		expect(
+			within(plan)
+				.getAllByRole("combobox")
+				.map((box) => box.getAttribute("aria-label")),
+		).toEqual(original);
+		expect(actions(container)).toEqual(["pick", "pick", "pick"]);
+	});
+
 	function actions(container: HTMLElement) {
 		return [...container.querySelectorAll("select")].map(
 			(select) => select.value,

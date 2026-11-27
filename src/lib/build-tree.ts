@@ -1,4 +1,5 @@
 import { splitFilePath } from "./file-path.js";
+import { fileKey, pathKey } from "./file-status.js";
 import { sumTallies } from "./review-filter.js";
 import type { FileStatus, ReviewTally } from "./types.js";
 
@@ -20,9 +21,22 @@ export type TreeNode = DirectoryNode | FileNode;
 
 /** Intermediate trie node used during tree construction. */
 interface IntermediateDir {
+	name: string;
 	children: Map<string, IntermediateDir>;
 	files: FileNode[];
 	path: string;
+}
+
+const gitNameDecoder = new TextDecoder("utf-8", {
+	fatal: true,
+	ignoreBOM: true,
+});
+function decodeGitName(bytes: number[]): string | undefined {
+	try {
+		return gitNameDecoder.decode(Uint8Array.from(bytes));
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -38,24 +52,43 @@ export function buildTree(files: FileStatus[]): TreeNode[] {
 	if (files.length === 0) return [];
 
 	// Phase 1: Build intermediate trie
-	const root: IntermediateDir = { children: new Map(), files: [], path: "" };
+	const root: IntermediateDir = {
+		name: "",
+		children: new Map(),
+		files: [],
+		path: "",
+	};
 
 	for (const file of files) {
 		const { directory, name } = splitFilePath(file.path);
 		let current = root;
+		let start = 0;
+		let prefix = "";
 		for (const segment of directory ? directory.split("/") : []) {
-			let child = current.children.get(segment);
+			prefix = prefix ? `${prefix}/${segment}` : segment;
+			let key = prefix;
+			let label = segment;
+			if (file.path_bytes) {
+				const end = file.path_bytes.indexOf(47, start);
+				const rawPrefix = file.path_bytes.slice(0, end);
+				const textPrefix = decodeGitName(rawPrefix);
+				key = textPrefix ?? pathKey(prefix, rawPrefix);
+				label = decodeGitName(file.path_bytes.slice(start, end)) ?? segment;
+				start = end + 1;
+			}
+			let child = current.children.get(key);
 			if (!child) {
 				child = {
 					children: new Map(),
 					files: [],
-					path: current.path ? `${current.path}/${segment}` : segment,
+					name: label,
+					path: key,
 				};
-				current.children.set(segment, child);
+				current.children.set(key, child);
 			}
 			current = child;
 		}
-		current.files.push({ type: "file", name, path: file.path, file });
+		current.files.push({ type: "file", name, path: fileKey(file), file });
 	}
 
 	// Phase 2: Convert trie to TreeNode[]
@@ -67,10 +100,10 @@ function convert(dir: IntermediateDir): TreeNode[] {
 	const result: TreeNode[] = [];
 
 	// Convert subdirectories
-	for (const [name, child] of dir.children) {
+	for (const child of dir.children.values()) {
 		const dirNode: DirectoryNode = {
 			type: "directory",
-			name,
+			name: child.name,
 			path: child.path,
 			children: convert(child),
 		};

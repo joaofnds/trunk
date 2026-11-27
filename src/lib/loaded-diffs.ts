@@ -1,3 +1,4 @@
+import { fileKey } from "./file-status.js";
 import type { ContentMode, DiffRequestOptions, FileDiff } from "./types.js";
 
 /** One file's diff as a single load answered it. */
@@ -71,5 +72,5 @@ export function shownDiff<Source>(
 	const shown = loadedDiffFor(loaded, slot);
 	if (shown) return [shown.diff];
 
-	return list.filter((file) => file.path === slot.path);
+	return list.filter((file) => fileKey(file) === slot.path);
 }

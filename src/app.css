@@ -19,6 +19,11 @@ body {
 	user-select: none;
 }
 
+.find-match {
+	background-color: var(--color-accent);
+	color: var(--color-on-accent);
+}
+
 [data-code-line] {
 	display: block;
 }
@@ -123,7 +128,7 @@ body {
 			.md-word-add,
 			.md-word-delete,
 			.trailing-ws,
-			[data-diff-match]
+			.find-match
 		) {
 		--selection-inline-fill: var(--selection-overlap);
 	}
@@ -162,7 +167,7 @@ body {
 		text-decoration-color: var(--color-text-strong);
 	}
 
-	[data-text-selection-overlap][data-diff-match] {
+	[data-text-selection-overlap].find-match {
 		text-decoration-line: underline;
 		text-decoration-style: dotted;
 		text-decoration-color: var(--color-accent-strong);

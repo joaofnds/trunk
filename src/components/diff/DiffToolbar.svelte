@@ -50,6 +50,7 @@ interface Props {
 	showInvisibles: boolean;
 	wordWrap: boolean;
 	takesComments: boolean;
+	byteEscapedPath?: boolean;
 	/** The selected file's threads the badge counts, by state. */
 	commentTally?: ReviewTally | null;
 	onignorewhitespacechange: (value: boolean) => void;
@@ -81,6 +82,7 @@ let {
 	showInvisibles,
 	wordWrap,
 	takesComments,
+	byteEscapedPath = false,
 	commentTally = null,
 	onignorewhitespacechange,
 	onshowinvisibleschange,
@@ -212,7 +214,12 @@ const compact = $derived(
 			size="sm"
 			variant="accent"
 			aria-label="Comment File"
-			title={compact ? "Comment File" : undefined}
+			disabled={byteEscapedPath}
+			title={byteEscapedPath
+				? "Comments require a UTF-8 file path"
+				: compact
+					? "Comment File"
+					: undefined}
 			onclick={oncommentfile}
 		>
 			{#if compact}
@@ -228,7 +235,12 @@ const compact = $derived(
 			icon
 			size="sm"
 			variant="ghost"
-			title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
+			disabled={byteEscapedPath}
+			title={byteEscapedPath
+				? "Markdown previews require a UTF-8 file path"
+				: renderMode === "source"
+					? "Show rendered markdown"
+					: "Show source"}
 			onclick={() =>
 				onrendermodechange(renderMode === "source" ? "rendered" : "source")}
 		>

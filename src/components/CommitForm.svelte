@@ -17,6 +17,7 @@ import TabStrip from "../lib/ui/TabStrip.svelte";
 interface Props {
 	repoPath: string;
 	stagedCount: number;
+	showStagedCount?: boolean;
 	session?: CommitFormSession;
 	/** The Summary field took or lost the focus while it holds the commit draft. */
 	ondraftsummaryfocuschange?: (focused: boolean) => void;
@@ -25,6 +26,7 @@ interface Props {
 let {
 	repoPath,
 	stagedCount,
+	showStagedCount = false,
 	session = new CommitFormSession(),
 	ondraftsummaryfocuschange,
 }: Props = $props();
@@ -82,6 +84,9 @@ let buttonLabel = $derived.by(() => {
 			: session.mode === "amend"
 				? "Amending..."
 				: "Stashing...";
+	}
+	if (showStagedCount && session.mode === "commit") {
+		return `Commit ${stagedCount} staged ${stagedCount === 1 ? "file" : "files"}`;
 	}
 	return session.mode === "commit"
 		? "Commit"

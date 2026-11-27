@@ -1,28 +1,22 @@
 <script lang="ts">
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
-import FolderTree from "@lucide/svelte/icons/folder-tree";
-import List from "@lucide/svelte/icons/list";
 import X from "@lucide/svelte/icons/x";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
-import { toFileStatusList } from "../lib/file-status.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { relativeLabel } from "../lib/relative-time.js";
-import type {
-	CommitDetail,
-	DiffStat,
-	FileDiff,
-	FileStatus,
-} from "../lib/types.js";
+import type { CommitDetail, DiffStat, FileDiff } from "../lib/types.js";
 import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
 import Avatar from "./Avatar.svelte";
-import TreeFileList from "./TreeFileList.svelte";
+import ChangedFileList from "./ChangedFileList.svelte";
 
 interface Props {
 	/** Left/old side of the compare; null is the empty tree (root-based range). */
 	base: CommitDetail | null;
+	repoPath?: string;
+	onhistory?: (path: string) => void;
 	/** Right/new side of the compare. */
 	target: CommitDetail;
 	fileDiffs: FileDiff[];
@@ -38,6 +32,8 @@ interface Props {
 
 let {
 	base,
+	repoPath = "",
+	onhistory,
 	target,
 	fileDiffs,
 	stat,
@@ -48,9 +44,6 @@ let {
 	treeViewEnabled = false,
 	ontreeviewtoggle,
 }: Props = $props();
-
-let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
-let filesChanged = $derived(fileDiffs.length);
 </script>
 
 {#snippet commitCard(commit: CommitDetail)}
@@ -125,53 +118,17 @@ let filesChanged = $derived(fileDiffs.length);
 		{@render commitCard(target)}
 	</div>
 
-	<!-- File list, headed by the same stats bar CommitDetail uses -->
-	<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
-		<span class="text-callout font-medium text-text flex-1">
-			{`${filesChanged} file${filesChanged === 1 ? "" : "s"} changed`}
-		</span>
-		{#if stat && (stat.insertions > 0 || stat.deletions > 0)}
-			<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
-				{#if stat.insertions > 0}
-					<span class="text-diff-add">+{stat.insertions}</span>
-				{/if}
-				{#if stat.deletions > 0}
-					<span class="text-diff-delete">−{stat.deletions}</span>
-				{/if}
-			</span>
-		{/if}
-		{#if ontreeviewtoggle}
-			<Button
-				icon
-				size="sm"
-				variant="ghost"
-				role="switch"
-				aria-checked={treeViewEnabled}
-				aria-label={treeViewEnabled
-					? "Switch to list view"
-					: "Switch to tree view"}
-				title={treeViewEnabled ? "List view" : "Tree view"}
-				onclick={(e) => {
-					e.stopPropagation();
-					ontreeviewtoggle?.();
-				}}
-			>
-				{#if treeViewEnabled}
-					<FolderTree size={14} />
-				{:else}
-					<List size={14} />
-				{/if}
-			</Button>
-		{/if}
-	</div>
-	<div class="flex-1 overflow-y-auto min-h-0">
-		<TreeFileList
-			files={fileStatusList}
-			treeMode={treeViewEnabled}
-			actionLabel=""
-			onfileaction={() => {}}
-			onfileclick={(path) => onfileselect(path)}
-			selectedPath={selectedFile}
+	{#key `${base?.oid ?? ""}/${target.oid}`}
+		<ChangedFileList
+			fill
+			{repoPath}
+			{onhistory}
+			{fileDiffs}
+			{stat}
+			{selectedFile}
+			{onfileselect}
+			{treeViewEnabled}
+			{ontreeviewtoggle}
 		/>
-	</div>
+	{/key}
 </div>

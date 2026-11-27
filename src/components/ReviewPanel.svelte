@@ -21,6 +21,7 @@ import { SvelteSet } from "svelte/reactivity";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha, copyText } from "../lib/clipboard.js";
 import { errorMessage } from "../lib/error-report.js";
+import { filterShortcut } from "../lib/filter-shortcut.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneColor } from "../lib/lanes.js";
@@ -46,7 +47,6 @@ import {
 	isSettled,
 	presetOf,
 	THREAD_PRESETS,
-	threadMatchesFilter,
 	toggleStale,
 	toggleState,
 } from "../lib/review-filter.js";
@@ -86,6 +86,7 @@ import Radio from "../lib/ui/Radio.svelte";
 import { isUnread, unseenAgentReplies } from "../lib/unread.js";
 import BranchChip from "./BranchChip.svelte";
 import FilePathLabel from "./FilePathLabel.svelte";
+import ListFilter from "./ListFilter.svelte";
 import ComposerFrame from "./review/ComposerFrame.svelte";
 import FoldBar from "./review/FoldBar.svelte";
 import ReviewEmpty from "./review/ReviewEmpty.svelte";
@@ -166,7 +167,30 @@ let panelEl = $state<HTMLElement | null>(null);
 
 const commits = $derived(reviewComments.shownCommits);
 const comments = $derived(reviewComments.shownThreads);
-const visibleComments = $derived(filterThreads(comments, threadFilter));
+let threadFilterControl = $state<ListFilter | null>(null);
+let threadQuery = $derived.by(() => {
+	void reviewComments.shownReviewId;
+	return "";
+});
+const query = $derived(threadQuery.trim().toLowerCase());
+const textMatches = $derived(
+	query
+		? comments.filter((thread) => {
+				const path = thread.anchor?.file_path ?? thread.content_pin?.file_path;
+				return (
+					thread.text.toLowerCase().includes(query) ||
+					path?.toLowerCase().includes(query) ||
+					thread.replies.some((reply) =>
+						reply.text.toLowerCase().includes(query),
+					)
+				);
+			})
+		: comments,
+);
+const visibleComments = $derived(filterThreads(textMatches, threadFilter));
+const visibleIds = $derived(
+	new Set(visibleComments.map((thread) => thread.id)),
+);
 const hiddenCount = $derived(comments.length - visibleComments.length);
 const activePreset = $derived(presetOf(threadFilter));
 
@@ -228,17 +252,17 @@ const sections = $derived(
 );
 
 function shows(thread: Thread): boolean {
-	return threadMatchesFilter(thread, threadFilter);
+	return visibleIds.has(thread.id);
 }
 
 // A block of threads hides once the filter hides every one of them. A commit
 // nobody commented on yet stays, for its Add note.
 function hidesAll(threads: Thread[]): boolean {
-	return threads.length > 0 && !threads.some(shows);
+	return (threads.length > 0 || Boolean(query)) && !threads.some(shows);
 }
 
 function tallyCount(value: ThreadState | "stale"): number {
-	return comments.filter((thread) =>
+	return textMatches.filter((thread) =>
 		value === "stale" ? thread.stale : thread.state === value,
 	).length;
 }
@@ -257,11 +281,12 @@ function toggleTally(value: ThreadState | "stale") {
 }
 
 function presetCount(states: readonly ThreadState[]): number {
-	return comments.filter((thread) => states.includes(thread.state)).length;
+	return textMatches.filter((thread) => states.includes(thread.state)).length;
 }
 
-function showAll() {
-	onthreadfilterchange?.(ALL_THREADS);
+function clearFilter() {
+	if (query) threadQuery = "";
+	else onthreadfilterchange?.(ALL_THREADS);
 }
 
 function hidesSection(section: ReviewSection): boolean {
@@ -287,7 +312,14 @@ function allSettled(threads: Thread[]): boolean {
 	return threads.length > 0 && threads.every((t) => isSettled(t.state));
 }
 
+// Searching opens the matching groups without changing how the review was folded.
+const searchFolds = $derived.by(() => {
+	void query;
+	return new SvelteSet<string>();
+});
+
 function isFolded(key: string, threads: Thread[]): boolean {
+	if (query) return searchFolds.has(key);
 	const fold = folds[key];
 	const settled = allSettled(threads);
 	if (fold !== undefined && fold.settled === settled) return fold.collapsed;
@@ -299,19 +331,15 @@ function isFolded(key: string, threads: Thread[]): boolean {
 }
 
 function toggleFold(key: string, threads: Thread[]) {
+	if (query) {
+		if (searchFolds.has(key)) searchFolds.delete(key);
+		else searchFolds.add(key);
+		return;
+	}
 	folds[key] = {
 		settled: allSettled(threads),
 		collapsed: !isFolded(key, threads),
 	};
-}
-
-function foldedAway(group: ReviewGroup, thread: Thread): boolean {
-	if (isFolded(group.key, group.threads)) return true;
-	return group.files.some(
-		(file) =>
-			isFolded(fileKey(group, file), file.threads) &&
-			file.threads.includes(thread),
-	);
 }
 
 const FOLD_NOUNS: Record<ReviewGroup["kind"], string> = {
@@ -356,7 +384,7 @@ function sectionLane(section: ReviewSection): string {
 }
 
 function shownCount(threads: Thread[]): number {
-	return filterThreads(threads, threadFilter).length;
+	return threads.reduce((count, thread) => count + Number(shows(thread)), 0);
 }
 
 function groupLabel(group: ReviewGroup): string {
@@ -367,7 +395,10 @@ function groupLabel(group: ReviewGroup): string {
 
 function openFile(group: ReviewGroup, file: ReviewFile) {
 	if (group.kind === "current") onopenfile?.(file.path);
-	else jump(file.threads[0]);
+	else {
+		const first = file.threads.find(shows);
+		if (first) jump(first);
+	}
 }
 
 const hasAnyComment = $derived(comments.length > 0);
@@ -397,13 +428,25 @@ function isJumpable(c: Thread): boolean {
 const threadCards = new Map<string, ReturnType<typeof ThreadCard>>();
 // Only the keys draw it: a pointer press already shows where it landed.
 let cursorFromKeys = $state(false);
-const shownThreads = $derived(
-	sections
-		.flatMap((section) => section.groups)
-		.flatMap((group) =>
-			group.threads.filter((thread) => !foldedAway(group, thread)),
-		)
-		.filter(shows),
+const shownThreads = $derived.by(() => {
+	const shown: Thread[] = [];
+	for (const section of sections) {
+		for (const group of section.groups) {
+			if (isFolded(group.key, group.threads)) continue;
+			for (const note of group.notes) if (shows(note)) shown.push(note);
+			for (const file of group.files) {
+				if (isFolded(fileKey(group, file), file.threads)) continue;
+				for (const thread of file.threads)
+					if (shows(thread)) shown.push(thread);
+			}
+		}
+	}
+	return shown;
+});
+// Folding during a text search narrows what the reader is about to copy.
+const threadsToCopy = $derived(query ? shownThreads : visibleComments);
+const copyCount = $derived(
+	plural(threadsToCopy.length, query ? "shown thread" : "thread"),
 );
 let cursor = $state<{ reviewId: string | null; id: string; at: number } | null>(
 	null,
@@ -801,7 +844,7 @@ async function saveAddNote(oid: string, delivery: Delivery) {
 async function onCopyClick() {
 	if (!shownReviewId) return;
 	const reviewId = shownReviewId;
-	const threadIds = visibleComments.map((t) => t.id);
+	const threadIds = threadsToCopy.map((t) => t.id);
 
 	try {
 		const md = await session.generate(repoPath, reviewId, threadIds);
@@ -930,6 +973,7 @@ registerUpdateBlocker(() =>
 	class="flex flex-col flex-1 min-h-0 overflow-hidden bg-surface outline-none"
 	tabindex="-1"
 	bind:this={panelEl}
+	use:filterShortcut={() => threadFilterControl?.focus()}
 	onfocusin={rememberEditor}
 	onfocusout={forgetEditor}
 >
@@ -972,7 +1016,7 @@ registerUpdateBlocker(() =>
 					<StatePill review={shownReview.state} />
 				{/if}
 			</div>
-			<div class="flex items-center gap-2 ml-auto">
+			<div class="flex flex-wrap items-center gap-2 ml-auto">
 				{#if oncommentonfile}
 					<Button
 						size="base"
@@ -986,13 +1030,15 @@ registerUpdateBlocker(() =>
 				<Button
 					size="base"
 					onclick={onCopyClick}
-					disabled={visibleComments.length === 0}
-					title={visibleComments.length === 0
+					disabled={threadsToCopy.length === 0}
+					title={threadsToCopy.length === 0
 						? "No threads shown to copy"
-						: "Copy the shown threads as a prompt for an agent"}
+						: query
+							? "Copy the shown threads as a prompt for an agent"
+							: "Copy the threads in this state preset as a prompt for an agent"}
 				>
 					<Copy size={12} />
-					<span>Copy</span>
+					<span>Copy {copyCount}</span>
 				</Button>
 				{#if shownReview && !shownReview.archived}
 					<Button
@@ -1009,13 +1055,15 @@ registerUpdateBlocker(() =>
 						<Button
 							size="base"
 							variant="primary"
-							title="Send the held comments to the agent"
+							title="Send all held comments in this review to the agent"
 							onclick={() => {
 								sendPopoverOpen = !sendPopoverOpen;
 							}}
 						>
 							<Send size={12} />
-							<span>Send {shownReview.pending_count}</span>
+							<span
+								>{`${hiddenCount > 0 ? "Send all" : "Send"} ${shownReview.pending_count}`}</span
+							>
 						</Button>
 						{#if sendPopoverOpen}
 							<div class="send-popover">
@@ -1051,7 +1099,7 @@ registerUpdateBlocker(() =>
 		</div>
 		{#if shownReview}
 			<div
-				class="flex items-center gap-2 min-w-0 whitespace-nowrap text-small text-text-subtle"
+				class="flex flex-wrap items-center gap-2 min-w-0 text-small text-text-subtle"
 			>
 				{#if shownReview.archived}
 					<span class="font-medium text-text-muted">Archived</span>
@@ -1122,7 +1170,12 @@ registerUpdateBlocker(() =>
 							{/if}
 						{/each}
 					</ul>
-					<span class="flex-1"></span>
+					<span class="ml-auto"></span>
+					<ListFilter
+						label="Filter threads"
+						bind:query={threadQuery}
+						bind:this={threadFilterControl}
+					/>
 					<ButtonGroup size="base">
 						{#each THREAD_PRESETS as preset (preset.id)}
 							<Button
@@ -1220,8 +1273,10 @@ registerUpdateBlocker(() =>
 			</ReviewEmpty>
 		{:else if !hasVisibleComment}
 			<p class="m-0 px-4 py-6 text-text-muted">
-				No threads here.
-				<LinkButton tone="accent" onclick={showAll}>Show all</LinkButton>
+				{query ? "No threads match this filter." : "No threads here."}
+				<LinkButton tone="accent" onclick={clearFilter}
+					>{query ? "Clear text filter" : "Show all"}</LinkButton
+				>
 			</p>
 		{/if}
 
@@ -1464,7 +1519,9 @@ registerUpdateBlocker(() =>
 			<p class="m-0 px-4 pt-3 text-small text-text-muted">
 				{plural(hiddenCount, "thread")}
 				hidden.
-				<LinkButton tone="accent" onclick={showAll}>Show all</LinkButton>
+				<LinkButton tone="accent" onclick={clearFilter}
+					>{query ? "Clear text filter" : "Show all"}</LinkButton
+				>
 			</p>
 		{/if}
 	</div>
@@ -1486,6 +1543,7 @@ registerUpdateBlocker(() =>
 
 {#snippet card(comment: Thread)}
 	<ThreadCard
+		searchQuery={shows(comment) ? query : ""}
 		thread={comment}
 		{repoPath}
 		onedit={(id, text) => editThread(repoPath, id, text)}

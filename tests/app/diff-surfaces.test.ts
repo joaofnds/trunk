@@ -167,6 +167,7 @@ describe("the diff surfaces", () => {
 		await app.repo.commitFileContextMenu("src/math-util.ts");
 
 		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
+			"Show commits touching this path",
 			"Copy Relative Path",
 			"Copy Absolute Path",
 			"Copy Old Relative Path",

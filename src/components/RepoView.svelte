@@ -26,7 +26,14 @@ import {
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import type { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
-import { listsSameFiles } from "../lib/file-status.js";
+import {
+	atEitherPath,
+	displayPath,
+	fileKey,
+	gitPathArgument,
+	listsSameFiles,
+} from "../lib/file-status.js";
+import { openFocusedFind } from "../lib/find-scope.js";
 import { inertWhile } from "../lib/inert-while.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyInDialog } from "../lib/keyboard.js";
@@ -113,6 +120,7 @@ import type { StagingAction, StagingSide } from "./DiffPanel.svelte";
 import FileFinder from "./FileFinder.svelte";
 import LazyView from "./LazyView.svelte";
 import MessageEditor from "./MessageEditor.svelte";
+import PathHistory from "./PathHistory.svelte";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
 import StagingPanel from "./StagingPanel.svelte";
 
@@ -625,6 +633,35 @@ function closeCurrentFile() {
 }
 
 // Commit selection (from CommitGraph)
+let historyPath = $derived.by((): string | null => {
+	void repoPath;
+	void tabActive;
+	return null;
+});
+
+function openPathHistory(path: string) {
+	historyPath = path;
+}
+
+async function openHistoryCommit(oid: string, path: string) {
+	historyPath = null;
+	// Resolve the requested file against this commit, including the old side
+	// of a rename. Ordinary commit navigation remembers the previously open file.
+	diffInViewPath = null;
+	const read = selectCommitIdempotent(oid);
+	const isCurrent = snapshotNavigationIntent();
+	await read;
+	if (!isCurrent() || selectedCommitOid !== oid) return;
+	const file = atEitherPath(commitFileDiffs, path);
+	if (file) {
+		commitEmpty = false;
+		await Promise.all([
+			selectCommitFileIdempotent(fileKey(file)),
+			commitGraphRef?.scrollToOid(oid, isCurrent),
+		]);
+	}
+}
+
 let selectedCommitOid = $state<string | null>(null);
 let requestedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
@@ -754,6 +791,8 @@ let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
 let rebaseLoadedDiffs = $state.raw(noLoadedDiffs<string>());
 let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
+let repoRoot: HTMLDivElement;
+let rebasePlan = $state<{ openFind(): void } | null>(null);
 let rebaseDiffPanel = $state<{ openFind(): void } | null>(null);
 let rebaseFocusLoadSeq = 0;
 let rebaseDiffLoadSeq = 0;
@@ -860,8 +899,10 @@ onMount(() => {
 	const registration = listen("search-toggle", () => {
 		if (!mounted || !tabActive || isUpdateFrozen() || keyInDialog()) return;
 
+		if (openFocusedFind(repoRoot)) return;
 		if (!graphCovered) commitGraphRef?.openFind();
-		else if (showRebaseEditor) rebaseDiffPanel?.openFind();
+		else if (showRebaseEditor)
+			(rebaseDiffFile ? rebaseDiffPanel : rebasePlan)?.openFind();
 		else if (!reviewPanelShown) diffPanelRef?.openFind();
 	}).catch((error: unknown) => {
 		reportErrorToast(error, "Could not register the Find command");
@@ -1193,7 +1234,7 @@ function keepSelectionListed(s: WorkingTreeStatus) {
 	if (selected === null) return;
 
 	const listed = (kind: keyof WorkingTreeStatus) =>
-		s[kind].some((file) => file.path === selected.path);
+		s[kind].some((file) => fileKey(file) === selected.path);
 	if (listed(selected.kind)) return;
 
 	if (selected.kind === "conflicted") {
@@ -1302,16 +1343,22 @@ function concernsOpenFiles(changed: readonly string[]): boolean {
 	);
 }
 
-function requestStagingFileDiff(
+async function requestStagingFileDiff(
 	repo: string,
 	kind: "unstaged" | "staged",
 	filePath: string,
 	options: DiffRequestOptions,
 ): Promise<FileDiff[]> {
-	return safeInvoke<FileDiff[]>(
+	const files = await safeInvoke<FileDiff[]>(
 		kind === "unstaged" ? "diff_unstaged" : "diff_staged",
 		{ path: repo, filePath, options },
 	);
+	// A new rename can land under an already-open ordinary filename.
+	if (files.some((file) => file.path_bytes || file.old_path_bytes))
+		throw new Error(
+			"Working-tree previews require UTF-8 filenames. Use the file list for whole-file changes.",
+		);
+	return files;
 }
 
 function requestCommitFileDiff(
@@ -1323,7 +1370,7 @@ function requestCommitFileDiff(
 	return safeInvoke<FileDiff[]>("diff_commit_file", {
 		path: repo,
 		oid,
-		filePath,
+		filePath: gitPathArgument(filePath),
 		options,
 	});
 }
@@ -1339,7 +1386,7 @@ function requestCompareFileDiff(
 		path: repo,
 		baseOid,
 		targetOid,
-		filePath,
+		filePath: gitPathArgument(filePath),
 		options,
 	});
 }
@@ -1460,11 +1507,13 @@ function advanceToNextFile(
 		setStagingSelection(null);
 		return;
 	}
-	const rawFiles = cachedStatus[section];
+	const rawFiles =
+		stagingPanelRef?.filteredFiles(cachedStatus[section]) ??
+		cachedStatus[section];
 	// Use the same ordering the visual list uses
 	const orderedPaths = treeViewEnabled
 		? collectFilePaths(buildTree(rawFiles))
-		: rawFiles.map((f) => f.path);
+		: rawFiles.map(fileKey);
 	const idx = orderedPaths.indexOf(currentPath);
 	const nextPath =
 		idx >= 0 ? (orderedPaths[idx + 1] ?? orderedPaths[idx - 1]) : undefined;
@@ -1534,6 +1583,18 @@ async function handleFileSelect(
 	path: string,
 	kind: "unstaged" | "staged" | "conflicted",
 ) {
+	if (
+		displayPath(path) !== path ||
+		cachedStatus?.[kind].find((file) => fileKey(file) === path)?.old_path_bytes
+	) {
+		showToast(
+			kind === "conflicted"
+				? "Resolve filenames containing non-UTF-8 bytes with Git in the terminal."
+				: "Working-tree previews require UTF-8 filenames. Stage, unstage or discard this file from the file list.",
+			"error",
+		);
+		return;
+	}
 	cancelPendingCommitSelection();
 	// Close the review panel (swap to diff) so the clicked file is visible
 	// (260531-l02d), the open one included, which stays mounted under the panel.
@@ -1621,7 +1682,7 @@ async function readCommit({
 				? null
 				: resolveDiffTarget(
 						diffInViewPath,
-						files.map((f) => f.path),
+						files.map(fileKey),
 						treeViewEnabled,
 					);
 		const opened =
@@ -1782,7 +1843,7 @@ async function applyCompare(pair: ComparePair | null): Promise<boolean> {
 		const openFile = selectedCompareFile;
 		if (
 			openFile !== null &&
-			!loaded.files.some((file) => file.path === openFile)
+			!loaded.files.some((file) => fileKey(file) === openFile)
 		) {
 			closeCompareFile();
 		}
@@ -1838,11 +1899,10 @@ async function handleCompareSwap() {
 	const gen = ++compareGeneration;
 	pendingSwap = { gen, pair };
 	const diffSeq = ++compareDiffLoadSeq;
-	const swappedPath = (files: FileDiff[], path: string | null) =>
-		path === null
-			? null
-			: (files.find((file) => file.path === path || file.old_path === path)
-					?.path ?? null);
+	const swappedPath = (files: FileDiff[], path: string | null) => {
+		const file = path === null ? undefined : atEitherPath(files, path);
+		return file ? fileKey(file) : null;
+	};
 	let loaded: LoadedCompare;
 	try {
 		loaded = await loadCompare(repo, pair);
@@ -2107,10 +2167,10 @@ async function reloadCommitFile(
 // binds to: the jump gesture must never clear the file it's about to scroll
 // into, otherwise rightPaneMode='diff' lands on a view with no selected file.
 async function selectCommitFileIdempotent(path: string) {
+	diffInViewPath = path;
 	if (selectedCommitFile === path) return;
 
 	selectedCommitFile = path;
-	diffInViewPath = path;
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 
@@ -2611,7 +2671,7 @@ async function handleRebaseFocusChange(oid: string) {
 		const openFile = rebaseDiffFile;
 		if (openFile === null) return;
 
-		if (files.some((file) => file.path === openFile)) {
+		if (files.some((file) => fileKey(file) === openFile)) {
 			void reloadRebaseFile(openFile, buildDiffOptions());
 		} else {
 			closeRebaseDiff();
@@ -2790,8 +2850,20 @@ async function handleRebaseStart(
 
 <div
 	class="flex-1 overflow-hidden flex flex-col"
+	bind:this={repoRoot}
 	{@attach inertWhile(!tabActive)}
 >
+	{#if tabActive && historyPath !== null}
+		{@const path = historyPath}
+		{#key path}
+			<PathHistory
+				{repoPath}
+				filePath={path}
+				onselect={(oid) => openHistoryCommit(oid, path)}
+				onclose={() => (historyPath = null)}
+			/>
+		{/key}
+	{/if}
 	<PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 	<main
 		class="flex-1 overflow-hidden flex relative"
@@ -3082,6 +3154,8 @@ async function handleRebaseStart(
 						{#snippet children(ComparePanel)}
 							<ComparePanel
 								base={compareBaseDetail}
+								{repoPath}
+								onhistory={openPathHistory}
 								target={comparisonTarget}
 								fileDiffs={compareFileDiffs}
 								stat={compareStat}
@@ -3104,6 +3178,7 @@ async function handleRebaseStart(
 						{#snippet children(CommitDetail)}
 							<CommitDetail
 								commitDetail={selectedDetail}
+								onhistory={openPathHistory}
 								stat={commitDetailStat}
 								fileDiffs={commitFileDiffs}
 								selectedFile={selectedCommitFile}
@@ -3189,6 +3264,7 @@ async function handleRebaseStart(
 						>
 							{#snippet children(RebaseEditor)}
 								<RebaseEditor
+									bind:this={rebasePlan}
 									{repoPath}
 									commits={preview.todo.items}
 									branchName={preview.branchName}

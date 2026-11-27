@@ -22,6 +22,12 @@ export class RebaseEditorDriver {
 		return rows.map((row) => textOf(row.querySelector(MESSAGE)));
 	}
 
+	focusedRow(): string | null {
+		const row = document.activeElement?.closest(ROW);
+
+		return row ? textOf(row.querySelector(MESSAGE)) : null;
+	}
+
 	/** What the toolbar says this rebase is about to do. */
 	async toolbarLabel(): Promise<string> {
 		await this.openRows();

@@ -10,6 +10,7 @@ import {
 	tallyInSubtree,
 } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
+import { displayPath } from "../lib/file-status.js";
 import { singleClick } from "../lib/single-click.js";
 import type { ReviewTally } from "../lib/types.js";
 import Row from "../lib/ui/Row.svelte";
@@ -110,6 +111,13 @@ function openMenu(e: MouseEvent) {
 	<span class="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
 		>{node.name}</span
 	>
+	{#if displayPath(node.path) !== node.path}
+		<span
+			class="shrink-0 text-caption text-text-muted"
+			title="This directory name contains bytes outside UTF-8"
+			>Byte escapes</span
+		>
+	{/if}
 	<span class="text-text-muted text-small font-regular shrink-0"
 		>({fileCount})</span
 	>

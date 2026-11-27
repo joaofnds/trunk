@@ -72,7 +72,7 @@ export { diffLineText };
 )}
 	{#if match}
 		<span>{@render tokens(line, invisibles, 0, match.start)}</span
-		><mark data-diff-match
+		><mark class="find-match" data-diff-match
 			>{@render spanText(
 				line.content.slice(match.start, match.end),
 				"",
@@ -136,10 +136,6 @@ export { diffLineText };
 	background-color: var(--color-diff-word-delete-bg);
 }
 
-mark {
-	background-color: var(--color-accent);
-	color: var(--color-on-accent);
-}
 mark .invisible-char::before {
 	color: var(--color-on-accent);
 }

@@ -104,6 +104,14 @@ function openMenu(e: MouseEvent) {
 		tree={role === "treeitem"}
 	/>
 
+	{#if file.path_bytes || file.old_path_bytes}
+		<span
+			class="shrink-0 text-caption text-text-muted"
+			title="This path contains bytes outside UTF-8"
+			>Byte escapes</span
+		>
+	{/if}
+
 	<!-- Review-comment count for this file -->
 	<CommentBadge count={commentCount} tally={commentTally} />
 </Row>

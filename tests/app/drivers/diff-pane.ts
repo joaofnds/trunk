@@ -54,6 +54,15 @@ export class DiffPaneDriver {
 		return document.querySelector<HTMLElement>(DIFF_PATH)?.dataset.path ?? null;
 	}
 
+	disabledActionReasons(): string[] {
+		const toolbar = document.querySelector(DIFF_PATH)?.closest(".toolbar");
+		return Array.from(
+			toolbar?.querySelectorAll<HTMLButtonElement>("button:disabled[title]") ??
+				[],
+			(button) => button.title,
+		);
+	}
+
 	/** Whether the pane is showing a failed read rather than content, which is
 	 *  the presentation that carries the Retry. */
 	showsLoadError(): boolean {

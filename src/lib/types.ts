@@ -170,6 +170,9 @@ export interface RefsResponse {
 
 export interface FileStatus {
 	path: string;
+	/** Exact bytes when the displayed path needs byte escapes. */
+	path_bytes?: number[];
+	old_path_bytes?: number[];
 	/** Where a renamed file came from. Null for every other status. */
 	old_path: string | null;
 	status: FileStatusType;
@@ -311,6 +314,9 @@ export type DiffStatus =
 
 export interface FileDiff {
 	path: string;
+	/** Exact bytes when the displayed path needs byte escapes. */
+	path_bytes?: number[];
+	old_path_bytes?: number[];
 	/** Where a renamed file came from. Null for every other status. */
 	old_path: string | null;
 	status: DiffStatus;

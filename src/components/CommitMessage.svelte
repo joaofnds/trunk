@@ -2,6 +2,8 @@
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import { BODY_CLAMP_LINES, bodyOverflows } from "../lib/commit-body-clamp.js";
+import type { MessageMatch } from "../lib/commit-message-find.js";
+import { findScope } from "../lib/find-scope.js";
 import Button from "../lib/ui/Button.svelte";
 
 interface Props {
@@ -9,9 +11,33 @@ interface Props {
 	body: string | null;
 	/** Read by the reset below, so selecting another commit re-clamps. */
 	oid: string;
+	match?: MessageMatch;
+	onfind: () => void;
+	onclosefind: () => boolean;
 }
 
-let { summary, body, oid }: Props = $props();
+let { summary, body, oid, match, onfind, onclosefind }: Props = $props();
+let region: HTMLElement;
+export function focusMessage() {
+	region.focus({ preventScroll: true });
+}
+
+// The prose is selectable; taking focus on the initial press leaves the
+// browser's default drag and double-click selection gestures intact.
+function focusProse(event: PointerEvent) {
+	if (
+		event.target instanceof Element &&
+		event.target.closest("[data-prose-block]")
+	)
+		focusMessage();
+}
+
+$effect(() => {
+	if (match)
+		region
+			.querySelector("mark")
+			?.scrollIntoView({ block: "nearest", inline: "nearest" });
+});
 
 // A long body used to push the file list past the bottom of the panel, since
 // the body, the notes and the file list share one scroller. The body is clamped
@@ -43,12 +69,32 @@ function measureBody(node: HTMLElement) {
 	};
 }
 let bodyExpandable = $derived(bodyOverflows(body, renderedLines));
-let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
+let bodyClamped = $derived(
+	bodyExpandable && !bodyExpanded && match?.part !== "body",
+);
 </script>
 
-<div class="commit-message" data-prose-selection>
+{#snippet passage(text: string, part: MessageMatch["part"])}
+	{#if match?.part === part}
+		{text.slice(0, match.start)}<mark class="find-match"
+			>{text.slice(match.start, match.end)}</mark
+		>{text.slice(match.end)}
+	{:else}
+		{text}
+	{/if}
+{/snippet}
+
+<section
+	aria-label="Commit message"
+	tabindex="-1"
+	onpointerdown={focusProse}
+	bind:this={region}
+	{@attach findScope(onfind, onclosefind)}
+	class="commit-message"
+	data-prose-selection
+>
 	<div class="select-text summary" class:has-body={body} data-prose-block>
-		{summary}
+		{@render passage(summary, "summary")}
 	</div>
 	{#if body}
 		<div
@@ -58,9 +104,11 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 			data-clamped={bodyClamped}
 			style:--body-clamp-lines={BODY_CLAMP_LINES}
 		>
-			<div class="select-text" data-prose-block use:measureBody>{body}</div>
+			<div class="select-text" data-prose-block use:measureBody
+				>{@render passage(body, "body")}</div
+			>
 		</div>
-		{#if bodyExpandable}
+		{#if bodyExpandable && match?.part !== "body"}
 			<div class="mt-1">
 				<Button
 					variant="ghost"
@@ -80,7 +128,7 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 			</div>
 		{/if}
 	{/if}
-</div>
+</section>
 
 <style>
 .commit-message {

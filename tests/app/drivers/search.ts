@@ -9,11 +9,30 @@ export class SearchDriver {
 	/** Types a query into the open search bar. */
 	async query(text: string): Promise<void> {
 		const input = await waitFor("the search input", () =>
-			document.querySelector<HTMLInputElement>(INPUT),
+			document.querySelector<HTMLInputElement>(`${INPUT}:focus`),
 		);
 
 		input.value = text;
 		input.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	async escapeFromNavigation(): Promise<void> {
+		const button = await waitFor(
+			"the current finder's next button",
+			() =>
+				document.activeElement
+					?.closest("search")
+					?.querySelector<HTMLButtonElement>('[aria-label="Next match"]') ??
+				null,
+		);
+		button.focus();
+		button.dispatchEvent(
+			new KeyboardEvent("keydown", {
+				key: "Escape",
+				bubbles: true,
+				cancelable: true,
+			}),
+		);
 	}
 
 	async step(backward = false): Promise<void> {

@@ -35,20 +35,35 @@ export function pathMenuEntriesOf(
 	];
 }
 
+/** A keyboard menu opens at its row. A pointer menu uses the native cursor position. */
+export function fileMenuPosition(anchor?: DOMRect) {
+	return anchor ? new LogicalPosition(anchor.left, anchor.bottom) : undefined;
+}
+
 export async function showFilePathMenu({
 	repoPath,
 	path,
 	oldPath = null,
 	anchor,
+	onhistory,
 }: {
 	repoPath: string;
 	path: string;
 	oldPath?: string | null;
 	anchor?: DOMRect;
+	onhistory?: () => void;
 }) {
 	const api = await nativeMenu();
 	const items: MenuItem[] = [];
 	try {
+		if (onhistory) {
+			items.push(
+				await api.MenuItem.new({
+					text: "Show commits touching this path",
+					action: onhistory,
+				}),
+			);
+		}
 		for (const { text, value } of pathMenuEntriesOf(repoPath, path, oldPath)) {
 			items.push(
 				await api.MenuItem.new({ text, action: () => void copyText(value) }),
@@ -56,9 +71,7 @@ export async function showFilePathMenu({
 		}
 		const menu = await api.Menu.new({ items });
 		try {
-			await menu.popup(
-				anchor ? new LogicalPosition(anchor.left, anchor.bottom) : undefined,
-			);
+			await menu.popup(fileMenuPosition(anchor));
 		} finally {
 			await menu.close();
 		}

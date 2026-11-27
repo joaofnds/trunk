@@ -1,6 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub.js";
 import { exactLabel } from "../lib/relative-time.js";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
@@ -135,6 +136,44 @@ describe("ComparePanel", () => {
 		const { onfileselect } = renderPanel();
 		await fireEvent.click(screen.getByTitle("src/main.ts"));
 		expect(onfileselect).toHaveBeenCalledWith("src/main.ts");
+	});
+
+	it("filters renamed paths without opening a diff and restores the tree on Escape", async () => {
+		stubLayout({ width: 300, height: 4000 });
+		onTestFinished(restoreLayout);
+		const { onfileselect } = renderPanel({
+			treeViewEnabled: true,
+			selectedFile: "src/main.ts",
+			fileDiffs: [
+				...fileDiffs,
+				{
+					...fileDiffs[0],
+					path: "lib/new.ts",
+					old_path: "old/Foo.ts",
+					status: "Renamed",
+				},
+			],
+		});
+
+		const tree = screen.getByRole("tree");
+		await fireEvent.click(screen.getByRole("treeitem", { name: /^src/ }));
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+		tree.focus();
+		await fireEvent.keyDown(tree, { key: "/" });
+		const filter = screen.getByRole("textbox", { name: "Filter files" });
+		expect(filter).toHaveFocus();
+		await fireEvent.input(filter, { target: { value: "OLD/foo" } });
+		expect(screen.getByText("1 of 2 files changed")).toBeVisible();
+		expect(screen.getByTitle("old/Foo.ts → lib/new.ts")).toBeVisible();
+		expect(screen.queryByTitle("src/main.ts")).toBeNull();
+		expect(onfileselect).not.toHaveBeenCalled();
+
+		await fireEvent.keyDown(filter, { key: "Escape" });
+		expect(tree).toHaveFocus();
+		expect(screen.getByText("2 files changed")).toBeVisible();
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+		expect(screen.queryByTitle("old/Foo.ts → lib/new.ts")).toBeNull();
+		expect(onfileselect).not.toHaveBeenCalled();
 	});
 
 	it("closes through the close button", async () => {

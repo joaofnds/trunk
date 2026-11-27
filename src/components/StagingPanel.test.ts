@@ -333,6 +333,108 @@ describe("StagingPanel", () => {
 		expect(unstagedCount.closest(".tracking-widest")).toBeNull();
 	});
 
+	it("stages a byte-named file without targeting the identical displayed filename", async () => {
+		const bytes = [110, 45, 255];
+		const text = { path: String.raw`n-\xff`, status: "New", is_binary: false };
+		const raw = { ...text, path_bytes: bytes };
+		mockInvoke.mockImplementation(async (cmd) => {
+			if (cmd === "get_status")
+				return { unstaged: [text, raw], staged: [], conflicted: [] };
+			if (cmd === "get_operation_state") return { op_type: "None" };
+		});
+		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
+		const row = stagingRowFor(await screen.findByText("Byte escapes"));
+		await fireEvent.mouseEnter(row);
+		await fireEvent.click(
+			within(row.parentElement ?? document.body).getByLabelText("Stage file"),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("stage_file", {
+			path: "/repo",
+			filePath: bytes,
+		});
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Filter files" }),
+		);
+		await fireEvent.input(
+			screen.getByRole("textbox", { name: "Filter files" }),
+			{ target: { value: "n-" } },
+		);
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Stage 2 matches" }),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("stage_files", {
+			path: "/repo",
+			filePaths: [text.path, bytes],
+		});
+	});
+
+	it("stages a byte-named directory independently of its UTF-8 lookalike", async () => {
+		const bytes = [255, 47, 97];
+		const text = { path: String.raw`\xff/a`, status: "New", is_binary: false };
+		const raw = { ...text, path_bytes: bytes };
+		mockInvoke.mockImplementation(async (cmd) => {
+			if (cmd === "get_status")
+				return { unstaged: [text, raw], staged: [], conflicted: [] };
+			if (cmd === "get_operation_state") return { op_type: "None" };
+		});
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo", treeViewEnabled: true },
+		});
+		const folder = await screen.findByRole("treeitem", {
+			name: /Byte escapes/,
+		});
+		await fireEvent.mouseEnter(folder);
+		await fireEvent.click(
+			within(folder.parentElement ?? document.body).getByLabelText(
+				"Stage directory",
+			),
+		);
+		expect(mockInvoke).toHaveBeenCalledWith("stage_files", {
+			path: "/repo",
+			filePaths: [bytes],
+		});
+	});
+
+	it("stages only matching files while the commit names the whole index", async () => {
+		const hidden = {
+			path: "docs/note.md",
+			status: "Modified",
+			is_binary: false,
+		};
+		const hit = { ...hidden, path: "src/item.ts" };
+		let staged = false;
+		mockInvoke.mockImplementation(async (cmd) => {
+			if (cmd === "get_status")
+				return {
+					unstaged: staged ? [hidden] : [hit, hidden],
+					staged: staged ? [hidden, hit] : [hidden],
+					conflicted: [],
+				};
+			if (cmd === "get_operation_state") return { op_type: "None" };
+			if (cmd === "stage_files") staged = true;
+		});
+		render(StagingPanel, { props: { ...noReviewCounts(), repoPath: "/repo" } });
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Filter files" }),
+		);
+		const input = screen.getByRole("textbox", { name: "Filter files" });
+		await fireEvent.input(input, { target: { value: "src/" } });
+		expect(screen.queryByTitle("docs/note.md")).toBeNull();
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Stage 1 match" }),
+		);
+		expect(await callsOnceRefreshed("stage_")).toEqual([
+			["stage_files", { path: "/repo", filePaths: ["src/item.ts"] }],
+		]);
+		expect(input).toHaveValue("src/");
+		expect(
+			await screen.findByRole("button", { name: "Commit 2 staged files" }),
+		).toBeVisible();
+		expect(
+			within(screen.getByTestId("staging-staged-section")).getByText("1 of 2"),
+		).toBeVisible();
+	});
+
 	it("folds a section's files away when its header is clicked", async () => {
 		render(StagingPanel, {
 			props: { ...noReviewCounts(), repoPath: "/test/repo" },
@@ -1282,6 +1384,31 @@ describe("StagingPanel merge-continue", () => {
 			mockMergeState(conflicted);
 		});
 
+		it("resolves only matching conflicts and keeps filtered-out conflicts in the operation total", async () => {
+			render(StagingPanel, {
+				props: { ...noReviewCounts(), repoPath: "/repo" },
+			});
+			await screen.findByRole("button", { name: "Mark All Resolved" });
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Filter files" }),
+			);
+			await fireEvent.input(
+				screen.getByRole("textbox", { name: "Filter files" }),
+				{ target: { value: "docs/" } },
+			);
+			expect(screen.getByText("1 of 3")).toBeVisible();
+			expect(screen.queryByTitle("src/a.ts")).toBeNull();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Resolve 1 match" }),
+			);
+			expect(await callsOnceRefreshed("mark_conflicts_resolved")).toEqual([
+				[
+					"mark_conflicts_resolved",
+					{ path: "/repo", files: resolutions("docs/c.md") },
+				],
+			]);
+		});
+
 		it("leaves the manual draft and conflict intact when staging the working file is declined", async () => {
 			const mergePicks = createMergePicks();
 			mergePicks.set("/repo", "src/b.ts", "snapshot", {
@@ -1620,6 +1747,32 @@ describe("StagingPanel discarding every change", () => {
 				{ path: "/repo", filePaths: ["src/a.ts", "src/b.ts", "docs/c.md"] },
 			],
 		]);
+	});
+
+	it("discards the matching edit and leaves a hidden untracked file alone", async () => {
+		render(StagingPanel, {
+			props: { ...noReviewCounts(), repoPath: "/repo" },
+		});
+		await fireEvent.click(
+			await screen.findByRole("button", { name: "Filter files" }),
+		);
+		await fireEvent.input(
+			screen.getByRole("textbox", { name: "Filter files" }),
+			{
+				target: { value: "docs/" },
+			},
+		);
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Discard 1 match" }),
+		);
+
+		expect(await callsOnceRefreshed("discard_all")).toEqual([
+			["discard_all", { path: "/repo", filePaths: ["docs/c.md"] }],
+		]);
+		expect(ask).toHaveBeenCalledWith(
+			"Discard all changes to 1 file matching the filter? This cannot be undone.",
+			expect.objectContaining({ okLabel: "Discard 1 match" }),
+		);
 	});
 
 	it("warns that the untracked file will be deleted", async () => {

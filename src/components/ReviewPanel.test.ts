@@ -1074,8 +1074,76 @@ describe("ReviewPanel", () => {
 		}
 
 		function getCopyButton() {
-			return screen.getByRole("button", { name: "Copy" });
+			return screen.getByRole("button", {
+				name: /^Copy \d+ (?:shown )?threads?$/,
+			});
 		}
+
+		it("reveals a folded earlier reply and copies only matches inside the state preset", async () => {
+			const replies = ["checkpoints", "later", "context", "more", "latest"].map(
+				(text, i) =>
+					aReply({ id: `r${i}`, text, text_html: text, created_at: i }),
+			);
+			renderCopy({
+				comments: [
+					{ ...DONE, replies },
+					{ ...OPEN, text: "checkpoints" },
+				],
+				threadFilter: SETTLED,
+			});
+			await flush();
+			const panel = screen.getByRole("region", { name: "Review threads" });
+			panel.focus();
+			await fireEvent.keyDown(panel, { key: "/" });
+			const field = screen.getByRole("textbox", { name: "Filter threads" });
+			expect(field).toHaveFocus();
+			await fireEvent.input(field, { target: { value: "CHECKPOINT" } });
+
+			expect(panel.querySelector('[data-thread-entry="r0"]')).toBeVisible();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Copy 1 shown thread" }),
+			);
+			expect(callArgs("generate_review_doc")).toMatchObject({
+				threadIds: ["c2"],
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Collapse commit" }),
+			);
+			expect(
+				screen.getByRole("button", { name: "Copy 0 shown threads" }),
+			).toBeDisabled();
+
+			await fireEvent.keyDown(field, { key: "Escape" });
+			expect(panel.querySelector('[data-thread-entry="r0"]')).toBeNull();
+		});
+
+		it("matches paths on current files and in commit diffs while keeping the selected preset", async () => {
+			const current = currentFileComment("current", "track this");
+			renderCopy({
+				comments: [OPEN, current, DONE],
+				threadFilter: NEEDS_ME,
+			});
+			await flush();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Filter threads" }),
+			);
+			const field = screen.getByRole("textbox", { name: "Filter threads" });
+			await fireEvent.input(field, { target: { value: "SRC/" } });
+			expect(
+				screen.getByRole("button", { name: "Copy 2 shown threads" }),
+			).toBeVisible();
+			await fireEvent.input(field, { target: { value: "missing.file" } });
+			expect(screen.getByText("No threads match this filter.")).toBeVisible();
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Clear text filter" }),
+			);
+			expect(field).toHaveValue("");
+			expect(screen.getByRole("button", { name: /Needs me/ })).toHaveAttribute(
+				"aria-pressed",
+				"true",
+			);
+		});
 
 		it("copies the doc of every thread the panel shows", async () => {
 			renderCopy({ comments: [OPEN, DONE] });
@@ -1511,7 +1579,9 @@ describe("empty states", () => {
 				"Reading this repository's reviews…",
 			);
 			expect(screen.queryByText("Old review note")).toBeNull();
-			expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+			expect(
+				screen.getByRole("button", { name: /^Copy \d+ (?:shown )?threads?$/ }),
+			).toBeDisabled();
 		});
 
 		it("says the review's threads could not be read rather than empty", async () => {

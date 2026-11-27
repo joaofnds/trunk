@@ -34,9 +34,9 @@ const CARD_ACTION =
 const ORPHAN_BADGE = ".orphan-badge";
 const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
-const COPY = "Copy";
+const COPY = /^Copy \d+ (?:shown )?threads?$/;
 const HOLD = "Start a batch";
-const SEND = /^Send \d+$/;
+const SEND = /^Send (?:all )?\d+$/;
 const SEND_POPOVER = "dialog[aria-labelledby]";
 const PENDING_PILL = ".pill-pending";
 const SHOW_ALL = "Show all";
@@ -719,7 +719,7 @@ export class ReviewDriver {
 	/** The header's Copy: off while the panel shows no thread, and absent when
 	 *  no review header is on screen. */
 	copyState(): "absent" | "disabled" | "enabled" {
-		const button = firstMatching("button", (text) => text === COPY);
+		const button = firstMatching("button", (text) => COPY.test(text));
 		if (!(button instanceof HTMLButtonElement)) return "absent";
 
 		return button.disabled ? "disabled" : "enabled";
@@ -728,7 +728,7 @@ export class ReviewDriver {
 	/** Copies the review doc, which is what renders it. */
 	async copyDoc(): Promise<void> {
 		const button = await waitFor("an enabled copy button", () =>
-			enabledButton(COPY),
+			firstMatching("button:enabled", (text) => COPY.test(text)),
 		);
 
 		button.click();

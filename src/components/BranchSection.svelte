@@ -12,6 +12,7 @@ interface Props {
 	label: string;
 	count: number;
 	filteredFrom?: number;
+	filterQuery?: string;
 	expanded: boolean;
 	ontoggle: () => void;
 	showCreateButton?: boolean;
@@ -30,6 +31,7 @@ let {
 	label,
 	count,
 	filteredFrom,
+	filterQuery = "",
 	expanded,
 	ontoggle,
 	showCreateButton = false,
@@ -40,6 +42,13 @@ let {
 	children,
 }: Props = $props();
 
+let open = $derived(filterQuery && count > 0 ? true : expanded);
+
+function toggle() {
+	if (filterQuery) open = !open;
+	else ontoggle();
+}
+
 let allHidden = $derived(groupState === "all");
 </script>
 
@@ -48,7 +57,10 @@ let allHidden = $derived(groupState === "all");
 		<RowAction
 			tone="text"
 			data-testid="branch-section-create-btn"
-			onclick={() => oncreate?.()}
+			onclick={() => {
+				if (filterQuery) open = true;
+				oncreate?.();
+			}}
 			aria-label={createLabel}
 		>
 			<Plus size={12} />
@@ -74,11 +86,12 @@ let allHidden = $derived(groupState === "all");
 		variant="header"
 		reveal="always"
 		data-testid="branch-section-header"
-		onclick={ontoggle}
+		onclick={toggle}
+		aria-expanded={open}
 		{actions}
 	>
 		<span class="text-text-muted inline-flex items-center mr-1">
-			{#if expanded}
+			{#if open}
 				<ChevronDown size={12} />
 			{:else}
 				<ChevronRight size={12} />
@@ -90,7 +103,7 @@ let allHidden = $derived(groupState === "all");
 	</Row>
 
 	<!-- Section content -->
-	{#if expanded}
+	{#if open}
 		{@render children()}
 	{/if}
 </div>

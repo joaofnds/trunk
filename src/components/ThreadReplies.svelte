@@ -21,6 +21,7 @@ import ThreadMessage from "./review/ThreadMessage.svelte";
 
 interface Props {
 	replies: readonly Reply[];
+	searchQuery?: string;
 	history?: readonly StateChange[];
 	follows?: readonly ThreadFollow[];
 	// Awaited before the editor clears its draft, so a caller that reports its
@@ -39,6 +40,7 @@ interface Props {
 
 let {
 	replies,
+	searchQuery = "",
 	history = [],
 	follows = [],
 	onreplyedit,
@@ -74,7 +76,23 @@ const editingEarlierReply = $derived(
 		(entry) => entry.kind === "reply" && entry.key === editingReplyId,
 	),
 );
-const expanded = $derived(editor.repliesExpanded || editingEarlierReply);
+let expanded = $derived(
+	Boolean(
+		searchQuery &&
+			earlierEntries.some(
+				(entry) =>
+					entry.kind === "reply" &&
+					entry.reply.text.toLowerCase().includes(searchQuery),
+			),
+	) ||
+		editingEarlierReply ||
+		editor.repliesExpanded,
+);
+
+function setExpanded(value: boolean) {
+	if (searchQuery) expanded = value;
+	else editor.setRepliesExpanded(value);
+}
 const visibleEntries = $derived(
 	expanded ? timeline : timeline.slice(earlierCount),
 );
@@ -136,11 +154,11 @@ function toggleHistory(control: HTMLButtonElement) {
 	if (editingEarlierReply) return;
 
 	control.focus({ preventScroll: true });
-	editor.setRepliesExpanded(!expanded);
+	setExpanded(!expanded);
 }
 
 async function backToRecent() {
-	editor.setRepliesExpanded(false);
+	setExpanded(false);
 	await tick();
 
 	const firstRecent = list?.firstElementChild;

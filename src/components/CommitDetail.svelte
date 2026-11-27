@@ -1,15 +1,22 @@
 <script lang="ts">
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
-import FolderTree from "@lucide/svelte/icons/folder-tree";
-import List from "@lucide/svelte/icons/list";
+import Search from "@lucide/svelte/icons/search";
 import X from "@lucide/svelte/icons/x";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
+import {
+	type MessageMatch,
+	messageMatches,
+} from "../lib/commit-message-find.js";
 import type { Draft } from "../lib/draft.svelte.js";
-import { showFilePathMenu } from "../lib/file-menu.js";
-import { toFileStatusList } from "../lib/file-status.js";
-import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import { findScope } from "../lib/find-scope.js";
+import {
+	focusInEditable,
+	keyChord,
+	keyInDialog,
+	onMac,
+} from "../lib/keyboard.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type {
@@ -17,17 +24,17 @@ import type {
 	CommitNav,
 	DiffStat,
 	FileDiff,
-	FileStatus,
 	ReviewFilter,
 	ReviewTally,
 	Thread,
 } from "../lib/types.js";
 import Badge from "../lib/ui/Badge.svelte";
 import Button from "../lib/ui/Button.svelte";
+import ChangedFileList from "./ChangedFileList.svelte";
 import CommitAuthor from "./CommitAuthor.svelte";
 import CommitMessage from "./CommitMessage.svelte";
 import CommitNotes from "./CommitNotes.svelte";
-import TreeFileList from "./TreeFileList.svelte";
+import PaneFind from "./PaneFind.svelte";
 
 interface Props {
 	commitDetail: CommitDetail;
@@ -38,6 +45,7 @@ interface Props {
 	onfileselect: (path: string) => void;
 	onclose: () => void;
 	repoPath?: string;
+	onhistory?: (path: string) => void;
 	treeViewEnabled?: boolean;
 	ontreeviewtoggle?: () => void;
 	nav?: CommitNav | null;
@@ -69,6 +77,7 @@ let {
 	onfileselect,
 	onclose,
 	repoPath = "",
+	onhistory,
 	treeViewEnabled = false,
 	ontreeviewtoggle,
 	nav = null,
@@ -84,6 +93,13 @@ let {
 	editorDraftFor,
 }: Props = $props();
 
+let message = $state<CommitMessage>();
+let messageFind = $state<ReturnType<typeof PaneFind<MessageMatch>>>();
+
+function openMessageFind() {
+	messageFind?.openFind();
+}
+
 // Per-file comment counts for this commit's file list, keyed by the commit's
 // own OID so the badge can never disagree with what the diff pane shows for the
 // same file.
@@ -94,13 +110,6 @@ let fileCommentTallies = $derived(
 	fileTalliesForOid(commentTallies, commitDetail.oid),
 );
 
-let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
-
-async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
-	e.preventDefault();
-	await showFilePathMenu({ repoPath, path: file.path, oldPath: file.old_path });
-}
-
 // j/k step older/newer through the same navigate path as the pager, so review
 // flows without focusing the graph. Vim-style: j = down = older, k = up = newer.
 // Arrow keys are left to CommitGraph's own (container-scoped) handler.
@@ -108,7 +117,12 @@ function handlePaneKeydown(e: KeyboardEvent) {
 	if (!navigationNav || !pagerKeys) return;
 	const chord = keyChord(e);
 	if (chord !== "j" && chord !== "k") return;
-	if (focusInEditable(document.activeElement)) return;
+	if (
+		e.defaultPrevented ||
+		keyInDialog(e) ||
+		focusInEditable(document.activeElement)
+	)
+		return;
 
 	const target =
 		chord === "j" ? navigationNav.olderOid : navigationNav.newerOid;
@@ -117,9 +131,6 @@ function handlePaneKeydown(e: KeyboardEvent) {
 	e.preventDefault();
 	onnavigate?.(target);
 }
-
-let totalAdds = $derived(stat?.insertions ?? 0);
-let totalDels = $derived(stat?.deletions ?? 0);
 
 // Commit-level notes (anchor === null) for THIS commit, read from the shared
 // rune. Whole-commit notes carry no anchor; they belong to the commit by
@@ -144,6 +155,17 @@ let commitNotes = $derived(
 				>{commitDetail.short_oid}</Badge
 			>
 		</span>
+		<Button
+			icon
+			size="sm"
+			variant="ghost"
+			aria-label="Find in commit message"
+			tooltip={`Find in commit message (${onMac() ? "⌘" : "Ctrl+"}F)`}
+			{@attach findScope(openMessageFind)}
+			onclick={openMessageFind}
+			><Search size={14} /></Button
+		>
+
 		{#if nav}
 			<span class="pager">
 				<Button
@@ -183,10 +205,24 @@ let commitNotes = $derived(
 		>
 	</div>
 
+	{#key commitDetail.oid}
+		<PaneFind
+			bind:this={messageFind}
+			placeholder="Find in commit message…"
+			matches={(query) =>
+				messageMatches(commitDetail.summary, commitDetail.body, query)}
+			onclose={() => message?.focusMessage()}
+		/>
+	{/key}
+
 	<!-- Scrollable content -->
 	<div class="flex-1 overflow-y-auto min-h-0">
 		<!-- Commit message -->
 		<CommitMessage
+			bind:this={message}
+			onfind={openMessageFind}
+			onclosefind={() => messageFind?.closeFind() ?? false}
+			match={messageFind?.currentMatch()}
 			summary={commitDetail.summary}
 			body={commitDetail.body}
 			oid={commitDetail.oid}
@@ -214,58 +250,20 @@ let commitNotes = $derived(
 			{editorDraftFor}
 		/>
 
-		<!-- File list -->
-		<div>
-			<div class="h-bar py-0 px-3 flex items-center shadow-hairline shrink-0">
-				<span class="text-callout font-medium text-text flex-1">
-					{`${fileDiffs.length} file${fileDiffs.length === 1 ? "" : "s"} changed`}
-				</span>
-				{#if totalAdds > 0 || totalDels > 0}
-					<span class="inline-flex gap-2 shrink-0 mr-2 font-mono text-caption">
-						{#if totalAdds > 0}
-							<span class="text-diff-add">+{totalAdds}</span>
-						{/if}
-						{#if totalDels > 0}
-							<span class="text-diff-delete">−{totalDels}</span>
-						{/if}
-					</span>
-				{/if}
-				{#if ontreeviewtoggle}
-					<Button
-						icon
-						size="sm"
-						variant="ghost"
-						role="switch"
-						aria-checked={treeViewEnabled}
-						aria-label={treeViewEnabled
-							? "Switch to list view"
-							: "Switch to tree view"}
-						title={treeViewEnabled ? "List view" : "Tree view"}
-						onclick={(e) => {
-							e.stopPropagation();
-							ontreeviewtoggle?.();
-						}}
-					>
-						{#if treeViewEnabled}
-							<FolderTree size={14} />
-						{:else}
-							<List size={14} />
-						{/if}
-					</Button>
-				{/if}
-			</div>
-			<TreeFileList
-				files={fileStatusList}
-				treeMode={treeViewEnabled}
-				actionLabel=""
-				onfileaction={() => {}}
-				onfileclick={(path) => onfileselect(path)}
-				selectedPath={selectedFile}
-				onfilecontextmenu={(e, _path, file) => showFileContextMenu(e, file)}
+		{#key commitDetail.oid}
+			<ChangedFileList
+				{fileDiffs}
+				{stat}
+				{selectedFile}
+				{onfileselect}
+				{treeViewEnabled}
+				{ontreeviewtoggle}
+				{repoPath}
+				{onhistory}
 				commentCounts={fileCommentCounts}
 				commentTallies={fileCommentTallies}
 			/>
-		</div>
+		{/key}
 	</div>
 </div>
 

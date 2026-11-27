@@ -15,7 +15,14 @@ import { resolveViewOid } from "../lib/comment-matching.js";
 import type { CommitFormSession } from "../lib/commit-form-session.svelte.js";
 import { ask } from "../lib/dialog.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
-import { pathMenuEntriesOf } from "../lib/file-menu.js";
+import { fileMenuPosition, pathMenuEntriesOf } from "../lib/file-menu.js";
+import {
+	displayPath,
+	fileKey,
+	gitPathArgument,
+	matchingFiles,
+} from "../lib/file-status.js";
+import { filterShortcut } from "../lib/filter-shortcut.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	computeOutput,
@@ -45,6 +52,7 @@ import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
 import CommitForm from "./CommitForm.svelte";
+import ListFilter from "./ListFilter.svelte";
 import OperationBanner from "./OperationBanner.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
@@ -104,7 +112,21 @@ let panelWidth = $state(0);
 // At narrower widths the tree buttons squeeze even a short branch out of its chip.
 const compactHeader = $derived(panelWidth > 0 && panelWidth < 280);
 
-let status = $state<WorkingTreeStatus | null>(null);
+let status = $state.raw<WorkingTreeStatus | null>(null);
+let query = $state("");
+let filterOpen = $state(false);
+let filter = $state<ListFilter>();
+
+export function filteredFiles(files: FileStatus[]) {
+	return matchingFiles(files, query);
+}
+const unstagedMatches = $derived(filteredFiles(status?.unstaged ?? []));
+const stagedMatches = $derived(filteredFiles(status?.staged ?? []));
+const conflictedMatches = $derived(filteredFiles(status?.conflicted ?? []));
+
+function matchLabel(verb: string, count: number) {
+	return `${verb} ${count} ${count === 1 ? "match" : "matches"}`;
+}
 
 // Per-section comment counts. Each section keys its map through the SAME
 // resolveViewOid the diff uses, so a badge can never disagree with the diff:
@@ -154,20 +176,20 @@ export function optimisticMove(
 	action: "stage" | "unstage" | "discard",
 ) {
 	if (!status) return;
-	const file = status[from].find((f) => f.path === filePath);
+	const file = status[from].find((f) => fileKey(f) === filePath);
 	if (!file) return;
 	const updated = {
 		...status,
-		[from]: status[from].filter((f) => f.path !== filePath),
+		[from]: status[from].filter((f) => fileKey(f) !== filePath),
 	};
 	if (action === "stage") {
 		updated.staged = [
-			...status.staged.filter((f) => f.path !== filePath),
+			...status.staged.filter((f) => fileKey(f) !== filePath),
 			file,
 		];
 	} else if (action === "unstage") {
 		updated.unstaged = [
-			...status.unstaged.filter((f) => f.path !== filePath),
+			...status.unstaged.filter((f) => fileKey(f) !== filePath),
 			file,
 		];
 	}
@@ -288,9 +310,18 @@ function filesUnder(
 	files: readonly FileStatus[] | undefined,
 	dirPath: string,
 ): FileStatus[] {
-	return (files ?? []).filter(
-		(f) => f.path.startsWith(`${dirPath}/`) || f.path === dirPath,
-	);
+	const directory = gitPathArgument(dirPath);
+	const encoder = new TextEncoder();
+	const bytes =
+		typeof directory === "string" ? encoder.encode(directory) : directory;
+	return (files ?? []).filter((file) => {
+		if (typeof directory === "string" && !file.path_bytes)
+			return file.path.startsWith(`${directory}/`);
+		const path = file.path_bytes ?? encoder.encode(file.path);
+		return (
+			path[bytes.length] === 47 && bytes.every((byte, i) => path[i] === byte)
+		);
+	});
 }
 
 function stopLoading(paths: readonly string[]) {
@@ -340,6 +371,13 @@ async function confirmResolved(marked: string[]): Promise<boolean> {
 /** Staging the working file bypasses the draft in Output. Keep that draft
  * until the user agrees and Git has accepted this exact resolution action. */
 async function stageWorkingResolution(filePaths: string[]): Promise<boolean> {
+	if (filePaths.some((path) => displayPath(path) !== path)) {
+		showToast(
+			"Resolve filenames containing non-UTF-8 bytes with Git in the terminal.",
+			"error",
+		);
+		return false;
+	}
 	const repo = repoPath;
 	if (filePaths.some((path) => mergePicks.isSaving(repo, path))) return false;
 	const finish = filePaths.map((path) => mergePicks.startSave(repo, path));
@@ -387,7 +425,10 @@ async function stageFile(filePath: string, from: "unstaged" | "conflicted") {
 				return;
 			}
 		} else {
-			await safeInvoke("stage_file", { path: repoPath, filePath });
+			await safeInvoke("stage_file", {
+				path: repoPath,
+				filePath: gitPathArgument(filePath),
+			});
 		}
 		onfileadvance?.(filePath, from);
 		optimisticMove(filePath, from, "stage");
@@ -401,7 +442,10 @@ async function stageFile(filePath: string, from: "unstaged" | "conflicted") {
 async function unstageFile(filePath: string) {
 	loadingFiles = new Set([...loadingFiles, filePath]);
 	try {
-		await safeInvoke("unstage_file", { path: repoPath, filePath });
+		await safeInvoke("unstage_file", {
+			path: repoPath,
+			filePath: gitPathArgument(filePath),
+		});
 		onfileadvance?.(filePath, "staged");
 		optimisticMove(filePath, "staged", "unstage");
 	} catch (e) {
@@ -411,33 +455,39 @@ async function unstageFile(filePath: string) {
 	stopLoading([filePath]);
 }
 
-async function stageDirectory(dirPath: string) {
-	const filePaths = filesUnder(status?.unstaged, dirPath).map((f) => f.path);
-	if (filePaths.length === 0) return;
-
+async function stageFiles(files: readonly FileStatus[]) {
+	const filePaths = files.map(fileKey);
 	await changeFiles(filePaths, "Stage failed", () =>
-		safeInvoke("stage_files", { path: repoPath, filePaths }),
+		safeInvoke("stage_files", {
+			path: repoPath,
+			filePaths: filePaths.map(gitPathArgument),
+		}),
 	);
 }
 
-async function unstageDirectory(dirPath: string) {
-	const filePaths = filesUnder(status?.staged, dirPath).map((f) => f.path);
-	if (filePaths.length === 0) return;
-
+async function unstageFiles(files: readonly FileStatus[]) {
+	const filePaths = files.map(fileKey);
 	await changeFiles(filePaths, "Unstage failed", () =>
-		safeInvoke("unstage_files", { path: repoPath, filePaths }),
+		safeInvoke("unstage_files", {
+			path: repoPath,
+			filePaths: filePaths.map(gitPathArgument),
+		}),
 	);
 }
 
 async function stageAll() {
-	const paths = (status?.unstaged ?? []).map((f) => f.path);
+	if (query) return stageFiles(unstagedMatches);
+
+	const paths = unstagedMatches.map(fileKey);
 	await changeFiles(paths, "Stage all failed", () =>
 		safeInvoke("stage_all", { path: repoPath }),
 	);
 }
 
 async function unstageAll() {
-	const paths = (status?.staged ?? []).map((f) => f.path);
+	if (query) return unstageFiles(stagedMatches);
+
+	const paths = stagedMatches.map(fileKey);
 	await changeFiles(paths, "Unstage all failed", () =>
 		safeInvoke("unstage_all", { path: repoPath }),
 	);
@@ -446,8 +496,8 @@ async function unstageAll() {
 async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 	const isUntracked = fileStatus === "New";
 	const msg = isUntracked
-		? `Delete ${filePath}? This file is untracked and will be permanently removed. This cannot be undone.`
-		: `Discard changes to ${filePath}? This cannot be undone.`;
+		? `Delete ${displayPath(filePath)}? This file is untracked and will be permanently removed. This cannot be undone.`
+		: `Discard changes to ${displayPath(filePath)}? This cannot be undone.`;
 	const confirmed = await ask(msg, {
 		title: isUntracked ? "Delete File" : "Discard Changes",
 		kind: "warning",
@@ -455,10 +505,13 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 	});
 	if (!confirmed) return;
 	await changeFiles([filePath], "Discard failed", async () => {
-		await safeInvoke("discard_file", { path: repoPath, filePath });
+		await safeInvoke("discard_file", {
+			path: repoPath,
+			filePath: gitPathArgument(filePath),
+		});
 		onfileadvance?.(filePath, "unstaged");
 		optimisticMove(filePath, "unstaged", "discard");
-		showToast(`Discarded ${filePath}`, "success");
+		showToast(`Discarded ${displayPath(filePath)}`, "success");
 	});
 }
 
@@ -468,21 +521,29 @@ function cannotBeUndone(files: readonly FileStatus[]): string {
 	return `This deletes ${untracked} untracked file${untracked === 1 ? "" : "s"} and cannot be undone.`;
 }
 
-async function handleDiscardDirectory(dirPath: string) {
-	const files = filesUnder(status?.unstaged, dirPath);
+async function handleDiscardDirectory(dirPath: string, files: FileStatus[]) {
 	if (files.length === 0) return;
 
-	const confirmed = await ask(
-		`Discard all changes in ${dirPath}/ (${files.length} file${files.length === 1 ? "" : "s"})? ${cannotBeUndone(files)}`,
-		{ title: "Discard Directory Changes", kind: "warning", okLabel: "Discard" },
-	);
+	const repo = repoPath;
+	const count = `${files.length} ${files.length === 1 ? "file" : "files"}`;
+	const scope = query
+		? `changes to the ${count} matching the filter in ${displayPath(dirPath)}/`
+		: `all changes in ${displayPath(dirPath)}/ (${count})`;
+	const confirmed = await ask(`Discard ${scope}? ${cannotBeUndone(files)}`, {
+		title: "Discard Directory Changes",
+		kind: "warning",
+		okLabel: query ? matchLabel("Discard", files.length) : "Discard",
+	});
 	if (!confirmed) return;
 
-	const filePaths = files.map((f) => f.path);
+	const filePaths = files.map(fileKey);
 	await changeFiles(filePaths, "Discard failed", async () => {
-		await safeInvoke("discard_files", { path: repoPath, filePaths });
+		await safeInvoke("discard_files", {
+			path: repo,
+			filePaths: filePaths.map(gitPathArgument),
+		});
 		showToast(
-			`Discarded ${files.length} file${files.length === 1 ? "" : "s"} in ${dirPath}/`,
+			`Discarded ${files.length} file${files.length === 1 ? "" : "s"} in ${displayPath(dirPath)}/`,
 			"success",
 		);
 	});
@@ -497,19 +558,19 @@ function chooseTreeOption(select: HTMLSelectElement) {
 }
 
 async function showUnstagedContextMenu(
-	_e: MouseEvent,
+	anchor: DOMRect | undefined,
 	filePath: string,
 	fileStatus: FileStatusType,
 ) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const isUntracked = fileStatus === "New";
-	const absPath = `${repoPath}/${filePath}`;
+	const absPath = `${repoPath}/${displayPath(filePath)}`;
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					copyText(filePath);
+					copyText(displayPath(filePath));
 				},
 			}),
 			await MenuItem.new({
@@ -533,13 +594,16 @@ async function showUnstagedContextMenu(
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
-async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
+async function showUnstagedDirContextMenu(
+	anchor: DOMRect | undefined,
+	dirPath: string,
+) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
-	const absPath = `${repoPath}/${dirPath}`;
-	const files = filesUnder(status?.unstaged, dirPath);
+	const absPath = `${repoPath}/${displayPath(dirPath)}`;
+	const files = filesUnder(unstagedMatches, dirPath);
 	if (files.length === 0) return;
 
 	const menu = await Menu.new({
@@ -547,7 +611,7 @@ async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					copyText(dirPath);
+					copyText(displayPath(dirPath));
 				},
 			}),
 			await MenuItem.new({
@@ -558,24 +622,30 @@ async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
-				text: `Stage All (${files.length})`,
+				text: query
+					? matchLabel("Stage", files.length)
+					: `Stage All (${files.length})`,
 				action: () => {
-					stageDirectory(dirPath);
+					stageFiles(files);
 				},
 			}),
 			await MenuItem.new({
-				text: `Discard All (${files.length})`,
+				text: query
+					? matchLabel("Discard", files.length)
+					: `Discard All (${files.length})`,
 				action: () => {
-					handleDiscardDirectory(dirPath).catch(() => {});
+					void handleDiscardDirectory(dirPath, files).catch((error) =>
+						reportErrorToast(error, "Discard failed"),
+					);
 				},
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
 async function showStagedContextMenu(
-	_e: MouseEvent,
+	anchor: DOMRect | undefined,
 	filePath: string,
 	oldPath: string | null,
 ) {
@@ -583,13 +653,14 @@ async function showStagedContextMenu(
 	const menu = await Menu.new({
 		items: [
 			...(await Promise.all(
-				pathMenuEntriesOf(repoPath, filePath, oldPath).map((entry) =>
-					MenuItem.new({
-						text: entry.text,
-						action: () => {
-							copyText(entry.value);
-						},
-					}),
+				pathMenuEntriesOf(repoPath, displayPath(filePath), oldPath).map(
+					(entry) =>
+						MenuItem.new({
+							text: entry.text,
+							action: () => {
+								copyText(entry.value);
+							},
+						}),
 				),
 			)),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -601,13 +672,16 @@ async function showStagedContextMenu(
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
-async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
+async function showStagedDirContextMenu(
+	anchor: DOMRect | undefined,
+	dirPath: string,
+) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
-	const absPath = `${repoPath}/${dirPath}`;
-	const files = filesUnder(status?.staged, dirPath);
+	const absPath = `${repoPath}/${displayPath(dirPath)}`;
+	const files = filesUnder(stagedMatches, dirPath);
 	if (files.length === 0) return;
 
 	const menu = await Menu.new({
@@ -615,7 +689,7 @@ async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					copyText(dirPath);
+					copyText(displayPath(dirPath));
 				},
 			}),
 			await MenuItem.new({
@@ -626,14 +700,16 @@ async function showStagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
-				text: `Unstage All (${files.length})`,
+				text: query
+					? matchLabel("Unstage", files.length)
+					: `Unstage All (${files.length})`,
 				action: () => {
-					unstageDirectory(dirPath);
+					unstageFiles(files);
 				},
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
 async function resolveConflictedFile(
@@ -714,12 +790,15 @@ async function resolveConflictedFile(
 	}
 }
 
-async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
+async function showConflictedContextMenu(
+	anchor: DOMRect | undefined,
+	filePath: string,
+) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const textResolution =
-		status?.conflicted.find((file) => file.path === filePath)
+		status?.conflicted.find((file) => fileKey(file) === filePath)
 			?.can_take_sides === true;
-	const absPath = `${repoPath}/${filePath}`;
+	const absPath = `${repoPath}/${displayPath(filePath)}`;
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
@@ -740,7 +819,7 @@ async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					copyText(filePath);
+					copyText(displayPath(filePath));
 				},
 			}),
 			await MenuItem.new({
@@ -751,22 +830,23 @@ async function showConflictedContextMenu(_e: MouseEvent, filePath: string) {
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
 async function resolveDirectory(dirPath: string) {
-	const filePaths = filesUnder(status?.conflicted, dirPath).map((f) => f.path);
+	const filePaths = filesUnder(conflictedMatches, dirPath).map(fileKey);
 	if (filePaths.length === 0) return;
 
 	await resolveFiles(filePaths);
 }
 
-async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
+async function showConflictedDirContextMenu(
+	anchor: DOMRect | undefined,
+	dirPath: string,
+) {
 	const repo = repoPath;
-	const absPath = `${repo}/${dirPath}`;
-	const filePaths = filesUnder(status?.conflicted, dirPath).map(
-		(file) => file.path,
-	);
+	const absPath = `${repo}/${displayPath(dirPath)}`;
+	const filePaths = filesUnder(conflictedMatches, dirPath).map(fileKey);
 	if (filePaths.length === 0) return;
 	const { Menu, MenuItem, PredefinedMenuItem } = await nativeMenu();
 	const menu = await Menu.new({
@@ -774,7 +854,7 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			await MenuItem.new({
 				text: "Copy Relative Path",
 				action: () => {
-					copyText(dirPath);
+					copyText(displayPath(dirPath));
 				},
 			}),
 			await MenuItem.new({
@@ -785,38 +865,54 @@ async function showConflictedDirContextMenu(_e: MouseEvent, dirPath: string) {
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
-				text: `Resolve All (${filePaths.length})`,
+				text: query
+					? matchLabel("Resolve", filePaths.length)
+					: `Resolve All (${filePaths.length})`,
 				action: () => {
 					if (repo === repoPath) void resolveFiles(filePaths);
 				},
 			}),
 		],
 	});
-	await menu.popup();
+	await menu.popup(fileMenuPosition(anchor));
 }
 
 async function handleDiscardAll() {
-	const unstaged = status?.unstaged ?? [];
-	const paths = unstaged.map((f) => f.path);
+	const repo = repoPath;
+	const filtered = Boolean(query);
+	const unstaged = unstagedMatches;
+	const paths = unstaged.map(fileKey);
 	const count = paths.length;
 	if (count === 0) return;
 
 	const files = `${count} file${count === 1 ? "" : "s"}`;
 	const confirmed = await ask(
-		`Discard all changes to ${files}? ${cannotBeUndone(unstaged)}`,
-		{ title: "Discard All Changes", kind: "warning", okLabel: "Discard All" },
+		`Discard all changes to ${files}${filtered ? " matching the filter" : ""}? ${cannotBeUndone(unstaged)}`,
+		{
+			title: query ? "Discard Matching Changes" : "Discard All Changes",
+			kind: "warning",
+			okLabel: query ? matchLabel("Discard", count) : "Discard All",
+		},
 	);
 	if (!confirmed) return;
 
 	await changeFiles(paths, "Discard all failed", async () => {
-		await safeInvoke("discard_all", { path: repoPath, filePaths: paths });
-		showToast(`Discarded all changes (${files})`, "success");
+		await safeInvoke("discard_all", {
+			path: repo,
+			filePaths: paths.map(gitPathArgument),
+		});
+		showToast(
+			filtered
+				? `Discarded changes to ${files}`
+				: `Discarded all changes (${files})`,
+			"success",
+		);
 	});
 }
 
 // ---------- Merge-mode actions ----------
 async function markAllResolved() {
-	await resolveFiles((status?.conflicted ?? []).map((f) => f.path));
+	await resolveFiles(conflictedMatches.map(fileKey));
 }
 
 async function resolveFiles(filePaths: string[]) {
@@ -979,17 +1075,20 @@ registerUpdateBlocker(() => {
 });
 </script>
 
-{#snippet sectionTitle(label: string, count: number)}
+{#snippet sectionTitle(label: string, count: number, shown: number)}
 	<span class="flex-1 min-w-0 inline-flex items-center gap-2">
 		<span class="min-w-0 truncate text-callout font-semibold text-text"
 			>{label}</span
 		>
-		<Badge variant="label" tone="muted">{count}</Badge>
+		<Badge variant="label" tone="muted"
+			>{query ? `${shown} of ${count}` : count}</Badge
+		>
 	</span>
 {/snippet}
 
 <div
 	bind:clientWidth={panelWidth}
+	use:filterShortcut={() => filter?.focus()}
 	class="w-full min-w-0 flex flex-col h-full overflow-hidden bg-surface"
 >
 	{#if bare}
@@ -1005,24 +1104,33 @@ registerUpdateBlocker(() => {
 				compactHeader ? "gap-1 px-2" : "gap-2 px-3",
 			]}
 		>
-			<span
-				class={[
-					"flex-1 flex items-center min-w-0",
-					compactHeader ? "gap-1" : "gap-2 justify-center",
-				]}
-			>
-				<span class="shrink-0 text-callout text-text">
-					{compactHeader
-						? `${totalCount} changed`
-						: `${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
+			{#if !filterOpen}
+				<span
+					class={[
+						"flex-1 flex items-center min-w-0",
+						compactHeader ? "gap-1" : "gap-2 justify-center",
+					]}
+				>
+					<span class="shrink-0 text-callout text-text">
+						{compactHeader
+							? `${totalCount} changed`
+							: `${totalCount} file${totalCount === 1 ? "" : "s"} changed`}
+					</span>
+					{#if currentBranch}
+						<span
+							class={compactHeader ? "sr-only" : "text-small text-text-muted"}
+							>on</span
+						>
+						<BranchChip name={currentBranch} />
+					{/if}
 				</span>
-				{#if currentBranch}
-					<span class={compactHeader ? "sr-only" : "text-small text-text-muted"}
-						>on</span
-					>
-					<BranchChip name={currentBranch} />
-				{/if}
-			</span>
+			{/if}
+			<ListFilter
+				bind:this={filter}
+				label="Filter files"
+				bind:query
+				bind:open={filterOpen}
+			/>
 			{#if compactHeader && treeViewEnabled}
 				<div
 					class="inline-grid w-control-lg shrink-0 grid-cols-1 rounded h-control-sm text-text-muted hover:bg-hover hover:text-text has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-accent"
@@ -1166,18 +1274,22 @@ registerUpdateBlocker(() => {
 							<span
 								class="flex-1 min-w-0 truncate text-caption font-semibold text-text-muted"
 							>
-								{count} {count === 1 ? "conflict" : "conflicts"}
+								{query ? `${conflictedMatches.length} of ${count}` : count}
+								{count === 1 ? "conflict" : "conflicts"}
 							</span>
 						{:else}
 							{@render sectionTitle(
 								"Conflicted files",
 								status?.conflicted.length ?? 0,
+								conflictedMatches.length,
 							)}
 						{/if}
 						{#snippet actions()}
-							{#if (status?.conflicted.length ?? 0) > 0}
+							{#if conflictedMatches.length > 0}
 								<Button size="sm" variant="success" onclick={markAllResolved}>
-									Mark All Resolved
+									{query
+										? matchLabel("Resolve", conflictedMatches.length)
+										: "Mark All Resolved"}
 								</Button>
 							{/if}
 						{/snippet}
@@ -1185,7 +1297,8 @@ registerUpdateBlocker(() => {
 
 					{#if conflicted_expanded}
 						<TreeFileList
-							files={status?.conflicted ?? []}
+							files={conflictedMatches}
+							filterQuery={query}
 							treeMode={treeViewEnabled}
 							actionLabel="+"
 							{loadingFiles}
@@ -1227,16 +1340,21 @@ registerUpdateBlocker(() => {
 						{@render sectionTitle(
 							"Unstaged files",
 							status?.unstaged.length ?? 0,
+							unstagedMatches.length,
 						)}
 						{#snippet actions()}
-							{#if (status?.unstaged.length ?? 0) > 0}
+							{#if unstagedMatches.length > 0}
 								<Button
 									icon
 									size="sm"
 									variant="danger"
 									onclick={handleDiscardAll}
-									aria-label="Discard all changes"
-									tooltip="Discard All"
+									aria-label={query
+										? matchLabel("Discard", unstagedMatches.length)
+										: "Discard all changes"}
+									tooltip={query
+										? matchLabel("Discard", unstagedMatches.length)
+										: "Discard All"}
 								>
 									<Trash2 size={14} aria-hidden="true" />
 								</Button>
@@ -1244,9 +1362,11 @@ registerUpdateBlocker(() => {
 									size="sm"
 									variant="success"
 									onclick={stageAll}
-									aria-label="Stage all changes"
+									aria-label={query ? undefined : "Stage all changes"}
 								>
-									Stage All
+									{query
+										? matchLabel("Stage", unstagedMatches.length)
+										: "Stage All"}
 								</Button>
 							{/if}
 						{/snippet}
@@ -1254,7 +1374,8 @@ registerUpdateBlocker(() => {
 
 					{#if unstaged_expanded}
 						<TreeFileList
-							files={status?.unstaged ?? []}
+							files={unstagedMatches}
+							filterQuery={query}
 							treeMode={treeViewEnabled}
 							actionLabel="+"
 							{loadingFiles}
@@ -1262,7 +1383,8 @@ registerUpdateBlocker(() => {
 							onfileclick={(path) => onfileselect?.(path, "unstaged")}
 							onfilecontextmenu={(e, path, file) =>
 								showUnstagedContextMenu(e, path, file.status)}
-							ondirectoryaction={(dirPath) => stageDirectory(dirPath)}
+							ondirectoryaction={(dirPath) =>
+								stageFiles(filesUnder(unstagedMatches, dirPath))}
 							ondirectorycontextmenu={(e, dirPath) =>
 								showUnstagedDirContextMenu(e, dirPath)}
 							selectedPath={selectedKind === "unstaged" ? selectedPath : null}
@@ -1297,16 +1419,19 @@ registerUpdateBlocker(() => {
 					{@render sectionTitle(
 						isOperation ? "Resolved files" : "Staged files",
 						status?.staged.length ?? 0,
+						stagedMatches.length,
 					)}
 					{#snippet actions()}
-						{#if (status?.staged.length ?? 0) > 0}
+						{#if stagedMatches.length > 0}
 							<Button
 								size="sm"
 								variant="warning"
 								onclick={unstageAll}
-								aria-label="Unstage all"
+								aria-label={query ? undefined : "Unstage all"}
 							>
-								Unstage All
+								{query
+									? matchLabel("Unstage", stagedMatches.length)
+									: "Unstage All"}
 							</Button>
 						{/if}
 					{/snippet}
@@ -1314,7 +1439,8 @@ registerUpdateBlocker(() => {
 
 				{#if staged_expanded}
 					<TreeFileList
-						files={status?.staged ?? []}
+						files={stagedMatches}
+						filterQuery={query}
 						treeMode={treeViewEnabled}
 						actionLabel="−"
 						{loadingFiles}
@@ -1322,7 +1448,8 @@ registerUpdateBlocker(() => {
 						onfileclick={(path) => onfileselect?.(path, "staged")}
 						onfilecontextmenu={(e, path, file) =>
 							showStagedContextMenu(e, path, file.old_path ?? null)}
-						ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
+						ondirectoryaction={(dirPath) =>
+							unstageFiles(filesUnder(stagedMatches, dirPath))}
 						ondirectorycontextmenu={(e, dirPath) =>
 							showStagedDirContextMenu(e, dirPath)}
 						selectedPath={selectedKind === "staged" ? selectedPath : null}
@@ -1435,6 +1562,7 @@ registerUpdateBlocker(() => {
 			<CommitForm
 				{repoPath}
 				stagedCount={status?.staged.length ?? 0}
+				showStagedCount={Boolean(query)}
 				session={commitFormSession}
 				{ondraftsummaryfocuschange}
 				bind:this={commitForm}

@@ -2,7 +2,6 @@
 import { untrack } from "svelte";
 import { findDiffMatches } from "../../lib/diff-find.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
-import { focusInEditable, keyChord, keyInDialog } from "../../lib/keyboard.js";
 import SearchBar from "../SearchBar.svelte";
 
 interface Props {
@@ -81,7 +80,8 @@ function step(direction: number) {
 	else if (total > 1) ordinal = (index + direction + total) % total;
 }
 
-function close() {
+export function closeFind(): boolean {
+	if (!open) return false;
 	open = false;
 	if (previousFocus?.isConnected && previousFocus !== document.body) {
 		previousFocus.focus({ preventScroll: true });
@@ -89,24 +89,9 @@ function close() {
 		focusDiff();
 	}
 	previousFocus = null;
-}
-
-function handleEscape(event: KeyboardEvent) {
-	if (
-		!open ||
-		event.defaultPrevented ||
-		keyChord(event) !== "Escape" ||
-		keyInDialog(event) ||
-		focusInEditable(document.activeElement)
-	)
-		return;
-
-	event.preventDefault();
-	close();
+	return true;
 }
 </script>
-
-<svelte:document onkeydowncapture={handleEscape} />
 
 {#if open && enabled}
 	<SearchBar
@@ -120,6 +105,6 @@ function handleEscape(event: KeyboardEvent) {
 		onquerychange={changeQuery}
 		onprev={() => step(-1)}
 		onnext={() => step(1)}
-		onclose={close}
+		onclose={closeFind}
 	/>
 {/if}

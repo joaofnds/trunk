@@ -150,6 +150,28 @@ describe("BranchSidebar remote grouping", () => {
 		},
 	);
 
+	it("focuses the filter with slash and reveals the matching remote until cleared", async () => {
+		host.seedResponse("list_refs", {
+			...refs("main"),
+			remote: [branch("origin/topic", "origin")],
+		});
+		render(BranchSidebar, {
+			props: { repoPath: "/repo", remoteState: createRemoteState() },
+		});
+		const section = await screen.findByRole("button", { name: "Remote (1)" });
+		section.focus();
+		await fireEvent.keyDown(section, { key: "/" });
+
+		const field = screen.getByRole("textbox", {
+			name: "Filter branches, tags, stashes",
+		});
+		expect(field).toHaveFocus();
+		await fireEvent.input(field, { target: { value: "TOPIC" } });
+		expect(screen.getByRole("button", { name: "topic" })).toBeVisible();
+		await fireEvent.keyDown(field, { key: "Escape" });
+		expect(screen.queryByRole("button", { name: "topic" })).toBeNull();
+	});
+
 	it("offers to hide only matching branches within a filtered remote", async () => {
 		host.seedResponse("list_refs", {
 			...refs("main"),
@@ -163,9 +185,12 @@ describe("BranchSidebar remote grouping", () => {
 			props: { repoPath: "/repo", remoteState: createRemoteState() },
 		});
 		await fireEvent.click(await screen.findByText("Remote (2)"));
-		await fireEvent.input(screen.getByPlaceholderText("Filter branches…"), {
-			target: { value: "topic" },
-		});
+		await fireEvent.input(
+			screen.getByRole("textbox", { name: "Filter branches, tags, stashes" }),
+			{
+				target: { value: "topic" },
+			},
+		);
 		await fireEvent.click(
 			screen.getByRole("button", { name: "Hide matching origin branches" }),
 		);
@@ -520,9 +545,12 @@ describe("BranchSidebar ref visibility", () => {
 			});
 			await screen.findByLabelText("Hide topic");
 
-			await fireEvent.input(screen.getByPlaceholderText("Filter branches…"), {
-				target: { value: filter },
-			});
+			await fireEvent.input(
+				screen.getByRole("textbox", { name: "Filter branches, tags, stashes" }),
+				{
+					target: { value: filter },
+				},
+			);
 
 			expect(screen.getByText(label)).toBeInTheDocument();
 			expect(screen.queryByTestId("branch-section-visibility-btn")).toBeNull();

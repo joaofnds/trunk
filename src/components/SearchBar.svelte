@@ -10,6 +10,7 @@ import Button from "../lib/ui/Button.svelte";
 interface Props {
 	placeholder?: string;
 	animate?: boolean;
+	inline?: boolean;
 	query: string;
 	currentIndex: number;
 	totalMatches: number;
@@ -24,6 +25,7 @@ interface Props {
 let {
 	placeholder = "Search commits…",
 	animate = true,
+	inline = false,
 	query,
 	currentIndex,
 	totalMatches,
@@ -96,8 +98,13 @@ function autofocus(node: HTMLElement) {
 	bind:this={bar}
 	transition:slide={{ duration: animate ? motionDuration(150) : 0, axis: "y" }}
 	class={[
-		atBottom ? "bottom-2" : "top-2",
-		"search-bar absolute right-2 z-10 bg-surface-chip border border-border-strong rounded shadow-md flex items-center pl-3 pr-1 py-1 gap-1",
+		inline
+			? "border-b border-border bg-surface"
+			: [
+					atBottom ? "bottom-2" : "top-2",
+					"floating absolute right-2 z-10 bg-surface-chip border border-border-strong rounded shadow-md",
+				],
+		"search-bar flex items-center pl-3 pr-1 py-1 gap-1",
 	]}
 >
 	<label class="min-w-0 flex-1 flex items-center gap-2 cursor-text">
@@ -170,7 +177,7 @@ function autofocus(node: HTMLElement) {
 </search>
 
 <style>
-.search-bar {
+.search-bar.floating {
 	width: calc(84 * var(--u));
 	max-width: calc(100% - 2 * var(--space-2));
 }

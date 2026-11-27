@@ -454,3 +454,44 @@ fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
     assert_eq!(summaries, ["Initial commit"]);
     assert_eq!(toggled.visibility(), &hidden);
 }
+
+#[test]
+fn path_history_pages_through_edits_and_deletion_without_including_other_paths() {
+    let mut builder = TestContext::builder();
+    for revision in 0..33 {
+        let text = format!("revision {revision}");
+        builder.with_file("src/path[1]", &text).with_commit(&text);
+    }
+    let mut ctx = builder
+        .with_file("src/path1", "other")
+        .with_commit("unrelated")
+        .with_removed_file("src/path[1]")
+        .with_commit("delete")
+        .build();
+    ctx.populate_cache();
+    let graph = ctx.cache_map.get(ctx.path()).unwrap();
+    let read = |offset| {
+        trunk_lib::commands::path_history::path_history_inner(
+            ctx.state_map(),
+            ctx.path(),
+            graph,
+            b"src/path[1]",
+            offset,
+            1,
+        )
+        .unwrap()
+    };
+    let first = read(0);
+    let last = read(first.next.expect("earlier edits"));
+    let found: Vec<_> = first
+        .commits
+        .into_iter()
+        .chain(last.commits)
+        .map(|row| row.summary)
+        .collect();
+    let expected: Vec<_> = std::iter::once(String::from("delete"))
+        .chain((0..33).rev().map(|n| format!("revision {n}")))
+        .collect();
+    assert_eq!(found, expected);
+    assert_eq!(last.next, None);
+}

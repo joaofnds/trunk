@@ -22,6 +22,8 @@ import type { DiffPreferences } from "../lib/diff-preferences.svelte.js";
 import type { DiffComposer } from "../lib/diff-rows.js";
 import { splitSide, takesNewComment } from "../lib/diff-utils.js";
 import { reportErrorToast } from "../lib/error-report.js";
+import { displayPath, fileKey } from "../lib/file-status.js";
+import { findScope } from "../lib/find-scope.js";
 import {
 	buildFullFileAnchor,
 	fileSelectableIndices,
@@ -116,7 +118,7 @@ let {
 	fileDiffs,
 	commitDetail,
 	compareBaseOid = null,
-	selectedPath = null,
+	selectedPath: selectedKey = null,
 	onclose,
 	backLabel = null,
 	diffKind = "commit",
@@ -130,7 +132,7 @@ let {
 	loadError = null,
 	onretry,
 	onloadfullfile,
-	takesComments,
+	takesComments: reviewAllowsComments,
 	reviewFilter,
 	activeReviewId = null,
 	activeReview = null,
@@ -227,17 +229,25 @@ const commitOid = $derived(
 		: (commitDetail?.oid ?? ""),
 );
 const isMerge = $derived((commitDetail?.parent_oids.length ?? 0) > 1);
-// Whether a selected line can take a new comment here, as the hunk's Comment
-// action can.
-const linesTakeComments = $derived(takesComments && !isMerge);
 // The toolbar names the selected file's status and, for a rename, where it came
 // from. Both live on the diff itself, so the header reads them from the same
 // list the viewer renders.
-const selectedFile = $derived(
-	selectedPath === null
-		? undefined
-		: fileDiffs.find((fd) => fd.path === selectedPath),
+const selectedPath = $derived(
+	selectedKey === null ? null : displayPath(selectedKey),
 );
+const selectedFile = $derived(
+	selectedKey === null
+		? undefined
+		: fileDiffs.find((file) => fileKey(file) === selectedKey),
+);
+// Review anchors and auxiliary previews store paths as UTF-8 text.
+const byteEscapedPath = $derived(
+	Boolean(selectedFile?.path_bytes || selectedFile?.old_path_bytes),
+);
+const takesComments = $derived(reviewAllowsComments && !byteEscapedPath);
+// Whether a selected line can take a new comment here, as the hunk's Comment
+// action can.
+const linesTakeComments = $derived(takesComments && !isMerge);
 // A file opened whole shows its content rather than a change, so it names no
 // status.
 const selectedStatus = $derived(
@@ -305,7 +315,7 @@ const sourceSubject = $derived(
 	JSON.stringify([
 		repoPath,
 		diffKind,
-		selectedPath,
+		selectedKey,
 		diffKind === "commit" ? commitDetail?.oid : null,
 		compareBaseOid,
 	]),
@@ -318,7 +328,9 @@ let sourceJump = $derived.by(
 		return null;
 	},
 );
-const renderMode = $derived(sourceJump ? "source" : diffPreferences.renderMode);
+const renderMode = $derived(
+	sourceJump || byteEscapedPath ? "source" : diffPreferences.renderMode,
+);
 const fullFileComposerOpen = $derived(
 	activeComposerSession.mode === "full-file" && composerTargetMatches,
 );
@@ -679,7 +691,7 @@ async function loadFullFileForComment(
 // submit). A pure-deletion file has no new side → deferred, same as the diff
 // guard. Operates on the toolbar's current `selectedPath` (like Stage File).
 async function handleCommentFile() {
-	if (!selectedPath) return;
+	if (!takesComments || !selectedPath) return;
 	const filePath = selectedPath;
 	const session = activeComposerSession;
 	const target = activeComposerTarget;
@@ -1011,6 +1023,8 @@ async function changeStaging(
 		} else {
 			const verb = action.charAt(0).toUpperCase() + action.slice(1);
 			reportErrorToast(error, `${verb} ${unit} failed`);
+			if (isTrunkError(error) && error.code === "file_conflicted")
+				await completion?.complete();
 		}
 	} finally {
 		hunkOperationInFlight = false;
@@ -1322,7 +1336,11 @@ function extendDrag(e: MouseEvent) {
 	{/if}
 {/snippet}
 
-<div bind:this={panel} class="h-full flex flex-col overflow-hidden bg-surface">
+<div
+	bind:this={panel}
+	{@attach findScope(openFind, () => find?.closeFind() ?? false)}
+	class="h-full flex flex-col overflow-hidden bg-surface"
+>
 	<DiffToolbar
 		{contentMode}
 		layoutMode={diffPreferences.layoutMode}
@@ -1338,7 +1356,8 @@ function extendDrag(e: MouseEvent) {
 		ignoreWhitespace={diffPreferences.ignoreWhitespace}
 		showInvisibles={diffPreferences.showInvisibles}
 		wordWrap={diffPreferences.wordWrap}
-		{takesComments}
+		takesComments={reviewAllowsComments}
+		{byteEscapedPath}
 		commentTally={selectedFileTally}
 		onignorewhitespacechange={(ignore) =>
 			diffPreferences.changeIgnoreWhitespace(ignore)}

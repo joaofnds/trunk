@@ -1,9 +1,12 @@
 <script lang="ts">
+import Search from "@lucide/svelte/icons/search";
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
+import { findScope } from "../lib/find-scope.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { onMac } from "../lib/keyboard.js";
 import { nativeMenu } from "../lib/native-menu.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
@@ -29,6 +32,7 @@ import Splitter from "../lib/ui/Splitter.svelte";
 import { registerUpdateBlocker } from "../lib/updates-context.js";
 import BranchChip from "./BranchChip.svelte";
 import CommitChip from "./CommitChip.svelte";
+import PaneFind from "./PaneFind.svelte";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
 
@@ -97,6 +101,43 @@ let headerEl: HTMLDivElement | undefined = $state();
 const uid = $props.id();
 const messageEditorId = `${uid}-message-editor`;
 let listEl: HTMLDivElement | undefined = $state();
+
+let planFind = $state<ReturnType<typeof PaneFind<number>>>();
+const foundRow = $derived(planFind?.currentMatch());
+
+export function openFind() {
+	if (!starting) planFind?.openFind();
+}
+
+function matchingCommits(query: string): number[] {
+	const needle = query.toLowerCase();
+	const rows: number[] = [];
+	for (const [idx, item] of items.entries()) {
+		if (
+			(item.newMessage ?? item.summary).toLowerCase().includes(needle) ||
+			item.oid.startsWith(needle)
+		)
+			rows.push(idx);
+	}
+	return rows;
+}
+
+// Finding only moves the reading position. Selecting a row reads its files
+// and stats, so commit that selection once when the reader leaves Find.
+$effect(() => {
+	if (foundRow !== undefined) scrollRowIntoView(foundRow);
+});
+
+function leaveFind(idx: number | undefined) {
+	if (editingIdx !== null) {
+		document.getElementById(messageEditorId)?.querySelector("input")?.focus();
+		return;
+	}
+	if (idx !== undefined) focusedIndex = idx;
+	listEl
+		?.querySelector<HTMLElement>(`[data-rebase-row="${focusedIndex}"]`)
+		?.focus();
+}
 
 // Inline message editor state
 let editingIdx = $state<number | null>(null);
@@ -288,7 +329,7 @@ function scrollRowIntoView(idx: number) {
 
 function handleEditorKeydown(e: KeyboardEvent) {
 	if (!(e.target instanceof Element) || !editorEl?.contains(e.target)) return;
-	if (starting) return;
+	if (starting || e.defaultPrevented) return;
 
 	if (e.target.closest(`#${CSS.escape(messageEditorId)}`)) {
 		e.stopPropagation();
@@ -296,8 +337,7 @@ function handleEditorKeydown(e: KeyboardEvent) {
 		return;
 	}
 
-	const tag = e.target.tagName;
-	if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA") return;
+	if (e.target.closest("input, textarea, select, search")) return;
 
 	switch (e.key) {
 		case "p":
@@ -529,6 +569,7 @@ registerUpdateBlocker(
 	tabindex="-1"
 	aria-owns={editingIdx === null ? undefined : messageEditorId}
 	bind:this={editorEl}
+	{@attach findScope(openFind, () => planFind?.closeFind() ?? false)}
 	use:autofocus
 >
 	<!-- Header -->
@@ -549,11 +590,28 @@ registerUpdateBlocker(
 			>
 		</div>
 		<div class="rebase-toolbar-right">
+			<Button
+				icon
+				size="sm"
+				variant="ghost"
+				aria-label="Find in rebase plan"
+				tooltip={`Find in rebase plan (${onMac() ? "⌘" : "Ctrl+"}F)`}
+				disabled={starting}
+				onclick={openFind}
+				><Search size={14} /></Button
+			>
 			<Button size="sm" disabled={!hasChanges || starting} onclick={handleReset}
 				>Reset</Button
 			>
 		</div>
 	</div>
+
+	<PaneFind
+		bind:this={planFind}
+		placeholder="Find in rebase plan…"
+		matches={matchingCommits}
+		onclose={leaveFind}
+	/>
 
 	<!-- Column header -->
 	<div class="rebase-header" bind:this={headerEl}>
@@ -612,6 +670,7 @@ registerUpdateBlocker(
 							: undefined}
 						tabindex="0"
 						class:rebase-row-focused={focusedIndex === idx}
+						class:rebase-row-match={foundRow === idx}
 						class:rebase-row-drop={item.action === "drop"}
 						class:rebase-row-squash={item.action === "squash"}
 						data-rebase-row={idx}
@@ -930,6 +989,12 @@ registerUpdateBlocker(
 .rebase-row-focused {
 	border-left: 2px solid var(--color-accent);
 	background: var(--color-selected-row);
+}
+
+.rebase-row-match {
+	outline: 2px solid var(--color-accent);
+	outline-offset: -2px;
+	background: var(--color-search-current);
 }
 
 .rebase-row-drop {

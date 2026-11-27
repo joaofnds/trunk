@@ -78,6 +78,7 @@ interface Props {
 	// The panel marks a thread whose agent answer the user has not been shown.
 	unread?: boolean;
 	folds?: ThreadFolds;
+	searchQuery?: string;
 }
 
 let {
@@ -100,6 +101,7 @@ let {
 	editorSessionForThread,
 	unread = false,
 	folds = new ThreadFolds(),
+	searchQuery = "",
 }: Props = $props();
 
 // Only the panel shows a thread's replies to the user, so only its cards are
@@ -111,7 +113,12 @@ const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(
 	editorSessionForThread?.(thread) ?? editorSession ?? fallbackEditorSession,
 );
-const collapsed = $derived(folds.isCollapsed(thread));
+let collapsed = $derived(searchQuery ? false : folds.isCollapsed(thread));
+
+function toggleFold() {
+	if (searchQuery) collapsed = !collapsed;
+	else folds.toggle(thread);
+}
 const peek = $derived(
 	thread.text
 		.replace(/```[\s\S]*?```/g, "")
@@ -132,7 +139,7 @@ let replyEditor: ReturnType<typeof CommentEditor> | undefined = $state();
 
 export function focusReply() {
 	// Mount the card's editors before focusing the one this gesture requested.
-	if (collapsed) flushSync(() => folds.open(thread));
+	if (collapsed) flushSync(toggleFold);
 	replyEditor?.focusForWriting();
 }
 
@@ -539,12 +546,7 @@ async function requestDeleteReply(replyId: string) {
 	{@attach collapsed ? undefined : visibility?.cards.watch(thread.id)}
 >
 	<header class="comment-card-header">
-		<FoldBar
-			noun="thread"
-			inset="thread"
-			{collapsed}
-			ontoggle={() => folds.toggle(thread)}
-		>
+		<FoldBar noun="thread" inset="thread" {collapsed} ontoggle={toggleFold}>
 			{@render headerContent()}
 		</FoldBar>
 	</header>
@@ -650,6 +652,7 @@ async function requestDeleteReply(replyId: string) {
 		</ThreadMessage>
 
 		<ThreadReplies
+			{searchQuery}
 			replies={thread.replies}
 			history={thread.history}
 			follows={thread.follows}
