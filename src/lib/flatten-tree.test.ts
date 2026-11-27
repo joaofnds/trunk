@@ -48,6 +48,27 @@ describe("flattenTree", () => {
 	});
 
 	describe("expanded directory", () => {
+		it("includes every file in a directory wider than the argument limit", () => {
+			const file: FileNode = {
+				type: "file",
+				name: "file.ts",
+				path: "src/file.ts",
+				file: makeFile("src/file.ts"),
+			};
+			const children = Array<FileNode>(150_000).fill(file);
+			const directory: DirectoryNode = {
+				type: "directory",
+				name: "src",
+				path: "src",
+				children,
+			};
+
+			const rows = flattenTree([directory], new Set(["src"]));
+
+			expect(rows).toHaveLength(children.length + 1);
+			expect(rows.at(-1)?.node).toBe(file);
+		});
+
 		it("returns directory row followed by children at depth+1", () => {
 			const tree = buildTree([makeFile("src/a.ts"), makeFile("src/b.ts")]);
 			// "src" directory has path "src"

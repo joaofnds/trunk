@@ -27,6 +27,7 @@ import FileRow from "./FileRow.svelte";
 interface Props {
 	files: FilteredFile[];
 	treeMode: boolean;
+	startExpanded?: boolean;
 	filterQuery?: string;
 	actionLabel: string;
 	loadingFiles?: Set<string>;
@@ -52,6 +53,7 @@ interface Props {
 let {
 	files,
 	treeMode,
+	startExpanded = false,
 	filterQuery = "",
 	actionLabel,
 	loadingFiles,
@@ -65,7 +67,10 @@ let {
 	commentTallies,
 }: Props = $props();
 
-let expanded = $state<Set<string>>(new Set());
+// A null set follows the current directories until the user folds one.
+let expanded = $state<Set<string> | null>(
+	untrack(() => (treeMode && startExpanded ? null : new Set())),
+);
 let focusIndex = $state(0);
 let lastFocusedPath = $state<string | null>(null);
 let list = $state<HTMLElement>();
@@ -116,8 +121,11 @@ let dirPaths = $derived(collectDirPaths(tree));
 // Migrate expanded paths when tree structure changes (e.g. directory compression)
 $effect(() => {
 	if (filterQuery) return;
+	const paths = dirPaths;
 	const current = untrack(() => expanded);
-	const migrated = migrateExpanded(current, dirPaths);
+	if (current === null) return;
+
+	const migrated = migrateExpanded(current, paths);
 	if (migrated) {
 		expanded = migrated;
 	}
@@ -129,7 +137,9 @@ let matchingExpanded = $derived.by(() => {
 	void filterQuery;
 	return dirPaths;
 });
-const activeExpansion = $derived(filterQuery ? matchingExpanded : expanded);
+const activeExpansion = $derived(
+	filterQuery ? matchingExpanded : (expanded ?? dirPaths),
+);
 const expansion = $derived.by((): DirectoryExpansion => {
 	if (!treeMode || dirPaths.size === 0) return "empty";
 	if (activeExpansion === dirPaths) return "expanded";
@@ -176,16 +186,15 @@ let flatRows = $derived<FlatRow[]>(
 			})),
 );
 
-// Start the new layout with its folders closed except the route to the open file.
 $effect(() => {
 	const currentMode = treeMode;
 	if (prevTreeMode !== undefined && prevTreeMode !== currentMode) {
-		const path = selectedPath;
-		expanded = new Set(
-			currentMode && path
-				? [...dirPaths].filter((dir) => path.startsWith(`${dir}/`))
-				: [],
-		);
+		expanded = currentMode ? null : new Set();
+		if (currentMode) {
+			untrack(() => {
+				if (filterQuery) matchingExpanded = dirPaths;
+			});
+		}
 		focusIndex = 0;
 		lastFocusedPath = null;
 	}

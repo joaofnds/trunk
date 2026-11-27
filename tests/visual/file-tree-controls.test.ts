@@ -95,16 +95,29 @@ test("fits the staging tree controls and filter at the pane minimum", async (con
 			expect(
 				await isHit(page.getByTitle("Copy main", { exact: true }), signal),
 			).toBe(true);
+
+			await mode.click(options);
+			await page
+				.getByRole("switch", { name: "Switch to tree view" })
+				.click(options);
+			const file = page.getByTitle("working/new.ts", { exact: true });
+			await file.waitFor(options);
+			await collapse.waitFor(options);
+
 			await filter.focus(options);
 			await page.keyboard.press("Tab");
-			expect(await isFocused(expand, signal)).toBe(true);
+			expect(await isFocused(collapse, signal)).toBe(true);
 			await page.keyboard.press("Tab");
 			expect(await isFocused(mode, signal)).toBe(true);
 			await page.keyboard.press("Shift+Tab");
 			await page.keyboard.press("Enter");
+			await expand.waitFor(options);
+			expect(await isFocused(expand, signal)).toBe(true);
+			expect(await file.count()).toBe(0);
+			await page.keyboard.press("Enter");
 			await collapse.waitFor(options);
 			expect(await isFocused(collapse, signal)).toBe(true);
-			await page.getByTitle("working/new.ts", { exact: true }).waitFor(options);
+			await file.waitFor(options);
 
 			await filter.click(options);
 			expect((await input.boundingBox(options))?.width).toBeGreaterThan(100);

@@ -145,13 +145,23 @@ export class StagingDriver {
 		return filesIn(STAGED_SECTION);
 	}
 
-	/** Switches the staging lists to their collapsed-directory presentation. */
+	/** Switches the staging lists to tree view. */
 	async switchToTreeView(): Promise<void> {
 		const control = await waitFor("the tree-view control", () =>
 			document.querySelector<HTMLButtonElement>(TREE_VIEW),
 		);
 		control.click();
 		await waitFor("a staging tree row", () => document.querySelector(TREE_ROW));
+	}
+
+	/** Folds the staged and unstaged directories to show their aggregate badges. */
+	async collapseDirectories(): Promise<void> {
+		const control = await waitFor("the collapse-all control", () =>
+			document.querySelector<HTMLButtonElement>(
+				'[aria-label="Collapse all directories"]:enabled',
+			),
+		);
+		control.click();
 	}
 
 	/** The aggregate review count pill on one unstaged directory. */

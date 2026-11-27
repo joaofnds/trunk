@@ -219,6 +219,20 @@ describe("StagingPanel", () => {
 		);
 		expect(bulk).not.toBeInTheDocument();
 		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+
+		const staged = screen.getByRole("button", { name: /^Staged files/ });
+		await fireEvent.click(staged);
+		await rerender({ treeViewEnabled: true });
+		expect(screen.queryByTitle("src/main.ts")).toBeNull();
+		await fireEvent.click(staged);
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse all directories" }),
+		);
+		await fireEvent.click(staged);
+		await fireEvent.click(staged);
+		expect(screen.queryByTitle("src/main.ts")).toBeNull();
 	});
 
 	it("applies one action across open staging sections and skips a closed section", async () => {

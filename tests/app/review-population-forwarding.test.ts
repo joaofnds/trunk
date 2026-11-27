@@ -99,6 +99,7 @@ describe("review population forwarding", () => {
 
 		await app.staging.open();
 		await app.staging.switchToTreeView();
+		await app.staging.collapseDirectories();
 		await waitFor("the staging review counts", () =>
 			app.staging.unstagedDirectoryCommentBadge("src/dir")?.count === 1 &&
 			app.staging.stagedFileCommentBadge(STAGED_FILE)?.count === 1

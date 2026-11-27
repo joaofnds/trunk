@@ -3,7 +3,7 @@ import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Trash2 from "@lucide/svelte/icons/trash-2";
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import { copyText } from "../lib/clipboard.js";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTalliesForOid } from "../lib/comment-counts.js";
@@ -209,6 +209,33 @@ let operationInfo = $state<OperationInfo | null>(null);
 let conflictedTree = $state<TreeFileList | null>(null);
 let unstagedTree = $state<TreeFileList | null>(null);
 let stagedTree = $state<TreeFileList | null>(null);
+let previousTreeView: boolean | undefined;
+let expandOnMount = $state({
+	conflicted: false,
+	unstaged: false,
+	staged: false,
+});
+
+// Mounted lists handle the switch themselves. Folded sections catch up once
+// when they reopen.
+$effect.pre(() => {
+	const treeView = treeViewEnabled;
+	if (treeView && previousTreeView === false) {
+		expandOnMount = untrack(() => ({
+			conflicted: !conflictedTree,
+			unstaged: !unstagedTree,
+			staged: !stagedTree,
+		}));
+	}
+	previousTreeView = treeView;
+});
+
+$effect(() => {
+	if (conflictedTree) expandOnMount.conflicted = false;
+	if (unstagedTree) expandOnMount.unstaged = false;
+	if (stagedTree) expandOnMount.staged = false;
+});
+
 const fileTrees = $derived([conflictedTree, unstagedTree, stagedTree]);
 const directoryExpansion = $derived.by((): DirectoryExpansion => {
 	let anyExpanded = false;
@@ -1243,6 +1270,7 @@ registerUpdateBlocker(() => {
 							files={conflictedMatches}
 							filterQuery={query}
 							treeMode={treeViewEnabled}
+							startExpanded={expandOnMount.conflicted}
 							actionLabel="+"
 							{loadingFiles}
 							onfileaction={(path) => stageFile(path, "conflicted")}
@@ -1320,6 +1348,7 @@ registerUpdateBlocker(() => {
 							files={unstagedMatches}
 							filterQuery={query}
 							treeMode={treeViewEnabled}
+							startExpanded={expandOnMount.unstaged}
 							actionLabel="+"
 							{loadingFiles}
 							onfileaction={(path) => stageFile(path, "unstaged")}
@@ -1385,6 +1414,7 @@ registerUpdateBlocker(() => {
 						files={stagedMatches}
 						filterQuery={query}
 						treeMode={treeViewEnabled}
+						startExpanded={expandOnMount.staged}
 						actionLabel="−"
 						{loadingFiles}
 						onfileaction={(path) => unstageFile(path)}

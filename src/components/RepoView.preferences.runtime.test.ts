@@ -156,7 +156,6 @@ describe("RepoView global preferences", () => {
 		);
 		const tree = within(await secondChanges.findByRole("tree"));
 		const directory = tree.getByRole("treeitem", { name: /src\/lib/ });
-		await fireEvent.click(directory);
 
 		expect(secondPane.getByRole("switch", treeMode)).toBeVisible();
 		expect(directory).toHaveAttribute("aria-expanded", "true");

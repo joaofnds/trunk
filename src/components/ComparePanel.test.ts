@@ -217,6 +217,30 @@ describe("ComparePanel", () => {
 		expect(onfileselect).not.toHaveBeenCalled();
 	});
 
+	it("reopens the matching folders on switching to tree view with a filter active", async () => {
+		stubLayout({ width: 300, height: 4000 });
+		onTestFinished(restoreLayout);
+		const { rerender } = renderPanel({
+			treeViewEnabled: true,
+			fileDiffs: [...fileDiffs, { ...fileDiffs[0], path: "docs/guide.md" }],
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Filter files" }));
+		const filter = screen.getByRole("textbox", { name: "Filter files" });
+		await fireEvent.input(filter, { target: { value: "main" } });
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Collapse all directories" }),
+		);
+		expect(screen.queryByTitle("src/main.ts")).toBeNull();
+
+		await rerender({ treeViewEnabled: false });
+		await rerender({ treeViewEnabled: true });
+
+		expect(screen.getByTitle("src/main.ts")).toBeVisible();
+		expect(screen.queryByTitle("docs/guide.md")).toBeNull();
+		await fireEvent.keyDown(filter, { key: "Escape" });
+		expect(screen.getByTitle("docs/guide.md")).toBeVisible();
+	});
+
 	it("returns focus to the filter trigger when the directory action becomes disabled", async () => {
 		stubLayout({ width: 300, height: 4000 });
 		onTestFinished(restoreLayout);

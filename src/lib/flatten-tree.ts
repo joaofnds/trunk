@@ -31,6 +31,17 @@ export function flattenTree(
 	parentPath: string | null = null,
 ): FlatRow[] {
 	const result: FlatRow[] = [];
+	appendRows(nodes, expanded, depth, parentPath, result);
+	return result;
+}
+
+function appendRows(
+	nodes: TreeNode[],
+	expanded: Set<string>,
+	depth: number,
+	parentPath: string | null,
+	result: FlatRow[],
+): void {
 	for (const node of nodes) {
 		if (node.type === "directory") {
 			const isExpanded = expanded.has(node.path);
@@ -42,15 +53,12 @@ export function flattenTree(
 				parentPath,
 			});
 			if (isExpanded) {
-				result.push(
-					...flattenTree(node.children, expanded, depth + 1, node.path),
-				);
+				appendRows(node.children, expanded, depth + 1, node.path, result);
 			}
 		} else {
 			result.push({ type: "file", depth, node, parentPath });
 		}
 	}
-	return result;
 }
 
 /**

@@ -236,9 +236,10 @@ describe("TreeFileList", () => {
 		await rerender({ ...props, treeMode: true });
 
 		const items = within(screen.getByRole("tree")).getAllByRole("treeitem");
-		expect(items).toHaveLength(2);
+		expect(items).toHaveLength(3);
 		expect(items[0]).toHaveTextContent("src");
-		expect(items[1]).toHaveTextContent("README.md");
+		expect(items[1]).toHaveTextContent("a.ts");
+		expect(items[2]).toHaveTextContent("README.md");
 	});
 
 	it("leaves Space on a file to the list's scroll", async () => {
@@ -577,10 +578,10 @@ describe("TreeFileList", () => {
 			expect(
 				within(tree).getByRole("treeitem", {
 					name: /^comments/,
-					expanded: false,
+					expanded: true,
 				}),
 			).toBeInTheDocument();
-			expect(tree.scrollTop).toBe((files.length + 4) * ROW - VIEWPORT);
+			expect(tree.scrollTop).toBe((2 * files.length + 5) * ROW - VIEWPORT);
 
 			await rerender(props);
 			const list = screen.getByRole("listbox");
