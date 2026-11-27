@@ -429,6 +429,24 @@ describe("scrollToIndex", () => {
 });
 
 describe("revealIndex", () => {
+	it.each([
+		{ target: 1, visibleTop: 1 },
+		{ target: 303, visibleTop: 300 },
+	])(
+		"reveals row $target from the native position before its scroll event",
+		async ({ target, visibleTop }) => {
+			const { container, component } = mountList(5000);
+			const viewport = viewportOf(container);
+			viewport.scrollTop = 300 * ROW_HEIGHT;
+
+			component.revealIndex(target);
+			await tick();
+
+			expect(viewport.scrollTop).toBe(visibleTop * ROW_HEIGHT);
+			expect(rowIndices(container)).toContain(target);
+		},
+	);
+
 	it("scrolls a row below the viewport up until its bottom edge shows", () => {
 		const { container, component } = mountList(5000);
 

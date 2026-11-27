@@ -400,6 +400,10 @@ export function revealSearchRow(
 }
 
 function reveal(top: number, bottom: number): void {
+	if (!viewport) return;
+	// WebKit may already have scrolled while the rendered window still covers
+	// the old rows. Use the native position even when the row needs no scroll.
+	recordScrollTop(viewport.scrollTop);
 	if (top < scrollTop) {
 		setScrollTop(top);
 	} else if (bottom > scrollTop + viewportHeight) {
