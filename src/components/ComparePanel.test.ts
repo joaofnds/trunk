@@ -179,7 +179,7 @@ describe("ComparePanel", () => {
 		});
 
 		const tree = screen.getByRole("tree");
-		await fireEvent.click(screen.getByRole("treeitem", { name: /^src/ }));
+		await fireEvent.click(screen.getByRole("treeitem", { name: /^lib/ }));
 		expect(screen.getByTitle("src/main.ts")).toBeVisible();
 		tree.focus();
 		await fireEvent.keyDown(tree, { key: "/" });
@@ -245,7 +245,9 @@ describe("ComparePanel", () => {
 		stubLayout({ width: 300, height: 4000 });
 		onTestFinished(restoreLayout);
 		const { rerender } = renderPanel({ treeViewEnabled: true });
-		const bulk = screen.getByRole("button", { name: "Expand all directories" });
+		const bulk = screen.getByRole("button", {
+			name: "Collapse all directories",
+		});
 
 		bulk.focus();
 		await fireEvent.keyDown(bulk, { key: "/" });

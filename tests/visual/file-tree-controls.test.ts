@@ -148,6 +148,7 @@ test("keeps the bulk action visible and reveals the keyboard cursor on entering 
 				.click(options);
 			const detail = page.getByTestId("commit-detail");
 			const tree = detail.getByRole("tree");
+			await collapse.click(options);
 			await detail.getByTitle(ROOT_FILE, { exact: true }).click(options);
 			expect((await detail.boundingBox(options))?.width).toBe(PANE_WIDTH);
 			const selectedDiff = page.locator(

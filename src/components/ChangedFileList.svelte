@@ -131,6 +131,7 @@ function showContextMenu(
 		files={matches}
 		filterQuery={query}
 		treeMode={treeViewEnabled}
+		startExpanded
 		actionLabel=""
 		onfileaction={() => {}}
 		onfileclick={onfileselect}
